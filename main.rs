@@ -171,27 +171,20 @@ impl VFS {
     /// 1: Get an indexed list of all folders with entries generated, in parallel
     /// 2: Sort them according to the original index
     /// 3: Insert entries into the local BTreeMap sequentially after it's all over
-    pub fn add_files_from_directories(&mut self, search_dirs: Vec<PathBuf>) -> std::io::Result<()> {
-        let results: Vec<_> = search_dirs
-            .par_iter()
-            .enumerate()
-            .filter_map(|(index, dir)| {
-                self.process_directory(&dir, None)
-                    .ok()
-                    .map(|res| (index, res))
-            })
-            .collect();
-
-        let mut sorted_results: Vec<_> = results.into_iter().collect();
-        sorted_results.sort_by_key(|(index, _)| *index);
-
-        for (_, result) in sorted_results {
-            for (normalized_path, vfs_file) in result {
-                self.file_map.insert(normalized_path, vfs_file);
-            }
-        }
-
-        Ok(())
+    pub fn add_files_from_directories(
+        &mut self,
+        search_dirs: impl IntoParallelIterator<Item: AsRef<Path>>,
+    ) {
+        self.file_map.par_extend(
+            search_dirs
+                .into_par_iter()
+                .filter_map(|dir| {
+                    Self::process_directory(dir.as_ref(), None)
+                        .ok()
+                        .map(|res| res)
+                })
+                .flatten(),
+        )
     }
 }
 
