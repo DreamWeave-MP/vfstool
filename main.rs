@@ -50,13 +50,21 @@ impl VFS {
         }
     }
 
-    pub fn add_files_from_directory(&mut self, dir: PathBuf) -> std::io::Result<()> {
-        let entries = match std::fs::read_dir(&dir) {
+    pub fn add_files_from_directory(
+        &mut self,
+        base_dir: &Path,
+        search_dir: Option<&Path>,
+    ) -> std::io::Result<()> {
+        let search_dir = match search_dir {
+            None => base_dir,
+            Some(dir) => dir,
+        };
+        let entries = match std::fs::read_dir(search_dir) {
             Ok(entries) => entries,
             Err(error) => {
                 eprintln!(
                     "WARNING: Could not read directory '{}': {}",
-                    dir.display(),
+                    search_dir.display(),
                     error
                 );
                 return Ok(());
@@ -68,14 +76,18 @@ impl VFS {
                 Ok(entry) => {
                     let path = entry.path();
                     if path.is_dir() {
-                        if let Err(error) = self.add_files_from_directory(path) {
+                        if let Err(error) = self.add_files_from_directory(&base_dir, Some(&path)) {
                             eprintln!(
                                 "WARNING: Error occurred recursively adding child directory to VFS: {}",
                                 error
                             );
                         }
                     } else if path.is_file() {
-                        let normalized_path = normalize_path(&path.to_string_lossy());
+                        // Get a relative path from the VFS root
+                        let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
+
+                        // Normalize and store in file_map
+                        let normalized_path = normalize_path(&relative_path.to_string_lossy());
                         let vfs_file = VfsFile::new(path);
                         self.file_map.insert(normalized_path, Box::new(vfs_file));
                     }
@@ -136,31 +148,12 @@ fn normalize_path(path: &str) -> PathBuf {
 fn main() {
     let mut vfs = VFS::new();
     let mw_dir = PathBuf::from("/home/sk3shun-8/BethGames/Morrowind/Data Files/");
-    vfs.add_files_from_directory(mw_dir)
+    vfs.add_files_from_directory(&mw_dir, None)
         .expect("VFS Construction failed!");
-    // println!("{}", vfs);
-
-    // A map from normalized paths to `File` objects (in this case, `VfsFile` objects)
-    let mut file_map: BTreeMap<PathBuf, Box<dyn File>> = BTreeMap::new();
-
-    // Example files
-    let file1 = VfsFile::new(normalize_path(
-        "/home/sk3shun-8/BethGames/Morrowind/Data Files/Morrowind.esm",
-    ));
-    let file2 = VfsFile::new(normalize_path(
-        "/home/sk3shun-8/BethGames/Morrowind/Data Files/Tribunal.esm",
-    ));
-    let file3 = VfsFile::new(normalize_path(
-        "/home/sk3shun-8/BethGames/Morrowind/Data Files/Bloodmoon.esm",
-    ));
-
-    // Insert into the map
-    file_map.insert(file1.get_path().to_path_buf(), Box::new(file1));
-    file_map.insert(file2.get_path().to_path_buf(), Box::new(file2));
-    file_map.insert(file3.get_path().to_path_buf(), Box::new(file3));
+    println!("{}", vfs);
 
     // Perform a lookup
-    let query_path = normalize_path("/home/sk3shun-8/BethGames/Morrowind/Data Files/Bloodmoon.esm");
+    let query_path = normalize_path("music/explore/mx_ExPlOrE_2.mp3");
     if let Some(file) = vfs.file_map.get(&query_path) {
         println!("Found file: {}", file.get_path().display());
         // Open the file
