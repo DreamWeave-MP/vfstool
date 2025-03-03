@@ -39,7 +39,7 @@ impl File for VfsFile {
 
 struct VFS {
     data_directories: Vec<PathBuf>,
-    file_map: BTreeMap<PathBuf, Box<dyn File>>,
+    file_map: BTreeMap<PathBuf, Box<VfsFile>>,
 }
 
 impl VFS {
@@ -56,9 +56,25 @@ impl VFS {
     }
 
     /// Looks up a file in the VFS after normalizing the path
-    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Box<dyn File>> {
+    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Box<VfsFile>> {
         let normalized_path = Self::normalize_path(&path.as_ref().to_string_lossy());
         self.file_map.get(&normalized_path)
+    }
+
+    /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
+    pub fn iter_files_in_directory<P: AsRef<Path>>(
+        &self,
+        prefix: P,
+    ) -> impl Iterator<Item = (String, &Box<VfsFile>)> {
+        let normalized_prefix = Self::normalize_path(&prefix.as_ref().to_string_lossy());
+
+        self.file_map.iter().filter_map(move |(path, file)| {
+            if path.starts_with(&normalized_prefix) {
+                Some((path.to_string_lossy().to_string(), file))
+            } else {
+                None
+            }
+        })
     }
 
     pub fn add_files_from_directory(
@@ -171,5 +187,13 @@ fn main() {
         println!("File contents: {}", contents.len());
     } else {
         println!("File not found.");
+    }
+
+    let prefix = "music/explore";
+    for (path, file) in vfs.iter_files_in_directory(prefix) {
+        let mut fd = file.open().expect("");
+        let mut contents = Vec::new();
+        fd.read_to_end(&mut contents).expect("");
+        println!("Found file in VFS: {} of size {}", path, contents.len());
     }
 }
