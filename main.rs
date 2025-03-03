@@ -50,6 +50,11 @@ impl VFS {
         }
     }
 
+    // Function to normalize paths
+    fn normalize_path(path: &str) -> PathBuf {
+        path.to_lowercase().replace("\\", "/").into()
+    }
+
     pub fn add_files_from_directory(
         &mut self,
         base_dir: &Path,
@@ -87,7 +92,8 @@ impl VFS {
                         let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
 
                         // Normalize and store in file_map
-                        let normalized_path = normalize_path(&relative_path.to_string_lossy());
+                        let normalized_path =
+                            Self::normalize_path(&relative_path.to_string_lossy());
                         let vfs_file = VfsFile::new(path);
                         self.file_map.insert(normalized_path, Box::new(vfs_file));
                     }
@@ -140,11 +146,6 @@ impl std::fmt::Display for VFS {
     }
 }
 
-// Function to normalize paths
-fn normalize_path(path: &str) -> PathBuf {
-    path.to_lowercase().replace("\\", "/").into()
-}
-
 fn main() {
     let mut vfs = VFS::new();
     let mw_dir = PathBuf::from("/home/sk3shun-8/BethGames/Morrowind/Data Files/");
@@ -153,7 +154,7 @@ fn main() {
     println!("{}", vfs);
 
     // Perform a lookup
-    let query_path = normalize_path("music/explore/mx_ExPlOrE_2.mp3");
+    let query_path = VFS::normalize_path("music/explore/mx_ExPlOrE_2.mp3");
     if let Some(file) = vfs.file_map.get(&query_path) {
         println!("Found file: {}", file.get_path().display());
         // Open the file
