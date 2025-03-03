@@ -16,6 +16,7 @@ trait File {
     fn get_path(&self) -> &Path;
 }
 
+#[derive(Debug)]
 // Struct representing a file in the VFS
 struct VfsFile {
     path: PathBuf,
