@@ -61,6 +61,25 @@ impl VFS {
         self.file_map.get(&normalized_path)
     }
 
+    /// Given a substring, return an iterator over all paths that contain it.
+    pub fn paths_matching<S: AsRef<str>>(
+        &self,
+        substring: S,
+    ) -> impl Iterator<Item = (String, &Box<VfsFile>)> {
+        let normalized_substring = Self::normalize_path(substring.as_ref());
+
+        self.file_map.iter().filter_map(move |(path, file)| {
+            if path
+                .to_string_lossy()
+                .contains(&*normalized_substring.to_string_lossy())
+            {
+                Some((path.to_string_lossy().to_string(), file))
+            } else {
+                None
+            }
+        })
+    }
+
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
     pub fn paths_with<P: AsRef<Path>>(
         &self,
@@ -194,6 +213,22 @@ fn main() {
         let mut fd = file.open().expect("");
         let mut contents = Vec::new();
         fd.read_to_end(&mut contents).expect("");
-        println!("Found file in VFS: {} of size {}", path, contents.len());
+        println!(
+            "Found prefix-matching file in VFS: {} of size {}",
+            path,
+            contents.len()
+        );
+    }
+
+    let prefix = "explore/";
+    for (path, file) in vfs.paths_matching(prefix) {
+        let mut fd = file.open().expect("");
+        let mut contents = Vec::new();
+        fd.read_to_end(&mut contents).expect("");
+        println!(
+            "Found fuzzy matching file in VFS: {} of size {}",
+            path,
+            contents.len()
+        );
     }
 }
