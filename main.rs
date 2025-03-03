@@ -66,7 +66,7 @@ impl VFS {
     pub fn paths_matching<S: AsRef<str>>(
         &self,
         substring: S,
-    ) -> impl Iterator<Item = (String, &Arc<VfsFile>)> {
+    ) -> impl Iterator<Item = (&Path, &Arc<VfsFile>)> {
         let normalized_substring = Self::normalize_path(substring.as_ref());
 
         self.file_map.iter().filter_map(move |(path, file)| {
@@ -74,7 +74,7 @@ impl VFS {
                 .to_string_lossy()
                 .contains(&*normalized_substring.to_string_lossy())
             {
-                Some((path.to_string_lossy().to_string(), file))
+                Some((path.as_path(), file))
             } else {
                 None
             }
@@ -85,12 +85,12 @@ impl VFS {
     pub fn paths_with<P: AsRef<Path>>(
         &self,
         prefix: P,
-    ) -> impl Iterator<Item = (String, &Arc<VfsFile>)> {
+    ) -> impl Iterator<Item = (&Path, &Arc<VfsFile>)> {
         let normalized_prefix = Self::normalize_path(&prefix.as_ref().to_string_lossy());
 
         self.file_map.iter().filter_map(move |(path, file)| {
             if path.starts_with(&normalized_prefix) {
-                Some((path.to_string_lossy().to_string(), file))
+                Some((path.as_path(), file))
             } else {
                 None
             }
@@ -216,7 +216,7 @@ fn main() {
         fd.read_to_end(&mut contents).expect("");
         println!(
             "Found prefix-matching file in VFS: {} of size {}",
-            path,
+            path.display(),
             contents.len()
         );
     }
@@ -228,7 +228,7 @@ fn main() {
         fd.read_to_end(&mut contents).expect("");
         println!(
             "Found fuzzy matching file in VFS: {} of size {}",
-            path,
+            path.display(),
             contents.len()
         );
     }
