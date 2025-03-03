@@ -54,7 +54,7 @@ impl VFS {
         }
     }
 
-    // Function to normalize paths
+    /// Lowercase path and convert path separators to unix-style
     fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
         let path = path
             .as_ref()
@@ -106,6 +106,7 @@ impl VFS {
     }
 
     /// Given a Path to a directory, return a vector of tuples containing the VFS objects
+    /// NO FUCKING RECURSION
     fn process_directory(
         &self,
         base_dir: &Path,
