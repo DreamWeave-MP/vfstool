@@ -47,8 +47,14 @@ impl File for VfsFile {
 impl Default for VfsFile {
     fn default() -> Self {
         VfsFile {
-            path: PathBuf::from("TODD/WAS/HERE"),
+            path: PathBuf::new(),
         }
+    }
+}
+
+impl PartialEq<VfsFile> for &VfsFile {
+    fn eq(&self, other: &VfsFile) -> bool {
+        self == other
     }
 }
 
