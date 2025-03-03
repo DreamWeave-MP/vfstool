@@ -62,7 +62,7 @@ impl VFS {
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
-    pub fn iter_files_in_directory<P: AsRef<Path>>(
+    pub fn paths_with<P: AsRef<Path>>(
         &self,
         prefix: P,
     ) -> impl Iterator<Item = (String, &Box<VfsFile>)> {
@@ -190,7 +190,7 @@ fn main() {
     }
 
     let prefix = "music/explore";
-    for (path, file) in vfs.iter_files_in_directory(prefix) {
+    for (path, file) in vfs.paths_with(prefix) {
         let mut fd = file.open().expect("");
         let mut contents = Vec::new();
         fd.read_to_end(&mut contents).expect("");
