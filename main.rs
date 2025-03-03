@@ -117,102 +117,59 @@ impl VFS {
             Some(dir) => dir,
         };
 
-        // Read the directory and handle any errors
-        let entries = match std::fs::read_dir(search_dir) {
-            Ok(entries) => entries,
-            Err(error) => {
-                eprintln!(
-                    "WARNING: Could not read directory '{}': {}",
-                    base_dir.display(),
-                    error
-                );
-                return Ok(files);
-            }
-        };
+        // Stack to hold directories that need processing
+        let mut dirs_to_process = vec![search_dir.to_path_buf()];
 
-        // Process the directory entries
-        for entry in entries.filter_map(Result::ok) {
-            let path = entry.path();
-            if path.is_dir() {
-                // Recursively process subdirectories
-                files.extend(self.process_directory(base_dir, Some(&path))?);
-            } else if path.is_file() {
-                // Add the file to the list
-                let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
-                let normalized_path = Self::normalize_path(&relative_path);
-                let vfs_file = VfsFile::new(path);
-                files.push((normalized_path, Arc::new(vfs_file)));
+        while let Some(current_dir) = dirs_to_process.pop() {
+            // Read the directory and handle any errors
+            let entries = match std::fs::read_dir(&current_dir) {
+                Ok(entries) => entries,
+                Err(error) => {
+                    eprintln!(
+                        "WARNING: Could not read directory '{}': {}",
+                        current_dir.display(),
+                        error
+                    );
+                    continue;
+                }
+            };
+
+            // Process the directory entries
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Add subdirectories to the stack for later processing
+                    dirs_to_process.push(path);
+                } else if path.is_file() {
+                    // Add the file to the list
+                    let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
+                    let normalized_path = Self::normalize_path(&relative_path);
+                    let vfs_file = VfsFile::new(path);
+                    files.push((normalized_path, Arc::new(vfs_file)));
+                }
             }
         }
 
         Ok(files)
     }
 
-    pub fn add_files_from_directories_parallel(
-        &mut self,
-        search_dirs: Vec<PathBuf>,
-    ) -> std::io::Result<()> {
-        // Parallel processing of directories
-        let results: Vec<Vec<(PathBuf, Arc<VfsFile>)>> = search_dirs
-            .into_par_iter()
-            .map(|dir| self.process_directory(&dir, None))
-            .collect::<Result<Vec<_>, _>>()?;
+    /// Given a vector of paths, collects their VFS entries in parallel and then applies them in sequence
+    pub fn add_files_from_directories(&mut self, search_dirs: Vec<PathBuf>) -> std::io::Result<()> {
+        for dir in search_dirs {
+            let results = self.process_directory(&dir, None);
 
-        // Sequentially apply results
-        for result in results.into_iter().flatten() {
-            let (normalized_path, vfs_file) = result;
-            self.file_map.insert(normalized_path, vfs_file);
-        }
-
-        Ok(())
-    }
-
-    pub fn add_files_from_directory(
-        &mut self,
-        base_dir: &Path,
-        search_dir: Option<&Path>,
-    ) -> std::io::Result<()> {
-        let search_dir = match search_dir {
-            None => base_dir,
-            Some(dir) => dir,
-        };
-        let entries = match std::fs::read_dir(search_dir) {
-            Ok(entries) => entries,
-            Err(error) => {
-                eprintln!(
-                    "WARNING: Could not read directory '{}': {}",
-                    search_dir.display(),
-                    error
-                );
-                return Ok(());
-            }
-        };
-
-        for entry in entries {
-            match entry {
-                Ok(entry) => {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        if let Err(error) = self.add_files_from_directory(&base_dir, Some(&path)) {
-                            eprintln!(
-                                "WARNING: Error occurred recursively adding child directory to VFS: {}",
-                                error
-                            );
-                        }
-                    } else if path.is_file() {
-                        // Get a relative path from the VFS root
-                        let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
-
-                        // Normalize and store in file_map
-                        let normalized_path = Self::normalize_path(&relative_path);
-                        let vfs_file = VfsFile::new(path);
-                        self.file_map.insert(normalized_path, Arc::new(vfs_file));
+            match results {
+                Ok(results) => {
+                    // Sequentially apply results (we need to maintain this order)
+                    for (normalized_path, vfs_file) in results {
+                        self.file_map.insert(normalized_path, vfs_file);
                     }
                 }
-                Err(error) => {
+                Err(err) => {
                     eprintln!(
-                        "WARNING: Directory entry could not be read by the VFS: {}",
-                        error
+                        "WARNING: Failed to get VFS contents for directory: {} due to error: {}",
+                        dir.display(),
+                        err.to_string(),
                     );
                 }
             }
