@@ -231,6 +231,23 @@ impl std::fmt::Display for VFS {
     }
 }
 
+impl Index<&str> for VFS {
+    type Output = VfsFile;
+
+    fn index(&self, index: &str) -> &Self::Output {
+        let normalized_path = Self::normalize_path(index);
+
+        // If the path exists in the file_map, return the file, otherwise return a default value
+        self.file_map
+            .get(&normalized_path)
+            .map(|file| file.as_ref()) // Dereference Arc<VfsFile> to &VfsFile
+            .unwrap_or_else(|| {
+                static DEFAULT_FILE: std::sync::OnceLock<VfsFile> = std::sync::OnceLock::new();
+                DEFAULT_FILE.get_or_init(|| VfsFile::default())
+            })
+    }
+}
+
 fn main() {
     let mut vfs = VFS::new();
     let mw_dir = PathBuf::from("/home/sk3shun-8/BethGames/Morrowind/Data Files/");
