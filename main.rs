@@ -42,6 +42,14 @@ impl File for VfsFile {
         &self.path
     }
 }
+/// Sentinel VfsFile, representing an invalid path
+impl Default for VfsFile {
+    fn default() -> Self {
+        VfsFile {
+            path: PathBuf::from("TODD/WAS/HERE"),
+        }
+    }
+}
 
 struct VFS {
     file_map: BTreeMap<PathBuf, Arc<VfsFile>>,
