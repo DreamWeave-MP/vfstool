@@ -53,13 +53,18 @@ impl VFS {
     }
 
     // Function to normalize paths
-    fn normalize_path(path: &str) -> PathBuf {
-        path.to_lowercase().replace("\\", "/").into()
+    fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
+        let path = path
+            .as_ref()
+            .to_string_lossy()
+            .to_lowercase()
+            .replace("\\", "/");
+        PathBuf::from(path)
     }
 
     /// Looks up a file in the VFS after normalizing the path
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Arc<VfsFile>> {
-        let normalized_path = Self::normalize_path(&path.as_ref().to_string_lossy());
+        let normalized_path = Self::normalize_path(&path);
         self.file_map.get(&normalized_path)
     }
 
@@ -87,7 +92,7 @@ impl VFS {
         &self,
         prefix: P,
     ) -> impl Iterator<Item = (&Path, &Arc<VfsFile>)> {
-        let normalized_prefix = Self::normalize_path(&prefix.as_ref().to_string_lossy());
+        let normalized_prefix = Self::normalize_path(&prefix);
 
         self.file_map.iter().filter_map(move |(path, file)| {
             if path.starts_with(&normalized_prefix) {
@@ -135,8 +140,7 @@ impl VFS {
                         let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
 
                         // Normalize and store in file_map
-                        let normalized_path =
-                            Self::normalize_path(&relative_path.to_string_lossy());
+                        let normalized_path = Self::normalize_path(&relative_path);
                         let vfs_file = VfsFile::new(path);
                         self.file_map.insert(normalized_path, Arc::new(vfs_file));
                     }
