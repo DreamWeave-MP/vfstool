@@ -1,10 +1,10 @@
-use rayon::prelude::*;
-
-use std::collections::BTreeMap;
-use std::fs::{File as StdFile, OpenOptions};
-use std::io::{Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    collections::BTreeMap,
+    fs::File as StdFile,
+    io::{Read, Seek},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 // Define a new trait that combines Read and Seek
 trait ReadSeek: Read + Seek {}
