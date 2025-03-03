@@ -42,14 +42,12 @@ impl File for VfsFile {
 }
 
 struct VFS {
-    data_directories: Vec<PathBuf>,
     file_map: BTreeMap<PathBuf, Arc<VfsFile>>,
 }
 
 impl VFS {
     pub fn new() -> Self {
         Self {
-            data_directories: Vec::new(),
             file_map: BTreeMap::new(),
         }
     }
