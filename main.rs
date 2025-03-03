@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs::{File as StdFile, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 // Define a new trait that combines Read and Seek
 trait ReadSeek: Read + Seek {}
@@ -39,7 +40,7 @@ impl File for VfsFile {
 
 struct VFS {
     data_directories: Vec<PathBuf>,
-    file_map: BTreeMap<PathBuf, Box<VfsFile>>,
+    file_map: BTreeMap<PathBuf, Arc<VfsFile>>,
 }
 
 impl VFS {
@@ -56,7 +57,7 @@ impl VFS {
     }
 
     /// Looks up a file in the VFS after normalizing the path
-    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Box<VfsFile>> {
+    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Arc<VfsFile>> {
         let normalized_path = Self::normalize_path(&path.as_ref().to_string_lossy());
         self.file_map.get(&normalized_path)
     }
@@ -65,7 +66,7 @@ impl VFS {
     pub fn paths_matching<S: AsRef<str>>(
         &self,
         substring: S,
-    ) -> impl Iterator<Item = (String, &Box<VfsFile>)> {
+    ) -> impl Iterator<Item = (String, &Arc<VfsFile>)> {
         let normalized_substring = Self::normalize_path(substring.as_ref());
 
         self.file_map.iter().filter_map(move |(path, file)| {
@@ -84,7 +85,7 @@ impl VFS {
     pub fn paths_with<P: AsRef<Path>>(
         &self,
         prefix: P,
-    ) -> impl Iterator<Item = (String, &Box<VfsFile>)> {
+    ) -> impl Iterator<Item = (String, &Arc<VfsFile>)> {
         let normalized_prefix = Self::normalize_path(&prefix.as_ref().to_string_lossy());
 
         self.file_map.iter().filter_map(move |(path, file)| {
@@ -136,7 +137,7 @@ impl VFS {
                         let normalized_path =
                             Self::normalize_path(&relative_path.to_string_lossy());
                         let vfs_file = VfsFile::new(path);
-                        self.file_map.insert(normalized_path, Box::new(vfs_file));
+                        self.file_map.insert(normalized_path, Arc::new(vfs_file));
                     }
                 }
                 Err(error) => {
@@ -192,7 +193,7 @@ fn main() {
     let mw_dir = PathBuf::from("/home/sk3shun-8/BethGames/Morrowind/Data Files/");
     vfs.add_files_from_directory(&mw_dir, None)
         .expect("VFS Construction failed!");
-    println!("{}", vfs);
+    // println!("{}", vfs);
 
     // Perform a lookup
     if let Some(file) = vfs.get_file(&"music/explore/mx_ExPlOrE_2.mp3") {
