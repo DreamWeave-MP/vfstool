@@ -73,13 +73,12 @@ impl VFS {
         &self,
         substring: S,
     ) -> impl Iterator<Item = (&Path, &Arc<VfsFile>)> {
-        let normalized_substring = Self::normalize_path(substring.as_ref());
+        let normalized_substring = Self::normalize_path(substring.as_ref())
+            .to_string_lossy()
+            .into_owned();
 
         self.file_map.iter().filter_map(move |(path, file)| {
-            if path
-                .to_string_lossy()
-                .contains(&*normalized_substring.to_string_lossy())
-            {
+            if path.to_string_lossy().contains(&normalized_substring) {
                 Some((path.as_path(), file))
             } else {
                 None
