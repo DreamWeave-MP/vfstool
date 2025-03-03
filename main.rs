@@ -55,6 +55,12 @@ impl VFS {
         path.to_lowercase().replace("\\", "/").into()
     }
 
+    /// Looks up a file in the VFS after normalizing the path
+    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Box<dyn File>> {
+        let normalized_path = Self::normalize_path(&path.as_ref().to_string_lossy());
+        self.file_map.get(&normalized_path)
+    }
+
     pub fn add_files_from_directory(
         &mut self,
         base_dir: &Path,
@@ -154,8 +160,7 @@ fn main() {
     println!("{}", vfs);
 
     // Perform a lookup
-    let query_path = VFS::normalize_path("music/explore/mx_ExPlOrE_2.mp3");
-    if let Some(file) = vfs.file_map.get(&query_path) {
+    if let Some(file) = vfs.get_file(&"music/explore/mx_ExPlOrE_2.mp3") {
         println!("Found file: {}", file.get_path().display());
         // Open the file
         let mut file_stream = file.open().expect("Failed to open file");
