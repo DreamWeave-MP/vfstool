@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use std::collections::BTreeMap;
 use std::fs::{File as StdFile, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
@@ -101,6 +103,68 @@ impl VFS {
                 None
             }
         })
+    }
+
+    /// Given a Path to a directory, return a vector of tuples containing the VFS objects
+    fn process_directory(
+        &self,
+        base_dir: &Path,
+        search_dir: Option<&Path>,
+    ) -> std::io::Result<Vec<(PathBuf, Arc<VfsFile>)>> {
+        let mut files = Vec::new();
+        let search_dir = match search_dir {
+            None => base_dir,
+            Some(dir) => dir,
+        };
+
+        // Read the directory and handle any errors
+        let entries = match std::fs::read_dir(search_dir) {
+            Ok(entries) => entries,
+            Err(error) => {
+                eprintln!(
+                    "WARNING: Could not read directory '{}': {}",
+                    base_dir.display(),
+                    error
+                );
+                return Ok(files);
+            }
+        };
+
+        // Process the directory entries
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() {
+                // Recursively process subdirectories
+                files.extend(self.process_directory(base_dir, Some(&path))?);
+            } else if path.is_file() {
+                // Add the file to the list
+                let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
+                let normalized_path = Self::normalize_path(&relative_path);
+                let vfs_file = VfsFile::new(path);
+                files.push((normalized_path, Arc::new(vfs_file)));
+            }
+        }
+
+        Ok(files)
+    }
+
+    pub fn add_files_from_directories_parallel(
+        &mut self,
+        search_dirs: Vec<PathBuf>,
+    ) -> std::io::Result<()> {
+        // Parallel processing of directories
+        let results: Vec<Vec<(PathBuf, Arc<VfsFile>)>> = search_dirs
+            .into_par_iter()
+            .map(|dir| self.process_directory(&dir, None))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Sequentially apply results
+        for result in results.into_iter().flatten() {
+            let (normalized_path, vfs_file) = result;
+            self.file_map.insert(normalized_path, vfs_file);
+        }
+
+        Ok(())
     }
 
     pub fn add_files_from_directory(
