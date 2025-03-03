@@ -1,4 +1,5 @@
 use rayon::prelude::*;
+use walkdir::WalkDir;
 
 use std::{
     collections::BTreeMap,
@@ -173,13 +174,30 @@ impl VFS {
     /// 3: Insert entries into the local BTreeMap sequentially after it's all over
     pub fn add_files_from_directories(
         &mut self,
-        search_dirs: impl IntoParallelIterator<Item: AsRef<Path>>,
+        search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
     ) {
-        self.file_map.par_extend(
-            search_dirs
-                .into_par_iter()
-                .flat_map(|dir| Self::process_directory(dir.as_ref(), None)),
-        )
+        self.file_map
+            .par_extend(search_dirs.into_par_iter().flat_map(|dir| {
+                let dir = dir.as_ref().to_path_buf();
+
+                WalkDir::new(&dir)
+                    .into_iter()
+                    .filter_map(move |result| match result {
+                        Ok(res) => Some((res, dir.clone())),
+                        Err(_) => None,
+                    })
+                    .filter(|(entry, _)| entry.file_type().is_file())
+                    .par_bridge()
+                    .map(move |(entry, base_path)| {
+                        let path = entry.path().to_path_buf();
+
+                        let relative_path = path.strip_prefix(&base_path).unwrap_or(&path);
+
+                        let normalized_path = Self::normalize_path(&relative_path);
+                        let vfs_file = VfsFile::new(path);
+                        (normalized_path, Arc::new(vfs_file))
+                    })
+            }))
     }
 }
 
