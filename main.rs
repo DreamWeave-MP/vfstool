@@ -3,7 +3,8 @@ use rayon::prelude::*;
 use std::{
     collections::BTreeMap,
     fs::File as StdFile,
-    io::{Read, Seek},
+    io::{Read, Result, Seek},
+    ops::Index,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -16,7 +17,7 @@ impl ReadSeek for StdFile {}
 
 // This trait mimics the interface of OpenMW's `File`
 trait File {
-    fn open(&self) -> std::io::Result<Box<dyn ReadSeek>>;
+    fn open(&self) -> Result<Box<dyn ReadSeek>>;
     fn get_path(&self) -> &Path;
 }
 
@@ -33,7 +34,7 @@ impl VfsFile {
 }
 
 impl File for VfsFile {
-    fn open(&self) -> std::io::Result<Box<dyn ReadSeek>> {
+    fn open(&self) -> Result<Box<dyn ReadSeek>> {
         let file = StdFile::open(&self.path)?;
         Ok(Box::new(file))
     }
