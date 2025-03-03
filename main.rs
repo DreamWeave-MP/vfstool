@@ -122,7 +122,6 @@ impl VFS {
     /// Given a Path to a directory, return a vector of tuples containing the VFS objects
     /// NO FUCKING RECURSION
     fn process_directory(
-        &self,
         base_dir: &Path,
         search_dir: Option<&Path>,
     ) -> std::io::Result<Vec<(PathBuf, Arc<VfsFile>)>> {
