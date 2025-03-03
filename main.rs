@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use std::{
     collections::BTreeMap,
     fs::File as StdFile,
@@ -152,24 +154,26 @@ impl VFS {
     }
 
     /// Given a vector of paths, collects their VFS entries in parallel and then applies them in sequence
+    /// 1: Get an indexed list of all folders with entries generated, in parallel
+    /// 2: Sort them according to the original index
+    /// 3: Insert entries into the local BTreeMap sequentially after it's all over
     pub fn add_files_from_directories(&mut self, search_dirs: Vec<PathBuf>) -> std::io::Result<()> {
-        for dir in search_dirs {
-            let results = self.process_directory(&dir, None);
+        let results: Vec<_> = search_dirs
+            .par_iter()
+            .enumerate()
+            .filter_map(|(index, dir)| {
+                self.process_directory(&dir, None)
+                    .ok()
+                    .map(|res| (index, res))
+            })
+            .collect();
 
-            match results {
-                Ok(results) => {
-                    // Sequentially apply results (we need to maintain this order)
-                    for (normalized_path, vfs_file) in results {
-                        self.file_map.insert(normalized_path, vfs_file);
-                    }
-                }
-                Err(err) => {
-                    eprintln!(
-                        "WARNING: Failed to get VFS contents for directory: {} due to error: {}",
-                        dir.display(),
-                        err.to_string(),
-                    );
-                }
+        let mut sorted_results: Vec<_> = results.into_iter().collect();
+        sorted_results.sort_by_key(|(index, _)| *index);
+
+        for (_, result) in sorted_results {
+            for (normalized_path, vfs_file) in result {
+                self.file_map.insert(normalized_path, vfs_file);
             }
         }
 
