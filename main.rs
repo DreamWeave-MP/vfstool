@@ -89,12 +89,12 @@ impl VFS {
     pub fn paths_matching<S: AsRef<str>>(
         &self,
         substring: S,
-    ) -> impl Iterator<Item = (&Path, &Arc<VfsFile>)> {
+    ) -> impl ParallelIterator<Item = (&Path, &Arc<VfsFile>)> {
         let normalized_substring = Self::normalize_path(substring.as_ref())
             .to_string_lossy()
             .into_owned();
 
-        self.file_map.iter().filter_map(move |(path, file)| {
+        self.file_map.par_iter().filter_map(move |(path, file)| {
             if path.to_string_lossy().contains(&normalized_substring) {
                 Some((path.as_path(), file))
             } else {
@@ -107,10 +107,10 @@ impl VFS {
     pub fn paths_with<P: AsRef<Path>>(
         &self,
         prefix: P,
-    ) -> impl Iterator<Item = (&Path, &Arc<VfsFile>)> {
+    ) -> impl ParallelIterator<Item = (&Path, &Arc<VfsFile>)> {
         let normalized_prefix = Self::normalize_path(&prefix);
 
-        self.file_map.iter().filter_map(move |(path, file)| {
+        self.file_map.par_iter().filter_map(move |(path, file)| {
             if path.starts_with(&normalized_prefix) {
                 Some((path.as_path(), file))
             } else {
@@ -124,7 +124,7 @@ impl VFS {
     fn process_directory(
         base_dir: &Path,
         search_dir: Option<&Path>,
-    ) -> std::io::Result<Vec<(PathBuf, Arc<VfsFile>)>> {
+    ) -> Vec<(PathBuf, Arc<VfsFile>)> {
         let mut files = Vec::new();
         let search_dir = match search_dir {
             None => base_dir,
@@ -164,7 +164,7 @@ impl VFS {
             }
         }
 
-        Ok(files)
+        files
     }
 
     /// Given a vector of paths, collects their VFS entries in parallel and then applies them in sequence
@@ -178,12 +178,7 @@ impl VFS {
         self.file_map.par_extend(
             search_dirs
                 .into_par_iter()
-                .filter_map(|dir| {
-                    Self::process_directory(dir.as_ref(), None)
-                        .ok()
-                        .map(|res| res)
-                })
-                .flatten(),
+                .flat_map(|dir| Self::process_directory(dir.as_ref(), None)),
         )
     }
 }
