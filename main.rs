@@ -168,10 +168,14 @@ impl VFS {
 
     /// Returns a sorted version of the VFS contents as a binary tree
     /// Easier to display.
-    pub fn tree(&self) -> DisplayTree {
+    pub fn tree(&self, relative: bool) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
 
-        let mut paths: Vec<_> = self.file_map.keys().collect();
+        let mut paths: Vec<_> = match relative {
+            true => self.file_map.keys().collect(),
+            false => self.file_map.values().map(|entry| &entry.path).collect(),
+        };
+
         paths.sort();
 
         for path in paths {
@@ -197,10 +201,11 @@ impl VFS {
     /// Might be empty.
     pub fn tree_filtered(
         &self,
+        relative: bool,
         dir_filter: impl Fn(&str) -> bool,
         file_filter: impl Fn(&str) -> bool,
     ) -> DisplayTree {
-        let mut tree = self.tree();
+        let mut tree = self.tree(relative);
 
         tree.retain(|dir, files| {
             files.retain(|file| file_filter(file));
@@ -210,37 +215,24 @@ impl VFS {
         tree
     }
 
-    fn file_str(file: &String, newline: bool) -> String {
-        format!(
-            "{}{}{}",
-            Self::FILE_PREFIX,
-            file,
-            match newline {
-                true => "\n",
-                false => "",
-            }
-        )
+    /// String formatter for the file tree
+    /// Includes a newline, so caller is responsible for using the appropriate writer
+    fn file_str(file: &String) -> String {
+        format!("{}{}\n", Self::FILE_PREFIX, file,)
     }
 
-    fn dir_str(dir: &String, newline: bool) -> String {
-        format!(
-            "{}{}/{}",
-            Self::DIR_PREFIX,
-            dir,
-            match newline {
-                true => "\n",
-                false => "",
-            }
-        )
+    fn dir_str(dir: &String) -> String {
+        format!("{}{}/\n", Self::DIR_PREFIX, dir,)
     }
 
     /// Returns the formatted file tree for a filtered subset
     pub fn display_filtered<'a>(
         &self,
+        relative: bool,
         dir_filter: impl Fn(&str) -> bool,
         file_filter: impl Fn(&str) -> bool,
     ) -> String {
-        let tree = self.tree();
+        let tree = self.tree(relative);
         let mut output = String::new();
 
         for (dir, mut files) in tree {
@@ -253,12 +245,12 @@ impl VFS {
             if files.is_empty() {
                 continue;
             } else if dir != "/" {
-                output.push_str(&Self::dir_str(&dir, true));
+                output.push_str(&Self::dir_str(&dir));
             }
 
             files
                 .iter()
-                .for_each(|file| output.push_str(&Self::file_str(file, true)));
+                .for_each(|file| output.push_str(&Self::file_str(file)));
         }
 
         output
@@ -268,12 +260,12 @@ impl VFS {
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "/")?;
-        for (dir, files) in &self.tree() {
+        for (dir, files) in &self.tree(true) {
             if dir != "/" {
-                write!(f, "{}", Self::dir_str(dir, true))?;
+                write!(f, "{}", Self::dir_str(dir))?;
             }
             for file in files {
-                write!(f, "{}", Self::file_str(file, true))?;
+                write!(f, "{}", Self::file_str(file))?;
             }
         }
         Ok(())
