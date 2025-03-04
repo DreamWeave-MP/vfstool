@@ -205,13 +205,10 @@ impl VFS {
                     })
             }))
     }
-}
 
-impl std::fmt::Display for VFS {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    pub fn file_tree(&self) -> BTreeMap<String, Vec<String>> {
         let mut tree: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
-        // Organize paths into hierarchical groups
         for path in self.file_map.keys() {
             let mut components: Vec<String> = path
                 .components()
@@ -228,9 +225,14 @@ impl std::fmt::Display for VFS {
             }
         }
 
-        // Print hierarchy
+        tree
+    }
+}
+
+impl std::fmt::Display for VFS {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "/")?;
-        for (dir, files) in &tree {
+        for (dir, files) in &self.file_tree() {
             if dir != "/" {
                 writeln!(f, "├── {}/", dir)?;
             }
