@@ -366,12 +366,28 @@ impl Index<&str> for VFS {
     }
 }
 
+use std::io::Write;
+
 fn main() {
     let mut vfs = VFS::new();
     let mw_dir = PathBuf::from("/home/sk3shun-8/BethGames/Morrowind/Data Files/");
-    vfs.add_files_from_directory(&mw_dir, None)
-        .expect("VFS Construction failed!");
-    // println!("{}", vfs);
+    let sw_dir = PathBuf::from("/home/sk3shun-8/openmw/umomwd/starwind-modded/TotalConversions/Starwindv3AStarWarsConversion/Starwind3.1/Data Files/");
+    let pfp_dir = PathBuf::from(
+        "/home/sk3shun-8/openmw/umomwd/total-overhaul/PatchesFixesandConsistency/PatchforPurists/",
+    );
+
+    let data_directories =
+        openmw_cfg::get_data_dirs(&openmw_cfg::get_config().expect("")).expect("");
+
+    let data_paths: Vec<PathBuf> = data_directories
+        .iter()
+        .map(|str| PathBuf::from(str))
+        .collect();
+
+    vfs.add_files_from_directories(data_paths);
+
+    // vfs.add_files_from_directories(&[mw_dir.clone(), sw_dir, pfp_dir]);
+    // dbg!(&vfs.file_map);
 
     // Perform a lookup
     if let Some(file) = vfs.get_file(&"music/explore/mx_ExPlOrE_2.mp3") {
@@ -388,7 +404,7 @@ fn main() {
     }
 
     let prefix = "music/explore";
-    for (path, file) in vfs.paths_with(prefix) {
+    vfs.par_paths_with(prefix).for_each(|(path, file)| {
         let mut fd = file.open().expect("");
         let mut contents = Vec::new();
         fd.read_to_end(&mut contents).expect("");
@@ -397,17 +413,162 @@ fn main() {
             path.display(),
             contents.len()
         );
-    }
+    });
 
-    let prefix = "explore/";
-    for (path, file) in vfs.paths_matching(prefix) {
+    let explore_tracks: Vec<&Arc<VfsFile>> =
+        vfs.par_paths_with(prefix).map(|(_, file)| file).collect();
+    let rng = std::time::SystemTime::now().elapsed().unwrap().as_secs() as usize; // Get the elapsed time in seconds
+    let random_index = rng % explore_tracks.len();
+
+    // let random_index = rand::random::<usize>() % explore_tracks.len();
+    let random_track = explore_tracks[random_index];
+
+    let mut fd = random_track.open().expect("");
+    let mut contents = Vec::new();
+    fd.read_to_end(&mut contents).expect("");
+
+    println!(
+        "Picked random explore track from VFS: {} of size {}",
+        random_track.path.display(),
+        contents.len()
+    );
+
+    // for (path, file) in vfs.paths_with(prefix) {
+    //     let mut fd = file.open().expect("");
+    //     let mut contents = Vec::new();
+    //     fd.read_to_end(&mut contents).expect("");
+    //     println!(
+    //         "Found prefix-matching file in VFS: {} of size {}",
+    //         path.display(),
+    //         contents.len()
+    //     );
+    // }
+
+    // let prefix = "explore/";
+    // for (path, file) in vfs.paths_matching(prefix) {
+    //     let mut fd = file.open().expect("");
+    //     let mut contents = Vec::new();
+    //     fd.read_to_end(&mut contents).expect("");
+    //     println!(
+    //         "Found fuzzy matching file in VFS: {} of size {}",
+    //         path.display(),
+    //         contents.len()
+    //     );
+    // }
+
+    let suffix = ".bik";
+    vfs.par_paths_matching(suffix).for_each(|(path, file)| {
         let mut fd = file.open().expect("");
         let mut contents = Vec::new();
         fd.read_to_end(&mut contents).expect("");
         println!(
-            "Found fuzzy matching file in VFS: {} of size {}",
+            "Found suffixed file in VFS: {} of size {} at true path: {}",
             path.display(),
-            contents.len()
+            contents.len(),
+            file.path.display(),
         );
+    });
+
+    let mut file = StdFile::create("vfs.txt").expect("");
+    let _ = write!(file, "{}", vfs);
+
+    let _ = file = StdFile::create("meshes.txt").expect("");
+    let _ = write!(
+        file,
+        "{}",
+        vfs.display_filtered(
+            true,
+            |dir| dir.contains("meshes"),
+            |file| file.contains("hlaalu")
+        )
+    );
+
+    let _ = file = StdFile::create("absolute_meshes.txt").expect("");
+    let _ = write!(
+        file,
+        "{}",
+        vfs.display_filtered(
+            false,
+            |dir| dir.contains("meshes"),
+            |file| file.contains("hlaalu")
+        )
+    );
+
+    let _ = file = StdFile::create("solthas.txt").expect("");
+    let _ = write!(
+        file,
+        "{}",
+        vfs.display_filtered(false, |dir| true, |file| file.contains("omwscripts"))
+    );
+
+    let filter_tree = vfs.tree_filtered(
+        true,
+        |dir| dir.contains("textures"),
+        |file| file.contains("selkath"),
+    );
+    dbg!(&filter_tree);
+
+    let filter_tree = vfs.tree_filtered(
+        true,
+        |dir| dir.contains("meshes"),
+        |file| file.contains("wookie"),
+    );
+    dbg!(&filter_tree);
+
+    let filter_tree = vfs.tree_filtered(
+        true,
+        |dir| dir.contains("icons"),
+        |file| file.contains("book"),
+    );
+    dbg!(&filter_tree);
+
+    let filter_tree = vfs.tree_filtered(
+        true,
+        |dir| dir.contains("music"),
+        |file| file.contains("mx"),
+    );
+    dbg!(&filter_tree);
+
+    let filter_tree = vfs.tree_filtered(true, |dir| dir.contains("video"), |_| true);
+    dbg!(&filter_tree);
+
+    let tree = &vfs.tree(false);
+    let serialized_tree = tree.to_serialized();
+
+    let json = serde_json::to_string_pretty(&serialized_tree);
+    if let Err(ref err) = json {
+        eprintln!("Failed serializing vfs to json: {}", err.to_string())
     }
+
+    let json_file = StdFile::create("vfs.json");
+    match json_file {
+        Err(err) => eprintln!(
+            "Failed writing serialized VFS to json file: {}",
+            err.to_string()
+        ),
+        Ok(mut file) => {
+            write!(file, "{}", json.expect("")).expect("");
+        }
+    }
+
+    // dbg!(&vfs.tree(false).to_serialized());
+
+    // println!("{}", vfs);
+
+    // for (path, file) in vfs.paths_matching(suffix) {
+    //     let mut fd = file.open().expect("");
+    //     let mut contents = Vec::new();
+    //     fd.read_to_end(&mut contents).expect("");
+    //     println!(
+    //         "Found suffixed file in VFS: {} of size {} at true path: {}",
+    //         path.display(),
+    //         contents.len(),
+    //         file.path.display(),
+    //     );
+    // }
+
+    // let found = vfs.paths_matching("narsuite.nif");
+    // for (path, file) in found {
+    //     dbg!(path, file);
+    // }
 }
