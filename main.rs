@@ -2,7 +2,7 @@ use rayon::prelude::*;
 use walkdir::{Error as WalkError, WalkDir};
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fs::File as StdFile,
     io::{self, Read, Seek},
     ops::Index,
@@ -12,7 +12,7 @@ use std::{
 
 // Owned
 type DisplayTree = BTreeMap<String, Vec<String>>;
-type VFSFiles = BTreeMap<PathBuf, Arc<VfsFile>>;
+type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
 
 // With lifetimes
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
@@ -74,7 +74,7 @@ struct VFS {
 impl VFS {
     pub fn new() -> Self {
         Self {
-            file_map: BTreeMap::new(),
+            file_map: HashMap::new(),
         }
     }
 
@@ -166,7 +166,10 @@ impl VFS {
     pub fn file_tree(&self) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
 
-        for path in self.file_map.keys() {
+        let mut paths: Vec<_> = self.file_map.keys().collect();
+        paths.sort();
+
+        for path in paths {
             let mut components: Vec<String> = path
                 .components()
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
