@@ -2,19 +2,20 @@ use rayon::prelude::*;
 use walkdir::{Error as WalkError, WalkDir};
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     fs::File as StdFile,
     io::{self, Read, Seek},
     ops::Index,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::Arc,
 };
 
 // Owned
-type DisplayTree = BTreeMap<String, Vec<String>>;
 type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
 
 // With lifetimes
+type DisplayTree<'a> = BTreeMap<Cow<'a, str>, Vec<Cow<'a, str>>>;
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
 
@@ -209,21 +210,23 @@ impl VFS {
 
         paths.sort();
 
-        for path in paths {
-            let mut components: Vec<String> = path
-                .components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect();
+        paths.iter().for_each(|path| {
+            let mut components = path.components();
 
-            if let Some(file) = components.pop() {
-                let dir = if components.is_empty() {
-                    "/".to_string()
+            if let Some(Component::Normal(file)) = components.next_back() {
+                let dir = components.as_path();
+
+                let dir_str = if dir.as_os_str().is_empty() {
+                    Cow::Borrowed("/")
                 } else {
-                    components.join("/")
+                    Cow::Owned(dir.to_string_lossy().into_owned())
                 };
-                tree.entry(dir).or_default().push(file);
+
+                let entry_str = Cow::Owned(file.to_string_lossy().into_owned());
+
+                tree.entry(dir_str).or_default().push(entry_str);
             }
-        }
+        });
 
         tree
     }
@@ -248,11 +251,11 @@ impl VFS {
 
     /// String formatter for the file tree
     /// Includes a newline, so caller is responsible for using the appropriate writer
-    fn file_str(file: &String) -> String {
+    fn file_str<S: AsRef<str> + std::fmt::Display>(file: S) -> String {
         format!("{}{}\n", Self::FILE_PREFIX, file,)
     }
 
-    fn dir_str(dir: &String) -> String {
+    fn dir_str<S: AsRef<str> + std::fmt::Display>(dir: S) -> String {
         format!("{}{}/\n", Self::DIR_PREFIX, dir,)
     }
 
