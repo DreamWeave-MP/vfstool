@@ -18,49 +18,55 @@ use std::{
 // Owned
 type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
 
-// With lifetimes
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+enum FileOrDir {
+    Dir(BTreeMap<String, FileOrDir>),
+    Files(Vec<String>),
+}
 type DisplayTree<'a> = BTreeMap<Cow<'a, str>, Vec<Cow<'a, str>>>;
 trait S3rialize {
-    fn to_serialized(&self) -> SerializedDir;
+    fn to_serialized(&self) -> FileOrDir;
 }
 impl S3rialize for DisplayTree<'_> {
-    fn to_serialized(&self) -> SerializedDir {
-        let mut root = SerializedDir {
-            files: Vec::new(),
-            subdirs: BTreeMap::new(),
-        };
+    fn to_serialized(&self) -> FileOrDir {
+        let mut root = BTreeMap::new();
 
         for (dir, files) in self {
-            let mut parts = dir.split('/');
+            let mut parts = dir.split('/').filter(|s| !s.is_empty()).map(String::from);
             let mut current = &mut root;
 
             while let Some(part) = parts.next() {
-                current = current.subdirs.entry(part).or_insert(SerializedDir {
-                    files: Vec::new(),
-                    subdirs: BTreeMap::new(),
-                });
+                current = current
+                    .entry(part)
+                    .or_insert_with(|| FileOrDir::Dir(BTreeMap::new()))
+                    .as_dir_mut()
+                    .unwrap();
             }
 
-            current.files.extend(files.iter().map(|s| s.as_ref()));
+            // Insert files as a list of strings, without the need for keys
+            let file_list = files
+                .iter()
+                .map(|file| file.to_string())
+                .collect::<Vec<String>>();
+            current.insert("files".to_string(), FileOrDir::Files(file_list));
         }
 
-        root
+        FileOrDir::Dir(root)
+    }
+}
+
+impl FileOrDir {
+    fn as_dir_mut(&mut self) -> Option<&mut BTreeMap<String, FileOrDir>> {
+        match self {
+            FileOrDir::Dir(map) => Some(map),
+            _ => None,
+        }
     }
 }
 
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
-
-// #[derive(Serialize)]
-// struct SerializableDisplayTree<'a> {
-//     tree: DisplayTree<'a>,
-// }
-
-#[derive(Serialize, Debug)]
-struct SerializedDir<'a> {
-    files: Vec<&'a str>,
-    subdirs: BTreeMap<&'a str, SerializedDir<'a>>,
-}
 
 // Define a new trait that combines Read and Seek
 trait ReadSeek: Read + Seek {}
