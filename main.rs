@@ -1,5 +1,9 @@
 use rayon::prelude::*;
+use serde::Serialize;
 use walkdir::{Error as WalkError, WalkDir};
+
+// Implement file type enum
+// Make DisplayTrees serializable
 
 use std::{
     borrow::Cow,
@@ -16,8 +20,47 @@ type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
 
 // With lifetimes
 type DisplayTree<'a> = BTreeMap<Cow<'a, str>, Vec<Cow<'a, str>>>;
+trait S3rialize {
+    fn to_serialized(&self) -> SerializedDir;
+}
+impl S3rialize for DisplayTree<'_> {
+    fn to_serialized(&self) -> SerializedDir {
+        let mut root = SerializedDir {
+            files: Vec::new(),
+            subdirs: BTreeMap::new(),
+        };
+
+        for (dir, files) in self {
+            let mut parts = dir.split('/');
+            let mut current = &mut root;
+
+            while let Some(part) = parts.next() {
+                current = current.subdirs.entry(part).or_insert(SerializedDir {
+                    files: Vec::new(),
+                    subdirs: BTreeMap::new(),
+                });
+            }
+
+            current.files.extend(files.iter().map(|s| s.as_ref()));
+        }
+
+        root
+    }
+}
+
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
+
+// #[derive(Serialize)]
+// struct SerializableDisplayTree<'a> {
+//     tree: DisplayTree<'a>,
+// }
+
+#[derive(Serialize, Debug)]
+struct SerializedDir<'a> {
+    files: Vec<&'a str>,
+    subdirs: BTreeMap<&'a str, SerializedDir<'a>>,
+}
 
 // Define a new trait that combines Read and Seek
 trait ReadSeek: Read + Seek {}
