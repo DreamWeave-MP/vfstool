@@ -10,6 +10,8 @@ use std::{
     sync::Arc,
 };
 
+type DisplayTree = BTreeMap<String, Vec<String>>;
+
 // Define a new trait that combines Read and Seek
 trait ReadSeek: Read + Seek {}
 
@@ -206,8 +208,8 @@ impl VFS {
             }))
     }
 
-    pub fn file_tree(&self) -> BTreeMap<String, Vec<String>> {
-        let mut tree: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    pub fn file_tree(&self) -> DisplayTree {
+        let mut tree: DisplayTree = BTreeMap::new();
 
         for path in self.file_map.keys() {
             let mut components: Vec<String> = path
