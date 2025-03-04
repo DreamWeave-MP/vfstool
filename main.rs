@@ -168,7 +168,7 @@ impl VFS {
 
     /// Returns a sorted version of the VFS contents as a binary tree
     /// Easier to display.
-    pub fn file_tree(&self) -> DisplayTree {
+    pub fn tree(&self) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
 
         let mut paths: Vec<_> = self.file_map.keys().collect();
@@ -189,6 +189,23 @@ impl VFS {
                 tree.entry(dir).or_default().push(file);
             }
         }
+
+        tree
+    }
+
+    /// Return a matching set of vfs entries from filter predicates for directories and files
+    /// Might be empty.
+    pub fn tree_filtered(
+        &self,
+        dir_filter: impl Fn(&str) -> bool,
+        file_filter: impl Fn(&str) -> bool,
+    ) -> DisplayTree {
+        let mut tree = self.tree();
+
+        tree.retain(|dir, files| {
+            files.retain(|file| file_filter(file));
+            dir_filter(dir) && !files.is_empty()
+        });
 
         tree
     }
@@ -223,7 +240,7 @@ impl VFS {
         dir_filter: impl Fn(&str) -> bool,
         file_filter: impl Fn(&str) -> bool,
     ) -> String {
-        let tree = self.file_tree();
+        let tree = self.tree();
         let mut output = String::new();
 
         for (dir, mut files) in tree {
@@ -251,7 +268,7 @@ impl VFS {
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "/")?;
-        for (dir, files) in &self.file_tree() {
+        for (dir, files) in &self.tree() {
             if dir != "/" {
                 write!(f, "{}", Self::dir_str(dir, true))?;
             }
