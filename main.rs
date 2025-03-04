@@ -125,54 +125,6 @@ impl VFS {
         })
     }
 
-    /// Given a Path to a directory, return a vector of tuples containing the VFS objects
-    /// NO FUCKING RECURSION
-    fn process_directory(
-        base_dir: &Path,
-        search_dir: Option<&Path>,
-    ) -> Vec<(PathBuf, Arc<VfsFile>)> {
-        let mut files = Vec::new();
-        let search_dir = match search_dir {
-            None => base_dir,
-            Some(dir) => dir,
-        };
-
-        // Stack to hold directories that need processing
-        let mut dirs_to_process = vec![search_dir.to_path_buf()];
-
-        while let Some(current_dir) = dirs_to_process.pop() {
-            // Read the directory and handle any errors
-            let entries = match std::fs::read_dir(&current_dir) {
-                Ok(entries) => entries,
-                Err(error) => {
-                    eprintln!(
-                        "WARNING: Could not read directory '{}': {}",
-                        current_dir.display(),
-                        error
-                    );
-                    continue;
-                }
-            };
-
-            // Process the directory entries
-            for entry in entries.filter_map(Result::ok) {
-                let path = entry.path();
-                if path.is_dir() {
-                    // Add subdirectories to the stack for later processing
-                    dirs_to_process.push(path);
-                } else if path.is_file() {
-                    // Add the file to the list
-                    let relative_path = path.strip_prefix(base_dir).unwrap_or(&path);
-                    let normalized_path = Self::normalize_path(&relative_path);
-                    let vfs_file = VfsFile::new(path);
-                    files.push((normalized_path, Arc::new(vfs_file)));
-                }
-            }
-        }
-
-        files
-    }
-
     /// Walkdir helper to filter out directories
     /// and somehow-nonexistent or inaccessible files
     fn valid_file(entry: Result<walkdir::DirEntry, WalkError>) -> Option<walkdir::DirEntry> {
