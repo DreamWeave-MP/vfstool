@@ -10,7 +10,13 @@ use std::{
     sync::Arc,
 };
 
+// Owned
 type DisplayTree = BTreeMap<String, Vec<String>>;
+type VFSFiles = BTreeMap<PathBuf, Arc<VfsFile>>;
+
+// With lifetimes
+type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
+type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
 
 // Define a new trait that combines Read and Seek
 trait ReadSeek: Read + Seek {}
@@ -62,7 +68,7 @@ impl PartialEq<VfsFile> for &VfsFile {
 }
 
 struct VFS {
-    file_map: BTreeMap<PathBuf, Arc<VfsFile>>,
+    file_map: VFSFiles,
 }
 
 impl VFS {
@@ -83,7 +89,7 @@ impl VFS {
     }
 
     /// Looks up a file in the VFS after normalizing the path
-    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&Arc<VfsFile>> {
+    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile {
         let normalized_path = Self::normalize_path(path.as_ref());
         self.file_map.get(&normalized_path)
     }
@@ -92,7 +98,7 @@ impl VFS {
     pub fn paths_matching<S: AsRef<str>>(
         &self,
         substring: S,
-    ) -> impl ParallelIterator<Item = (&Path, &Arc<VfsFile>)> {
+    ) -> impl ParallelIterator<Item = VFSTuple> {
         let normalized_substring = Self::normalize_path(substring.as_ref())
             .to_string_lossy()
             .into_owned();
@@ -107,10 +113,7 @@ impl VFS {
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
-    pub fn paths_with<P: AsRef<Path>>(
-        &self,
-        prefix: P,
-    ) -> impl ParallelIterator<Item = (&Path, &Arc<VfsFile>)> {
+    pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl ParallelIterator<Item = VFSTuple> {
         let normalized_prefix = Self::normalize_path(&prefix);
 
         self.file_map.par_iter().filter_map(move |(path, file)| {
