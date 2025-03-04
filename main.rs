@@ -190,35 +190,34 @@ impl VFS {
         tree
     }
 
-    /// String formatter for VFS output
-    /// Consumes the file tree upon use
-    fn to_formatted<'a>(tree: DisplayTree, filter: Option<impl Fn(&str) -> bool>) -> String {
+    /// Returns the formatted file tree for a filtered subset
+    pub fn display_filtered<'a>(
+        &self,
+        dir_filter: impl Fn(&str) -> bool,
+        file_filter: impl Fn(&str) -> bool,
+    ) -> String {
+        let tree = self.file_tree();
         let mut output = String::new();
 
-        for (dir, files) in tree {
-            if let Some(filter_fn) = &filter {
-                // Apply filter if provided
-                if !filter_fn(&dir) {
-                    continue;
-                }
+        for (dir, mut files) in tree {
+            if !dir_filter(&dir) {
+                continue;
             }
 
-            if dir != "/" {
+            files.retain(|file| file_filter(file));
+
+            if files.is_empty() {
+                continue;
+            } else if dir != "/" {
                 output.push_str(&format!("├── {}/\n", dir));
             }
-            for file in files {
-                output.push_str(&format!("│   ├── {}\n", file));
-            }
-        }
-        output
-    }
 
-    /// Returns the formatted file tree for a filtered subset
-    pub fn display_filtered<F>(&self, filter_fn: F) -> String
-    where
-        F: Fn(&str) -> bool,
-    {
-        Self::to_formatted(self.file_tree(), Some(filter_fn))
+            files
+                .iter()
+                .for_each(|file| output.push_str(&format!("│   ├── {}\n", file)));
+        }
+
+        output
     }
 }
 
