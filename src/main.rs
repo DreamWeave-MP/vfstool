@@ -1,70 +1,19 @@
 use rayon::prelude::*;
-use serde::Serialize;
-use serde_yaml_with_quirks as Yaml;
 use walkdir::{Error as WalkError, WalkDir};
 
-// Implement file type enum
-// Make DisplayTrees serializable
-
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap},
+    fmt,
     fs::File as StdFile,
-    io::{self, Read, Seek},
+    io::{self, Read, Seek, Write},
     ops::Index,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
 // Owned
 type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
-
-#[derive(Serialize, Debug)]
-#[serde(untagged)]
-enum FileOrDir {
-    Dir(BTreeMap<String, FileOrDir>),
-    Files(Vec<String>),
-}
-type DisplayTree<'a> = BTreeMap<Cow<'a, str>, Vec<Cow<'a, str>>>;
-trait S3rialize {
-    fn to_serialized(&self) -> FileOrDir;
-}
-impl S3rialize for DisplayTree<'_> {
-    fn to_serialized(&self) -> FileOrDir {
-        let mut root = BTreeMap::new();
-
-        for (dir, files) in self {
-            let mut parts = dir.split('/').filter(|s| !s.is_empty()).map(String::from);
-            let mut current = &mut root;
-
-            while let Some(part) = parts.next() {
-                current = current
-                    .entry(part)
-                    .or_insert_with(|| FileOrDir::Dir(BTreeMap::new()))
-                    .as_dir_mut()
-                    .unwrap();
-            }
-
-            // Insert files as a list of strings, without the need for keys
-            let file_list = files
-                .iter()
-                .map(|file| file.to_string())
-                .collect::<Vec<String>>();
-            current.insert("files".to_string(), FileOrDir::Files(file_list));
-        }
-
-        FileOrDir::Dir(root)
-    }
-}
-
-impl FileOrDir {
-    fn as_dir_mut(&mut self) -> Option<&mut BTreeMap<String, FileOrDir>> {
-        match self {
-            FileOrDir::Dir(map) => Some(map),
-            _ => None,
-        }
-    }
-}
+type DisplayTree = BTreeMap<PathBuf, Vec<Arc<VfsFile>>>;
 
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
@@ -253,30 +202,23 @@ impl VFS {
     pub fn tree(&self, relative: bool) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
 
-        let mut paths: Vec<_> = match relative {
-            true => self.file_map.keys().collect(),
-            false => self.file_map.values().map(|entry| &entry.path).collect(),
-        };
+        for (key, entry) in &self.file_map {
+            let path = if relative { key } else { &entry.path };
 
-        paths.sort();
+            let dir = path
+                .parent()
+                .unwrap_or_else(|| Path::new("/"))
+                .to_path_buf();
 
-        paths.iter().for_each(|path| {
-            let mut components = path.components();
+            tree.entry(Self::normalize_path(&dir))
+                .or_insert_with(Vec::new)
+                .push(entry.to_owned());
+        }
 
-            if let Some(Component::Normal(file)) = components.next_back() {
-                let dir = components.as_path();
-
-                let dir_str = if dir.as_os_str().is_empty() {
-                    Cow::Borrowed("/")
-                } else {
-                    Cow::Owned(dir.to_string_lossy().into_owned())
-                };
-
-                let entry_str = Cow::Owned(file.to_string_lossy().into_owned());
-
-                tree.entry(dir_str).or_default().push(entry_str);
-            }
-        });
+        // Sort the files in each directory
+        for files in tree.values_mut() {
+            files.sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+        }
 
         tree
     }
@@ -292,8 +234,21 @@ impl VFS {
         let mut tree = self.tree(relative);
 
         tree.retain(|dir, files| {
-            files.retain(|file| file_filter(file));
-            dir_filter(dir) && !files.is_empty()
+            let dir_str = dir.to_string_lossy();
+
+            if !dir_filter(&dir_str) {
+                return false;
+            }
+
+            files.retain(|file| {
+                file.path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(&file_filter)
+                    .unwrap_or(true)
+            });
+
+            !files.is_empty()
         });
 
         tree
@@ -316,25 +271,21 @@ impl VFS {
         dir_filter: impl Fn(&str) -> bool,
         file_filter: impl Fn(&str) -> bool,
     ) -> String {
-        let tree = self.tree(relative);
+        use fmt::Write;
+
+        let tree = self.tree_filtered(relative, dir_filter, file_filter);
         let mut output = String::new();
 
-        for (dir, mut files) in tree {
-            if !dir_filter(&dir) {
-                continue;
+        for (dir, files) in &tree {
+            write!(output, "{}", Self::dir_str(&dir.to_string_lossy())).unwrap();
+            for file in files {
+                write!(
+                    output,
+                    "{}",
+                    Self::file_str(&file.path.file_name().unwrap().to_string_lossy())
+                )
+                .unwrap();
             }
-
-            files.retain(|file| file_filter(file));
-
-            if files.is_empty() {
-                continue;
-            } else if dir != "/" {
-                output.push_str(&Self::dir_str(&dir));
-            }
-
-            files
-                .iter()
-                .for_each(|file| output.push_str(&Self::file_str(file)));
         }
 
         output
@@ -343,13 +294,15 @@ impl VFS {
 
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "/")?;
         for (dir, files) in &self.tree(true) {
-            if dir != "/" {
-                write!(f, "{}", Self::dir_str(dir))?;
-            }
+            let os_dir = dir.to_string_lossy();
+            write!(f, "{}", Self::dir_str(os_dir))?;
             for file in files {
-                write!(f, "{}", Self::file_str(file))?;
+                write!(
+                    f,
+                    "{}",
+                    Self::file_str(file.path.file_name().unwrap().to_string_lossy())
+                )?;
             }
         }
         Ok(())
