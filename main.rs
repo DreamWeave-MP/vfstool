@@ -168,10 +168,20 @@ impl VFS {
         files
     }
 
-    /// Given a vector of paths, collects their VFS entries in parallel and then applies them in sequence
-    /// 1: Get an indexed list of all folders with entries generated, in parallel
-    /// 2: Sort them according to the original index
-    /// 3: Insert entries into the local BTreeMap sequentially after it's all over
+    /// Walkdir helper to filter out directories
+    /// and somehow-nonexistent or inaccessible files
+    fn valid_file(entry: Result<walkdir::DirEntry, WalkError>) -> Option<walkdir::DirEntry> {
+        match entry {
+            Err(_) => None,
+            Ok(entry) => match entry.metadata().is_ok() && entry.file_type().is_file() {
+                true => Some(entry),
+                false => None,
+            },
+        }
+    }
+
+    /// Given some set which can be interpreted as a parallel iterator of paths,
+    /// Load all of them into the VFS in parallel fashion
     pub fn add_files_from_directories(
         &mut self,
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
@@ -182,18 +192,14 @@ impl VFS {
 
                 WalkDir::new(&dir)
                     .into_iter()
-                    .filter_map(move |result| match result {
-                        Ok(res) => Some((res, dir.clone())),
-                        Err(_) => None,
-                    })
-                    .filter(|(entry, _)| entry.file_type().is_file())
+                    .filter_map(|entry| Self::valid_file(entry))
                     .par_bridge()
-                    .map(move |(entry, base_path)| {
+                    .map(move |entry| {
                         let path = entry.path().to_path_buf();
 
-                        let relative_path = path.strip_prefix(&base_path).unwrap_or(&path);
+                        let normalized_path =
+                            Self::normalize_path(&path.strip_prefix(&dir).unwrap_or(&path));
 
-                        let normalized_path = Self::normalize_path(&relative_path);
                         let vfs_file = VfsFile::new(path);
                         (normalized_path, Arc::new(vfs_file))
                     })
