@@ -1,4 +1,5 @@
 use rayon::prelude::*;
+use serde::{ser::SerializeMap, Serialize, Serializer};
 use walkdir::{Error as WalkError, WalkDir};
 
 use std::{
@@ -13,7 +14,7 @@ use std::{
 
 // Owned
 type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
-type DisplayTree = BTreeMap<PathBuf, Vec<Arc<VfsFile>>>;
+type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
 
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
@@ -64,6 +65,65 @@ impl Default for VfsFile {
 impl PartialEq<VfsFile> for &VfsFile {
     fn eq(&self, other: &VfsFile) -> bool {
         self == other
+    }
+}
+
+#[derive(Debug)]
+struct DirectoryNode {
+    files: Vec<Arc<VfsFile>>,
+    subdirs: BTreeMap<PathBuf, DirectoryNode>,
+}
+
+impl DirectoryNode {
+    fn new() -> Self {
+        Self {
+            files: Vec::new(),
+            subdirs: BTreeMap::new(),
+        }
+    }
+}
+
+impl Serialize for DirectoryNode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(2))?;
+        let files: Vec<&VfsFile> = self.files.iter().map(|arc| arc.as_ref()).collect();
+        map.serialize_entry("files", &files)?;
+
+        // Convert PathBuf keys to strings before serializing subdirectories
+        let subdirs: BTreeMap<String, &DirectoryNode> = self
+            .subdirs
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                    v,
+                )
+            })
+            .collect();
+
+        map.serialize_entry("subdirs", &subdirs)?;
+        map.end()
+    }
+}
+
+impl Serialize for VfsFile {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let filename = self
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default(); // Ensure we never panic
+
+        serializer.serialize_str(filename)
     }
 }
 
@@ -205,19 +265,32 @@ impl VFS {
         for (key, entry) in &self.file_map {
             let path = if relative { key } else { &entry.path };
 
-            let dir = path
-                .parent()
-                .unwrap_or_else(|| Path::new("/"))
-                .to_path_buf();
+            let mut current_path = PathBuf::new();
+            let mut current_node = tree.entry("/".into()).or_insert_with(DirectoryNode::new);
 
-            tree.entry(Self::normalize_path(&dir))
-                .or_insert_with(Vec::new)
-                .push(entry.to_owned());
+            for component in path.parent().unwrap_or_else(|| Path::new("/")).components() {
+                current_path.push(component);
+                current_node = current_node
+                    .subdirs
+                    .entry(current_path.clone())
+                    .or_insert_with(DirectoryNode::new);
+            }
+
+            // Insert the file into its final directory
+            current_node.files.push(entry.clone());
         }
 
-        // Sort the files in each directory
-        for files in tree.values_mut() {
-            files.sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+        // Sort files inside each directory
+        fn sort_files(node: &mut DirectoryNode) {
+            node.files
+                .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+            for subdir in node.subdirs.values_mut() {
+                sort_files(subdir);
+            }
+        }
+
+        for node in tree.values_mut() {
+            sort_files(node);
         }
 
         tree
