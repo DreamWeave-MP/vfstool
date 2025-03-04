@@ -163,6 +163,8 @@ impl VFS {
             }))
     }
 
+    /// Returns a sorted version of the VFS contents as a binary tree
+    /// Easier to display.
     pub fn file_tree(&self) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
 
