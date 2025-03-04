@@ -72,6 +72,9 @@ struct VFS {
 }
 
 impl VFS {
+    const DIR_PREFIX: &str = "├── ";
+    const FILE_PREFIX: &str = "│   ├── ";
+
     pub fn new() -> Self {
         Self {
             file_map: HashMap::new(),
@@ -190,6 +193,30 @@ impl VFS {
         tree
     }
 
+    fn file_str(file: &String, newline: bool) -> String {
+        format!(
+            "{}{}{}",
+            Self::FILE_PREFIX,
+            file,
+            match newline {
+                true => "\n",
+                false => "",
+            }
+        )
+    }
+
+    fn dir_str(dir: &String, newline: bool) -> String {
+        format!(
+            "{}{}/{}",
+            Self::DIR_PREFIX,
+            dir,
+            match newline {
+                true => "\n",
+                false => "",
+            }
+        )
+    }
+
     /// Returns the formatted file tree for a filtered subset
     pub fn display_filtered<'a>(
         &self,
@@ -209,12 +236,12 @@ impl VFS {
             if files.is_empty() {
                 continue;
             } else if dir != "/" {
-                output.push_str(&format!("├── {}/\n", dir));
+                output.push_str(&Self::dir_str(&dir, true));
             }
 
             files
                 .iter()
-                .for_each(|file| output.push_str(&format!("│   ├── {}\n", file)));
+                .for_each(|file| output.push_str(&Self::file_str(file, true)));
         }
 
         output
@@ -226,10 +253,10 @@ impl std::fmt::Display for VFS {
         writeln!(f, "/")?;
         for (dir, files) in &self.file_tree() {
             if dir != "/" {
-                writeln!(f, "├── {}/", dir)?;
+                write!(f, "{}", Self::dir_str(dir, true))?;
             }
             for file in files {
-                writeln!(f, "│   ├── {}", file)?;
+                write!(f, "{}", Self::file_str(file, true))?;
             }
         }
         Ok(())
