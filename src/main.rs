@@ -17,7 +17,7 @@ use std::{
 
 // Owned
 type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
-type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
+type DisplayTree<'a> = BTreeMap<&'a Path, DirectoryNode>;
 
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
