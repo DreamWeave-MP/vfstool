@@ -1,5 +1,8 @@
 use rayon::prelude::*;
-use serde::{ser::SerializeMap, Serialize, Serializer};
+use serde::{
+    ser::{SerializeMap, SerializeSeq},
+    Serialize, Serializer,
+};
 use walkdir::{Error as WalkError, WalkDir};
 
 use std::{
@@ -53,6 +56,7 @@ impl File for VfsFile {
         &self.path
     }
 }
+
 /// Sentinel VfsFile, representing an invalid path
 impl Default for VfsFile {
     fn default() -> Self {
@@ -88,26 +92,37 @@ impl Serialize for DirectoryNode {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(Some(2))?;
-        let files: Vec<&VfsFile> = self.files.iter().map(|arc| arc.as_ref()).collect();
-        map.serialize_entry("files", &files)?;
+        let mut map = serializer.serialize_map(Some(
+            self.subdirs.len() + if self.files.is_empty() { 0 } else { 1 },
+        ))?;
 
-        // Convert PathBuf keys to strings before serializing subdirectories
-        let subdirs: BTreeMap<String, &DirectoryNode> = self
-            .subdirs
-            .iter()
-            .map(|(k, v)| {
-                (
-                    k.file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string(),
-                    v,
-                )
-            })
-            .collect();
+        if !self.files.is_empty() {
+            map.serialize_entry(
+                ".",
+                &self
+                    .files
+                    .iter()
+                    .map(|file| {
+                        file.path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    })
+                    .collect::<Vec<String>>(),
+            )?;
+        }
 
-        map.serialize_entry("subdirs", &subdirs)?;
+        for (dir_name, subdir) in &self.subdirs {
+            let dir_key = dir_name
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            map.serialize_entry(&dir_key, subdir)?;
+        }
+
         map.end()
     }
 }
