@@ -108,9 +108,8 @@ impl Serialize for DirectoryNode {
                             .file_name()
                             .unwrap_or_default()
                             .to_string_lossy()
-                            .to_string()
                     })
-                    .collect::<Vec<String>>(),
+                    .collect::<Vec<Cow<'_, str>>>(),
             )?;
         }
 
@@ -118,8 +117,7 @@ impl Serialize for DirectoryNode {
             let dir_key = dir_name
                 .file_name()
                 .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
+                .to_string_lossy();
 
             map.serialize_entry(&dir_key, subdir)?;
         }
