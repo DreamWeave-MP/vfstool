@@ -35,8 +35,20 @@ trait File {
     fn get_path(&self) -> &Path;
 }
 
+trait VFSDirectory {
+    fn sort(&mut self);
+}
+
+impl VFSDirectory for DirectoryNode {
+    fn sort(&mut self) {
+        self.files
+            .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+        self.subdirs.values_mut().for_each(|dir| dir.sort());
+    }
+}
+
+/// Struct representing a file in the VFS
 #[derive(Debug)]
-// Struct representing a file in the VFS
 struct VfsFile {
     path: PathBuf,
 }
@@ -76,7 +88,7 @@ impl PartialEq<VfsFile> for &VfsFile {
 #[derive(Debug)]
 struct DirectoryNode {
     files: Vec<Arc<VfsFile>>,
-    subdirs: BTreeMap<PathBuf, DirectoryNode>,
+    subdirs: DisplayTree,
 }
 
 impl DirectoryNode {
