@@ -276,22 +276,36 @@ impl VFS {
     /// Easier to display.
     pub fn tree(&self, relative: bool) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
+        let root_path = PathBuf::from("/");
+
+        tree.insert(root_path.clone(), DirectoryNode::new()); // Ensure root exists
 
         for (key, entry) in &self.file_map {
             let path = if relative { key } else { &entry.path };
 
-            let mut current_path = PathBuf::new();
-            let mut current_node = tree.entry("/".into()).or_insert_with(DirectoryNode::new);
+            let parent = path.parent().unwrap_or_else(|| Path::new("/"));
 
-            for component in path.parent().unwrap_or_else(|| Path::new("/")).components() {
-                current_path.push(component);
+            if parent == Path::new("/") {
+                // Insert directly into root directory
+                tree.get_mut(&root_path).unwrap().files.push(entry.clone());
+                continue;
+            }
+
+            let mut current_node = tree.get_mut(&root_path).unwrap();
+
+            for component in parent.components() {
+                let component_str = component.as_os_str().to_string_lossy().into_owned();
+                if component_str == "/" {
+                    continue; // Skip duplicate root insertions
+                }
+
                 current_node = current_node
                     .subdirs
-                    .entry(current_path.clone())
+                    .entry(component_str.into())
                     .or_insert_with(DirectoryNode::new);
             }
 
-            // Insert the file into its final directory
+            // Insert file into its correct directory
             current_node.files.push(entry.clone());
         }
 
@@ -304,9 +318,7 @@ impl VFS {
             }
         }
 
-        for node in tree.values_mut() {
-            sort_files(node);
-        }
+        sort_files(tree.get_mut(&root_path).unwrap()); // Sort root directory
 
         tree
     }
