@@ -289,47 +289,36 @@ impl VFS {
         let mut tree: DisplayTree = BTreeMap::new();
         let root_path = PathBuf::from("/");
 
-        tree.insert(root_path.clone(), DirectoryNode::new()); // Ensure root exists
+        tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
             let path = if relative { key } else { &entry.path };
+            let parent = path.parent().unwrap_or(&root_path);
 
-            let parent = path.parent().unwrap_or_else(|| Path::new("/"));
-
-            if parent == Path::new("/") {
-                // Insert directly into root directory
-                tree.get_mut(&root_path).unwrap().files.push(entry.clone());
-                continue;
-            }
-
-            let mut current_node = tree.get_mut(&root_path).unwrap();
+            let mut current_path = PathBuf::new();
+            let mut current_node = tree
+                .get_mut(&root_path.clone())
+                .expect("Root path should be guaranteed to always exist!");
 
             for component in parent.components() {
-                let component_str = component.as_os_str().to_string_lossy().into_owned();
-                if component_str == "/" {
-                    continue; // Skip duplicate root insertions
+                current_path.push(component);
+
+                if current_path == root_path {
+                    continue;
                 }
 
                 current_node = current_node
                     .subdirs
-                    .entry(component_str.into())
+                    .entry(current_path.clone())
                     .or_insert_with(DirectoryNode::new);
             }
 
-            // Insert file into its correct directory
             current_node.files.push(entry.clone());
         }
 
-        // Sort files inside each directory
-        fn sort_files(node: &mut DirectoryNode) {
-            node.files
-                .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
-            for subdir in node.subdirs.values_mut() {
-                sort_files(subdir);
-            }
-        }
-
-        sort_files(tree.get_mut(&root_path).unwrap()); // Sort root directory
+        tree.get_mut(&root_path)
+            .expect("Root path should be guaranteed to always exist!") 
+            .sort();
 
         tree
     }
