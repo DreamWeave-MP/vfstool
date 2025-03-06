@@ -79,11 +79,6 @@ impl Default for VfsFile {
     }
 }
 
-impl PartialEq<VfsFile> for &VfsFile {
-    fn eq(&self, other: &VfsFile) -> bool {
-        self == other
-    }
-}
 
 #[derive(Debug)]
 struct DirectoryNode {
