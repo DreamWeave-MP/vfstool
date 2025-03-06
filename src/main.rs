@@ -1,19 +1,16 @@
 use rayon::prelude::*;
-use serde::{
-    ser::SerializeMap,
-    Serialize, Serializer,
-};
+use serde::{Serialize, Serializer, ser::SerializeMap};
 use walkdir::{Error as WalkError, WalkDir};
 
 use std::{
-    borrow::Cow, 
-    collections::{BTreeMap, HashMap}, 
-    fmt, 
-    fs::File as StdFile, 
-    io::{self, Read, Seek, Write}, 
-    ops::Index, 
-    path::{Path, PathBuf}, 
-    sync::Arc
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    fmt,
+    fs::File as StdFile,
+    io::{self, Read, Seek, Write},
+    ops::Index,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 // Owned
