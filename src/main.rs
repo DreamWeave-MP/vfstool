@@ -17,6 +17,43 @@ use std::{
 type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
 type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
 
+enum SerializeType {
+    Json,
+    Yaml,
+    Toml,
+}
+
+trait VFSSerialize {
+    fn to_serialized<P: AsRef<Path>>(
+        &self,
+        file_name: P,
+        write_type: SerializeType,
+    ) -> io::Result<()>;
+}
+
+impl VFSSerialize for DisplayTree {
+    fn to_serialized<P: AsRef<Path>>(
+        &self,
+        file_name: P,
+        write_type: SerializeType,
+    ) -> io::Result<()> {
+        fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
+            io::Error::new(io::ErrorKind::InvalidData, err.to_string())
+        }
+
+        let serialized_content = match write_type {
+            SerializeType::Json => serde_json::to_string_pretty(&self).map_err(to_io_error)?,
+            SerializeType::Yaml => serde_yaml_with_quirks::to_string(&self).map_err(to_io_error)?,
+            SerializeType::Toml => toml::to_string_pretty(&self).map_err(to_io_error)?,
+        };
+
+        let mut output_file = StdFile::create(file_name)?;
+        write!(output_file, "{}", serialized_content)?;
+
+        Ok(())
+    }
+}
+
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
 
@@ -34,6 +71,10 @@ trait File {
 
 trait VFSDirectory {
     fn sort(&mut self);
+
+    fn filter<F>(&mut self, file_filter: &F)
+    where
+        F: Fn(&Arc<VfsFile>) -> bool;
 }
 
 impl VFSDirectory for DirectoryNode {
@@ -41,6 +82,17 @@ impl VFSDirectory for DirectoryNode {
         self.files
             .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
         self.subdirs.values_mut().for_each(|dir| dir.sort());
+    }
+
+    fn filter<F>(&mut self, file_filter: &F)
+    where
+        F: Fn(&Arc<VfsFile>) -> bool,
+    {
+        self.files.retain(file_filter);
+        self.subdirs.retain(|_path, subdir| {
+            subdir.filter(file_filter);
+            !subdir.files.is_empty() || !subdir.subdirs.is_empty()
+        });
     }
 }
 
@@ -107,21 +159,13 @@ impl Serialize for DirectoryNode {
                 &self
                     .files
                     .iter()
-                    .map(|file| {
-                        file.path
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                    })
+                    .map(|file| file.path.file_name().unwrap_or_default().to_string_lossy())
                     .collect::<Vec<Cow<'_, str>>>(),
             )?;
         }
 
         for (dir_name, subdir) in &self.subdirs {
-            let dir_key = dir_name
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
+            let dir_key = dir_name.file_name().unwrap_or_default().to_string_lossy();
 
             map.serialize_entry(&dir_key, subdir)?;
         }
@@ -279,49 +323,41 @@ impl VFS {
     /// Easier to display.
     pub fn tree(&self, relative: bool) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
-        let root_path = PathBuf::from("/");
+        let root_path = PathBuf::from(match relative {
+            true => "Data Files",
+            false => "/",
+        });
 
-        tree.insert(root_path.clone(), DirectoryNode::new()); // Ensure root exists
+        tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
             let path = if relative { key } else { &entry.path };
+            let parent = path.parent().unwrap_or(&root_path);
 
-            let parent = path.parent().unwrap_or_else(|| Path::new("/"));
-
-            if parent == Path::new("/") {
-                // Insert directly into root directory
-                tree.get_mut(&root_path).unwrap().files.push(entry.clone());
-                continue;
-            }
-
-            let mut current_node = tree.get_mut(&root_path).unwrap();
+            let mut current_path = PathBuf::new();
+            let mut current_node = tree
+                .get_mut(&root_path.clone())
+                .expect("Root path should be guaranteed to always exist!");
 
             for component in parent.components() {
-                let component_str = component.as_os_str().to_string_lossy().into_owned();
-                if component_str == "/" {
-                    continue; // Skip duplicate root insertions
+                current_path.push(component);
+
+                if current_path == root_path {
+                    continue;
                 }
 
                 current_node = current_node
                     .subdirs
-                    .entry(component_str.into())
+                    .entry(current_path.clone())
                     .or_insert_with(DirectoryNode::new);
             }
 
-            // Insert file into its correct directory
             current_node.files.push(entry.clone());
         }
 
-        // Sort files inside each directory
-        fn sort_files(node: &mut DirectoryNode) {
-            node.files
-                .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
-            for subdir in node.subdirs.values_mut() {
-                sort_files(subdir);
-            }
-        }
-
-        sort_files(tree.get_mut(&root_path).unwrap()); // Sort root directory
+        tree.get_mut(&root_path)
+            .expect("Root path should be guaranteed to always exist!")
+            .sort();
 
         tree
     }
@@ -331,27 +367,13 @@ impl VFS {
     pub fn tree_filtered(
         &self,
         relative: bool,
-        dir_filter: impl Fn(&str) -> bool,
-        file_filter: impl Fn(&str) -> bool,
+        file_filter: impl Fn(&Arc<VfsFile>) -> bool,
     ) -> DisplayTree {
         let mut tree = self.tree(relative);
 
-        tree.retain(|dir, files| {
-            let dir_str = dir.to_string_lossy();
-
-            if !dir_filter(&dir_str) {
-                return false;
-            }
-
-            files.retain(|file| {
-                file.path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(&file_filter)
-                    .unwrap_or(true)
-            });
-
-            !files.is_empty()
+        tree.iter_mut().for_each(|(_root_dir, files)| {
+            dbg!(&_root_dir);
+            files.filter(&file_filter);
         });
 
         tree
@@ -371,17 +393,16 @@ impl VFS {
     pub fn display_filtered<'a>(
         &self,
         relative: bool,
-        dir_filter: impl Fn(&str) -> bool,
-        file_filter: impl Fn(&str) -> bool,
+        file_filter: impl Fn(&Arc<VfsFile>) -> bool,
     ) -> String {
         use fmt::Write;
 
-        let tree = self.tree_filtered(relative, dir_filter, file_filter);
+        let tree = self.tree_filtered(relative, file_filter);
         let mut output = String::new();
 
         for (dir, files) in &tree {
             write!(output, "{}", Self::dir_str(&dir.to_string_lossy())).unwrap();
-            for file in files {
+            for file in &files.files {
                 write!(
                     output,
                     "{}",
@@ -400,7 +421,7 @@ impl std::fmt::Display for VFS {
         for (dir, files) in &self.tree(true) {
             let os_dir = dir.to_string_lossy();
             write!(f, "{}", Self::dir_str(os_dir))?;
-            for file in files {
+            for file in &files.files {
                 write!(
                     f,
                     "{}",
