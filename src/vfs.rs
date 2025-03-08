@@ -1,192 +1,19 @@
 use rayon::prelude::*;
-use serde::{Serialize, Serializer, ser::SerializeMap};
 use walkdir::{Error as WalkError, WalkDir};
 
+use crate::{DirectoryNode, DisplayTree, VFSDirectory, VfsFile};
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, HashMap},
     fmt,
-    fs::File as StdFile,
-    io::{self, Read, Seek, Write},
     ops::Index,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 // Owned
-type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
-pub type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
-
-pub enum SerializeType {
-    Json,
-    Yaml,
-    Toml,
-}
-
-pub trait VFSSerialize {
-    fn to_serialized<P: AsRef<Path>>(
-        &self,
-        file_name: P,
-        write_type: SerializeType,
-    ) -> io::Result<()>;
-}
-
-impl VFSSerialize for DisplayTree {
-    fn to_serialized<P: AsRef<Path>>(
-        &self,
-        file_name: P,
-        write_type: SerializeType,
-    ) -> io::Result<()> {
-        fn to_io_error<E: std::fmt::Display>(err: E) -> io::Error {
-            io::Error::new(io::ErrorKind::InvalidData, err.to_string())
-        }
-
-        let serialized_content = match write_type {
-            SerializeType::Json => serde_json::to_string_pretty(&self).map_err(to_io_error)?,
-            SerializeType::Yaml => serde_yaml_with_quirks::to_string(&self).map_err(to_io_error)?,
-            SerializeType::Toml => toml::to_string_pretty(&self).map_err(to_io_error)?,
-        };
-
-        let mut output_file = StdFile::create(file_name)?;
-        write!(output_file, "{}", serialized_content)?;
-
-        Ok(())
-    }
-}
-
 type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
 type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
-
-// Define a new trait that combines Read and Seek
-trait ReadSeek: Read + Seek {}
-
-// Explicitly implement the ReadSeek trait for std::fs::File
-impl ReadSeek for StdFile {}
-
-// This trait mimics the interface of OpenMW's `File`
-trait File {
-    fn open(&self) -> io::Result<Box<dyn ReadSeek>>;
-    fn get_path(&self) -> &Path;
-}
-
-trait VFSDirectory {
-    fn sort(&mut self);
-
-    fn filter<F>(&mut self, file_filter: &F)
-    where
-        F: Fn(&Arc<VfsFile>) -> bool;
-}
-
-impl VFSDirectory for DirectoryNode {
-    fn sort(&mut self) {
-        self.files
-            .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
-        self.subdirs.values_mut().for_each(|dir| dir.sort());
-    }
-
-    fn filter<F>(&mut self, file_filter: &F)
-    where
-        F: Fn(&Arc<VfsFile>) -> bool,
-    {
-        self.files.retain(file_filter);
-        self.subdirs.retain(|_path, subdir| {
-            subdir.filter(file_filter);
-            !subdir.files.is_empty() || !subdir.subdirs.is_empty()
-        });
-    }
-}
-
-/// Struct representing a file in the VFS
-#[derive(Debug)]
-pub struct VfsFile {
-    pub path: PathBuf,
-}
-
-impl VfsFile {
-    fn new(path: PathBuf) -> Self {
-        VfsFile { path }
-    }
-}
-
-impl File for VfsFile {
-    fn open(&self) -> io::Result<Box<dyn ReadSeek>> {
-        let file = StdFile::open(&self.path)?;
-        Ok(Box::new(file))
-    }
-
-    fn get_path(&self) -> &Path {
-        &self.path
-    }
-}
-
-/// Sentinel VfsFile, representing an invalid path
-impl Default for VfsFile {
-    fn default() -> Self {
-        VfsFile {
-            path: PathBuf::new(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct DirectoryNode {
-    files: Vec<Arc<VfsFile>>,
-    subdirs: DisplayTree,
-}
-
-impl DirectoryNode {
-    fn new() -> Self {
-        Self {
-            files: Vec::new(),
-            subdirs: BTreeMap::new(),
-        }
-    }
-}
-
-impl Serialize for DirectoryNode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_map(Some(
-            self.subdirs.len() + if self.files.is_empty() { 0 } else { 1 },
-        ))?;
-
-        if !self.files.is_empty() {
-            map.serialize_entry(
-                ".",
-                &self
-                    .files
-                    .iter()
-                    .map(|file| file.path.file_name().unwrap_or_default().to_string_lossy())
-                    .collect::<Vec<Cow<'_, str>>>(),
-            )?;
-        }
-
-        for (dir_name, subdir) in &self.subdirs {
-            let dir_key = dir_name.file_name().unwrap_or_default().to_string_lossy();
-
-            map.serialize_entry(&dir_key, subdir)?;
-        }
-
-        map.end()
-    }
-}
-
-impl Serialize for VfsFile {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let filename = self
-            .path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default(); // Ensure we never panic
-
-        serializer.serialize_str(filename)
-    }
-}
+type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
 
 pub struct VFS {
     file_map: VFSFiles,
@@ -415,6 +242,8 @@ impl VFS {
     }
 }
 
+/// Currently only prints the root directory
+/// Needs to iterate over all child directories and print those as well.
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (dir, files) in &self.tree(true) {

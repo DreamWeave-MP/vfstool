@@ -3,7 +3,7 @@ use std::{
     io::{Result, Write},
     path::PathBuf,
 };
-use vfstool::vfs::{SerializeType, VFS, VFSSerialize};
+use vfstool::{SerializeType, display_tree::VFSSerialize, vfs::VFS};
 
 fn main() -> Result<()> {
     let mut vfs = VFS::new();
