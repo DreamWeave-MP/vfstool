@@ -119,30 +119,50 @@ impl VFS {
         }
     }
 
+    fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
+        dir: I,
+    ) -> impl ParallelIterator<Item = (PathBuf, Arc<VfsFile>)> {
+        let dir = dir.as_ref().to_path_buf();
+
+        WalkDir::new(&dir)
+            .into_iter()
+            .filter_map(|entry| Self::valid_file(entry))
+            .par_bridge()
+            .map(move |entry| {
+                let path = entry.path().to_path_buf();
+
+                let normalized_path =
+                    Self::normalize_path(&path.strip_prefix(&dir).unwrap_or(&path));
+
+                let vfs_file = VfsFile::new(path);
+                (normalized_path, Arc::new(vfs_file))
+            })
+    }
+
+    /// Append a single directory to the existing VFS instance
+    /// NOTE: Writing directories in sequence can be dangerous and should be avoided when possible!
+    /// When a directory (or set) is appended after the initial creation time, this may be useful,
+    /// but it will also overwrite the contents of *all* directories added before it
+    /// Use this functionality *with caution*
+    pub fn add_files_from_directory<I: AsRef<Path> + Sync>(&mut self, dir: I) {
+        self.file_map
+            .par_extend(Self::directory_contents_to_file_map(dir));
+    }
+
     /// Given some set which can be interpreted as a parallel iterator of paths,
     /// Load all of them into the VFS in parallel fashion
+    /// WARN: When a directory (or set) is appended after the initial creation time, this may be useful,
+    /// but it will also overwrite the contents of *all* directories added before it
+    /// Use this functionality *with caution*
     pub fn add_files_from_directories(
         &mut self,
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
     ) {
-        self.file_map
-            .par_extend(search_dirs.into_par_iter().flat_map(|dir| {
-                let dir = dir.as_ref().to_path_buf();
-
-                WalkDir::new(&dir)
-                    .into_iter()
-                    .filter_map(|entry| Self::valid_file(entry))
-                    .par_bridge()
-                    .map(move |entry| {
-                        let path = entry.path().to_path_buf();
-
-                        let normalized_path =
-                            Self::normalize_path(&path.strip_prefix(&dir).unwrap_or(&path));
-
-                        let vfs_file = VfsFile::new(path);
-                        (normalized_path, Arc::new(vfs_file))
-                    })
-            }))
+        self.file_map.par_extend(
+            search_dirs
+                .into_par_iter()
+                .flat_map(Self::directory_contents_to_file_map),
+        )
     }
 
     /// Returns a sorted version of the VFS contents as a binary tree
