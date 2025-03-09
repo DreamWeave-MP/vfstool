@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use walkdir::{Error as WalkError, WalkDir};
 
-use crate::{DirectoryNode, DisplayTree, VFSDirectory, VfsFile};
+use crate::{DirectoryNode, DisplayTree, VFSDirectory, VfsFile, normalize_path};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
@@ -23,31 +23,21 @@ impl VFS {
     const DIR_PREFIX: &str = "├── ";
     const FILE_PREFIX: &str = "│   ├── ";
 
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             file_map: HashMap::new(),
         }
     }
 
-    /// Lowercase path and convert path separators to unix-style
-    fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
-        let path = path
-            .as_ref()
-            .to_string_lossy()
-            .to_lowercase()
-            .replace("\\", "/");
-        PathBuf::from(path)
-    }
-
     /// Looks up a file in the VFS after normalizing the path
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile {
-        let normalized_path = Self::normalize_path(path);
+        let normalized_path = normalize_path(path);
         self.file_map.get(&normalized_path)
     }
 
     /// Given a substring, return an iterator over all paths that contain it.
     pub fn paths_matching<S: AsRef<str>>(&self, substring: S) -> impl Iterator<Item = VFSTuple> {
-        let normalized_substring = Self::normalize_path(substring.as_ref())
+        let normalized_substring = normalize_path(substring.as_ref())
             .to_string_lossy()
             .into_owned();
 
@@ -65,7 +55,7 @@ impl VFS {
         &self,
         substring: S,
     ) -> impl ParallelIterator<Item = VFSTuple> {
-        let normalized_substring = Self::normalize_path(substring.as_ref())
+        let normalized_substring = normalize_path(substring.as_ref())
             .to_string_lossy()
             .into_owned();
 
@@ -80,7 +70,7 @@ impl VFS {
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
     pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl Iterator<Item = VFSTuple> {
-        let normalized_prefix = Self::normalize_path(&prefix);
+        let normalized_prefix = normalize_path(&prefix);
 
         self.file_map.iter().filter_map(move |(path, file)| {
             if path.starts_with(&normalized_prefix) {
@@ -96,7 +86,7 @@ impl VFS {
         &self,
         prefix: P,
     ) -> impl ParallelIterator<Item = VFSTuple> {
-        let normalized_prefix = Self::normalize_path(&prefix);
+        let normalized_prefix = normalize_path(&prefix);
 
         self.file_map.par_iter().filter_map(move |(path, file)| {
             if path.starts_with(&normalized_prefix) {
@@ -133,8 +123,7 @@ impl VFS {
             .map(move |entry| {
                 let path = entry.path().to_path_buf();
 
-                let normalized_path =
-                    Self::normalize_path(&path.strip_prefix(&dir).unwrap_or(&path));
+                let normalized_path = normalize_path(&path.strip_prefix(&dir).unwrap_or(&path));
 
                 let vfs_file = VfsFile::new(path);
                 (normalized_path, Arc::new(vfs_file))
@@ -146,9 +135,10 @@ impl VFS {
     /// When a directory (or set) is appended after the initial creation time, this may be useful,
     /// but it will also overwrite the contents of *all* directories added before it
     /// Use this functionality *with caution*
-    pub fn add_files_from_directory<I: AsRef<Path> + Sync>(&mut self, dir: I) {
+    pub fn add_directory<I: AsRef<Path> + Sync>(mut self, dir: I) -> Self {
         self.file_map
             .par_extend(Self::directory_contents_to_file_map(dir));
+        self
     }
 
     /// Given some set which can be interpreted as a parallel iterator of paths,
@@ -156,15 +146,26 @@ impl VFS {
     /// WARN: When a directory (or set) is appended after the initial creation time, this may be useful,
     /// but it will also overwrite the contents of *all* directories added before it
     /// Use this functionality *with caution*
-    pub fn add_files_from_directories(
-        &mut self,
+    pub fn add_directories(
+        mut self,
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
-    ) {
+    ) -> Self {
         self.file_map.par_extend(
             search_dirs
                 .into_par_iter()
                 .flat_map(Self::directory_contents_to_file_map),
-        )
+        );
+        self
+    }
+
+    pub fn from_directory<I: AsRef<Path> + Sync>(dir: I) -> Self {
+        Self::new().add_directory(dir)
+    }
+
+    pub fn from_directories(
+        search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
+    ) -> Self {
+        Self::new().add_directories(search_dirs)
     }
 
     /// Returns a sorted version of the VFS contents as a binary tree
@@ -179,7 +180,7 @@ impl VFS {
         tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
-            let path = if relative { key } else { &entry.path };
+            let path = if relative { key } else { entry.path() };
             let parent = path.parent().unwrap_or(&root_path);
 
             let mut current_path = PathBuf::new();
@@ -254,7 +255,7 @@ impl VFS {
                 write!(
                     output,
                     "{}",
-                    Self::file_str(&file.path.file_name().unwrap().to_string_lossy())
+                    Self::file_str(&file.path().file_name().unwrap().to_string_lossy())
                 )
                 .unwrap();
             }
@@ -275,7 +276,7 @@ impl std::fmt::Display for VFS {
                 write!(
                     f,
                     "{}",
-                    Self::file_str(file.path.file_name().unwrap().to_string_lossy())
+                    Self::file_str(file.path().file_name().unwrap().to_string_lossy())
                 )?;
             }
         }
@@ -287,7 +288,7 @@ impl Index<&str> for VFS {
     type Output = VfsFile;
 
     fn index(&self, index: &str) -> &Self::Output {
-        let normalized_path = Self::normalize_path(index);
+        let normalized_path = normalize_path(index);
 
         // If the path exists in the file_map, return the file, otherwise return a default value
         self.file_map
