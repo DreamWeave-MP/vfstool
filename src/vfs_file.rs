@@ -7,33 +7,113 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Struct representing a file in the VFS
+/// Represents a file within the Virtual File System (VFS).
+///
+/// This struct encapsulates a file that exists in the real filesystem but is managed
+/// within the VFS. Each `VfsFile` maintains a reference to its original, **non-normalized**
+/// path to ensure correct file operations. Paths should only be normalized when **retrieved**,
+/// not when constructing the file, as normalization may affect OS file resolution.
+///
+/// Files in the VFS should be **unique** and stored in a HashMap inside the `VFS` struct.
+/// They are typically wrapped in `Arc<VfsFile>` for safe concurrent access.
 #[derive(Debug)]
 pub struct VfsFile {
-    /// Refers to the literal path from which a VFSFile was constructed
-    /// Private, since it probably will not be normalized beforehand (as that would not
-    /// work)
+    /// The original path of the file on disk.
+    /// This is **not normalized** to ensure that OS-dependent behavior remains valid.
+    /// Normalization should be applied only when querying paths.
     path: PathBuf,
 }
 
 impl VfsFile {
+    /// Creates a new `VfsFile` instance with the given `path`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - An owned `PathBuf` representing the file's location on disk.
+    ///
+    /// # Notes
+    ///
+    /// - Paths **must not be normalized** at creation time to avoid potential file lookup issues.
+    /// - VfsFile does not, itself, verify that the provided path exists at creation time
+    /// this responsibility is left up to its constructor (typically, the VFS struct)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    /// use vfstool::VfsFile;
+    ///
+    /// let file = VfsFile::new(PathBuf::from("C:\\Morrowind\\Data Files\\Morrowind.esm"));
+    /// assert_eq!(file.path().to_str(), Some("C:\\Morrowind\\Data Files\\Morrowind.esm"));
+    /// ```
     pub fn new(path: PathBuf) -> Self {
-        // Remember, vfsfile entries cannot be constructed *with* the normalized path
-        // Calls to open might fail if it's already cleaned up once we ask the OS for it
-        // However, if we just give back the normalized path when it's asked for,
-        // that's okay
         VfsFile { path }
     }
 
-    fn open(&self) -> io::Result<Box<std::fs::File>> {
+    /// Opens the file and returns a standard `File` handle.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(StdFile)` - If the file exists and can be opened.
+    /// * `Err(io::Error)` - If the file does not exist or cannot be opened.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vfstool::VfsFile;
+    /// use std::path::PathBuf;
+    ///
+    /// let file = VfsFile::new(PathBuf::from("C:\\Not\\Morrowind\\Data
+    /// Files\\Maybe\\Even\\Oblivion\\Data\\Morrowind.esm"));
+    /// let result = file.open();
+    ///
+    /// assert!(result.is_err()); // Depends on whether file exists
+    /// ```
+    pub fn open(&self) -> io::Result<StdFile> {
         let file = StdFile::open(&self.path)?;
-        Ok(Box::new(file))
+        Ok(file)
     }
 
+    /// Retrieves the file name (i.e., the last component of the path).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&OsStr)` - If the path contains a valid file name.
+    /// * `None` - If the path does not have a file name. This should be a rare exception as any
+    /// files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
+    /// binaries)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vfstool::VfsFile;
+    /// use std::{path::PathBuf, ffi::OsStr};
+    ///
+    /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
+    /// Files").join("Morrowind.esm");
+    ///
+    /// let file = VfsFile::new(morrowind_esm);
+    /// assert_eq!(file.file_name(), Some(OsStr::new("Morrowind.esm")));
+    /// ```
     pub fn file_name(&self) -> Option<&OsStr> {
         self.path.file_name()
     }
 
+    /// Returns the original (non-normalized) path of the file.
+    ///
+    /// # Returns
+    ///
+    /// * `&Path` - The path used when creating this `VfsFile`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vfstool::VfsFile;
+    /// use std::path::PathBuf;
+    ///
+    /// let file = VfsFile::new(PathBuf::from("C:\\Morrowind\\Data Files\\Morrowind.esm"));
+    /// assert_eq!(file.path().to_str(), Some("C:\\Morrowind\\Data Files\\Morrowind.esm"));
+    /// ```
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -66,10 +146,52 @@ impl Serialize for VfsFile {
 #[cfg(test)]
 mod read {
     use super::VfsFile;
+    use crate::normalize_path;
     use std::{
-        fs::{File, remove_file},
+        fs::{File, create_dir, remove_dir_all, remove_file},
         path::PathBuf,
     };
+
+    /// The VFSFile itself is *not* responsible for normalization
+    /// It contains a reference to the real path, and some helpers to interact with it
+    /// Its parent struct, VFSFiles, uses the normalized path as a HashMap key to refer to the
+    /// VFSFile
+    /// Thus, we should ensure that the path contained in the VFSFile is not already normalized
+    /// but instead refers to the literal path on the user's system
+    #[test]
+    fn path_must_not_be_normalized() {
+        let test_dir = PathBuf::from("SpOnGeBoBcAsEfIlE");
+        let test_path = test_dir.join("wHoOpSyDoOpSy.EsM");
+
+        if std::fs::metadata(&test_dir).is_err() {
+            let path = create_dir(test_dir.clone());
+            assert!(
+                path.is_ok(),
+                "{}",
+                format!(
+                    "CRITICAL TEST FAILURE: COULD NOT CREATE TEST DIRECTORY: {}!",
+                    path.unwrap_err()
+                ),
+            );
+        }
+
+        let _ = File::create(&test_path);
+        let vfs_file = VfsFile::new(test_path.clone());
+        let fd = vfs_file.open();
+
+        assert!(fd.is_ok(), "TEST FAILURE: COULD NOT OPEN VFS FILE!");
+
+        assert_ne!(normalize_path(&test_path), vfs_file.path());
+
+        let _ = remove_dir_all(test_dir);
+    }
+
+    #[test]
+    fn paths_must_match() {
+        let test_path = PathBuf::from("path/to/some/file");
+        let vfs_file = VfsFile::new(test_path.clone());
+        assert!(&test_path.eq(vfs_file.path()));
+    }
 
     #[test]
     fn open_existing_file() {
@@ -80,7 +202,6 @@ mod read {
 
         let fd = vfs_file.open();
         assert!(fd.is_ok(), "Opening an existing file should succeed");
-
         let _ = remove_file(vfs_file.path);
     }
 
@@ -117,7 +238,7 @@ mod read {
 #[cfg(test)]
 mod write {
     use crate::VfsFile;
-    use std::{collections::BTreeMap, fs};
+    use std::collections::BTreeMap;
 
     /// Raw VFSFiles may not serialize to TOML
     /// as the format requires k/v pairs
@@ -137,6 +258,7 @@ mod write {
         );
     }
 
+    /// Serialize individual files straight to json or yaml
     #[test]
     fn test_serialize_yaml() {
         let vfs_file = VfsFile::new("serialized.yaml".into());
@@ -147,11 +269,10 @@ mod write {
 
     #[test]
     fn test_serialize_json() {
-        let vfs_file = VfsFile::new("serialized.json".into());
+        let name = "serialized.json";
+        let vfs_file = VfsFile::new(name.into());
         let serialized = serde_json::to_string_pretty(&vfs_file);
 
-        assert!(serialized.is_ok(), "Serialization to TOML should succeed");
-
-        let _ = fs::remove_file("output.toml"); // Cleanup
+        assert!(serialized.is_ok(), "Serialization to JSON should succeed");
     }
 }
