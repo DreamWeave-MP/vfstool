@@ -12,8 +12,7 @@ pub trait VFSDirectory {
 
 impl VFSDirectory for DirectoryNode {
     fn sort(&mut self) {
-        self.files
-            .sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+        self.files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
         self.subdirs.values_mut().for_each(|dir| dir.sort());
     }
 
@@ -59,7 +58,7 @@ impl Serialize for DirectoryNode {
                 &self
                     .files
                     .iter()
-                    .map(|file| file.path.file_name().unwrap_or_default().to_string_lossy())
+                    .map(|file| file.file_name().unwrap_or_default().to_string_lossy())
                     .collect::<Vec<Cow<'_, str>>>(),
             )?;
         }
