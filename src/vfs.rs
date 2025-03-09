@@ -234,6 +234,8 @@ impl VFS {
         format!("{}{}\n", Self::FILE_PREFIX, file,)
     }
 
+    /// String formatter for the file tree
+    /// Includes a newline, so caller is responsible for using the appropriate writer
     fn dir_str<S: AsRef<str> + std::fmt::Display>(dir: S) -> String {
         format!("{}{}/\n", Self::DIR_PREFIX, dir,)
     }
