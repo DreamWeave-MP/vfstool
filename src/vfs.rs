@@ -119,6 +119,8 @@ impl VFS {
         }
     }
 
+    /// Returns a parallel iterator meant to be fed into par_extend
+    /// Only used when appending a directory or set of directories into the file map
     fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
         dir: I,
     ) -> impl ParallelIterator<Item = (PathBuf, Arc<VfsFile>)> {
