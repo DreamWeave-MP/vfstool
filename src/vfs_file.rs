@@ -117,13 +117,13 @@ mod read {
 #[cfg(test)]
 mod write {
     use crate::VfsFile;
-    use std::fs;
+    use std::{collections::BTreeMap, fs};
 
     /// Raw VFSFiles may not serialize to TOML
     /// as the format requires k/v pairs
     #[test]
     fn serialize_toml() {
-        let mut tree = std::collections::BTreeMap::new();
+        let mut tree = BTreeMap::new();
 
         let vfs_file = VfsFile::new("serialized.toml".into());
         tree.insert("Some_File", vfs_file);
