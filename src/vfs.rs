@@ -41,7 +41,7 @@ impl VFS {
 
     /// Looks up a file in the VFS after normalizing the path
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile {
-        let normalized_path = Self::normalize_path(path.as_ref());
+        let normalized_path = Self::normalize_path(path);
         self.file_map.get(&normalized_path)
     }
 
