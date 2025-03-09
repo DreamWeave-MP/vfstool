@@ -149,8 +149,45 @@ mod read {
     use crate::normalize_path;
     use std::{
         fs::{File, create_dir, remove_dir_all, remove_file},
+        io::{Read, Write},
         path::PathBuf,
+        sync::Arc,
+        thread,
     };
+
+    const TEST_DATA: &str = "Act IV, Scene III, continued
+
+Lifts-Her-Tail
+Certainly not, kind sir! I am here but to clean your chambers.
+
+Crantius Colto
+Is that all you have come here for, little one? My chambers?
+
+Lifts-Her-Tail
+I have no idea what it is you imply, master. I am but a poor Argonian maid.
+
+Crantius Colto
+So you are, my dumpling. And a good one at that. Such strong legs and shapely tail.
+
+Lifts-Her-Tail
+You embarrass me, sir!
+
+Crantius Colto
+Fear not. You are safe here with me.
+
+Lifts-Her-Tail
+I must finish my cleaning, sir. The mistress will have my head if I do not!
+
+Crantius Colto
+Cleaning, eh? I have something for you. Here, polish my spear.
+
+Lifts-Her-Tail
+But it is huge! It could take me all night!
+
+Crantius Colto
+Plenty of time, my sweet. Plenty of time.
+
+END OF ACT IV, SCENE III";
 
     /// The VFSFile itself is *not* responsible for normalization
     /// It contains a reference to the real path, and some helpers to interact with it
@@ -232,6 +269,38 @@ mod read {
         );
 
         let _ = remove_file(vfs_file.path);
+    }
+
+    #[test]
+    fn test_concurrent_reading() {
+        let path_str = "test.txt";
+        let mut test_file_content = File::create(path_str).unwrap();
+        let _ = write!(test_file_content, "{}", TEST_DATA);
+
+        let vfs_file = Arc::new(VfsFile::new(path_str.into()));
+
+        vfs_file.open().expect("File should open");
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let vfs_clone = Arc::clone(&vfs_file);
+                thread::spawn(move || {
+                    let result = vfs_clone.open();
+                    assert!(result.is_ok(), "Read should succeed");
+
+                    let mut result_data = String::new();
+                    let _ = result.unwrap().read_to_string(&mut result_data);
+
+                    assert_eq!(result_data, TEST_DATA);
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let _ = remove_file(PathBuf::from(path_str));
     }
 }
 
