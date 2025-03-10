@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use walkdir::{Error as WalkError, WalkDir};
+use walkdir::WalkDir;
 
 use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path};
 use std::{
