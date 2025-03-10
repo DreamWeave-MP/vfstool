@@ -4,9 +4,9 @@ use walkdir::WalkDir;
 use crate::{DirectoryNode, DisplayTree, SerializeType, VfsFile, normalize_path};
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt,
+    fmt::Write,
     fs::File,
-    io::{Error, ErrorKind, Result, Write},
+    io::{Error, ErrorKind, Result, Write as _},
     ops::Index,
     path::{Path, PathBuf},
 };
@@ -232,22 +232,12 @@ impl VFS {
         relative: bool,
         file_filter: impl Fn(&VfsFile) -> bool,
     ) -> String {
-        use fmt::Write;
-
         let tree = self.tree_filtered(relative, file_filter);
         let mut output = String::new();
 
-        for (dir, files) in &tree {
-            write!(output, "{}", Self::dir_str(&dir.to_string_lossy())).unwrap();
-            for file in &files.files {
-                write!(
-                    output,
-                    "{}",
-                    Self::file_str(&file.path().file_name().unwrap().to_string_lossy())
-                )
-                .unwrap();
-            }
-        }
+        if let Err(error) = write_tree_io(&tree, &mut output) {
+            panic!("Failed to format DisplayTree: {}", error)
+        };
 
         output
     }
@@ -274,44 +264,92 @@ impl VFS {
     }
 }
 
-fn print_files(
+fn to_eof_err<E: std::fmt::Display>(error: E) -> std::io::Error {
+    Error::new(ErrorKind::UnexpectedEof, error.to_string())
+}
+
+fn write_files_io<W: Write>(w: &mut W, node: &DirectoryNode, dir: &PathBuf) -> std::io::Result<()> {
+    if !node.files.is_empty() {
+        write!(w, "{}", VFS::dir_str(dir.to_string_lossy())).map_err(to_eof_err)?;
+
+        for file in &node.files {
+            write!(
+                w,
+                "{}",
+                VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
+            )
+            .map_err(to_eof_err)?;
+        }
+    };
+
+    Ok(())
+}
+
+fn print_files_fmt(
     f: &mut std::fmt::Formatter<'_>,
     node: &DirectoryNode,
     dir: &PathBuf,
 ) -> std::fmt::Result {
-    write!(f, "{}", VFS::dir_str(dir.to_string_lossy()))?;
+    if !node.files.is_empty() {
+        write!(f, "{}", VFS::dir_str(dir.to_string_lossy()))?;
 
-    for file in &node.files {
-        write!(
-            f,
-            "{}",
-            VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
-        )?;
-    }
+        for file in &node.files {
+            write!(
+                f,
+                "{}",
+                VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
+            )?;
+        }
+    };
+
     Ok(())
 }
 
-fn print_node(
+fn write_node_io<W: Write>(
+    w: &mut W,
+    node: &DirectoryNode,
+    parent_dir: &PathBuf,
+) -> std::io::Result<()> {
+    write_files_io(w, &node, parent_dir)?;
+
+    for (subdir_name, subdir_node) in &node.subdirs {
+        write_node_io(w, subdir_node, &subdir_name)?;
+    }
+
+    Ok(())
+}
+
+fn print_node_fmt(
     f: &mut std::fmt::Formatter<'_>,
     node: &DirectoryNode,
     parent_dir: &PathBuf,
 ) -> std::fmt::Result {
-    print_files(f, &node, parent_dir)?;
+    print_files_fmt(f, &node, parent_dir)?;
 
     for (subdir_name, subdir_node) in &node.subdirs {
-        let subdir_path = parent_dir.join(subdir_name);
-        print_files(f, subdir_node, &subdir_path)?;
-        print_node(f, subdir_node, &subdir_path)?;
+        print_node_fmt(f, subdir_node, &subdir_name)?;
+    }
+
+    Ok(())
+}
+
+fn write_tree_io<W: Write>(tree: &DisplayTree, f: &mut W) -> std::io::Result<()> {
+    for (root_subdir, files) in tree {
+        write_files_io(f, files, root_subdir)?;
+
+        for (subdir_name, sub_node) in &files.subdirs {
+            write_node_io(f, &sub_node, &subdir_name)?;
+        }
     }
     Ok(())
 }
 
-fn print_tree(tree: &DisplayTree, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn print_tree_fmt(tree: &DisplayTree, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     for (root_subdir, files) in tree {
-        print_files(f, files, root_subdir)?;
+        print_files_fmt(f, files, root_subdir)?;
 
-        for (_subdir_name, sub_node) in &files.subdirs {
-            print_node(f, &sub_node, &root_subdir)?;
+        for (subdir_name, sub_node) in &files.subdirs {
+            print_node_fmt(f, &sub_node, &subdir_name)?;
         }
     }
     Ok(())
@@ -319,7 +357,7 @@ fn print_tree(tree: &DisplayTree, f: &mut std::fmt::Formatter<'_>) -> std::fmt::
 
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        print_tree(&self.tree(true), f)
+        print_tree_fmt(&self.tree(true), f)
     }
 }
 
