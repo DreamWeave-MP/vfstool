@@ -274,64 +274,52 @@ impl VFS {
     }
 }
 
-fn print_subdirs(
+fn print_files(
     f: &mut std::fmt::Formatter<'_>,
-    files: &DirectoryNode,
+    node: &DirectoryNode,
+    dir: &PathBuf,
+) -> std::fmt::Result {
+    write!(f, "{}", VFS::dir_str(dir.to_string_lossy()))?;
+
+    for file in &node.files {
+        write!(
+            f,
+            "{}",
+            VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
+        )?;
+    }
+    Ok(())
+}
+
+fn print_node(
+    f: &mut std::fmt::Formatter<'_>,
+    node: &DirectoryNode,
     parent_dir: &PathBuf,
 ) -> std::fmt::Result {
-    for (subdir_name, subdir_files) in &files.subdirs {
+    print_files(f, &node, parent_dir)?;
+
+    for (subdir_name, subdir_node) in &node.subdirs {
         let subdir_path = parent_dir.join(subdir_name);
-        write!(f, "\n{}", VFS::dir_str(subdir_path.to_string_lossy()))?;
+        print_files(f, subdir_node, &subdir_path)?;
+        print_node(f, subdir_node, &subdir_path)?;
+    }
+    Ok(())
+}
 
-        for file in &subdir_files.files {
-            write!(
-                f,
-                "{}",
-                VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
-            )?;
+fn print_tree(tree: &DisplayTree, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for (root_subdir, files) in tree {
+        print_files(f, files, root_subdir)?;
+
+        for (_subdir_name, sub_node) in &files.subdirs {
+            print_node(f, &sub_node, &root_subdir)?;
         }
-
-        print_subdirs(f, subdir_files, &subdir_path)?;
     }
     Ok(())
 }
 
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Iterate over the directories in the VFS tree.
-        for (dir, files) in &self.tree(true) {
-            // Print the directory itself.
-            let os_dir = dir.to_string_lossy();
-            write!(f, "{}", Self::dir_str(os_dir))?;
-
-            // Print files in the current directory.
-            for file in &files.files {
-                write!(
-                    f,
-                    "{}",
-                    Self::file_str(file.path().file_name().unwrap().to_string_lossy())
-                )?;
-            }
-
-            // Recursively print subdirectories.
-            for (subdir_name, subdir_files) in &files.subdirs {
-                let subdir_path = dir.join(subdir_name); // Form the full path to the subdirectory.
-                write!(f, "\n{}", Self::dir_str(subdir_path.to_string_lossy()))?;
-
-                // Print files in the subdirectory.
-                for file in &subdir_files.files {
-                    write!(
-                        f,
-                        "{}",
-                        Self::file_str(file.path().file_name().unwrap().to_string_lossy())
-                    )?;
-                }
-
-                // Recursively handle further subdirectories.
-                print_subdirs(f, &subdir_files, &subdir_path)?;
-            }
-        }
-        Ok(())
+        print_tree(&self.tree(true), f)
     }
 }
 
