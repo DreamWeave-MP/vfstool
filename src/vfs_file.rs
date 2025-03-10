@@ -1,7 +1,4 @@
-use serde::{Serialize, Serializer};
-
 use std::{
-    ffi::OsStr,
     fs::File as StdFile,
     io,
     path::{Path, PathBuf},
@@ -16,7 +13,7 @@ use std::{
 ///
 /// Files in the VFS should be **unique** and stored in a HashMap inside the `VFS` struct.
 /// They are typically wrapped in `Arc<VfsFile>` for safe concurrent access.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct VfsFile {
     /// The original path of the file on disk.
     /// This is **not normalized** to ensure that OS-dependent behavior remains valid.
@@ -43,8 +40,10 @@ impl VfsFile {
     /// use std::path::PathBuf;
     /// use vfstool::VfsFile;
     ///
-    /// let file = VfsFile::new(PathBuf::from("C:\\Morrowind\\Data Files\\Morrowind.esm"));
-    /// assert_eq!(file.path().to_str(), Some("C:\\Morrowind\\Data Files\\Morrowind.esm"));
+    /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
+    ///
+    /// let file = VfsFile::new(PathBuf::from(&path));
+    /// assert_eq!(file.path().to_str(), Some(path));
     /// ```
     pub fn new(path: PathBuf) -> Self {
         VfsFile { path }
@@ -60,14 +59,15 @@ impl VfsFile {
     /// # Examples
     ///
     /// ```
-    /// use vfstool::VfsFile;
     /// use std::path::PathBuf;
+    /// use vfstool::VfsFile;
     ///
-    /// let file = VfsFile::new(PathBuf::from("C:\\Not\\Morrowind\\Data
-    /// Files\\Maybe\\Even\\Oblivion\\Data\\Morrowind.esm"));
+    /// let path = PathBuf::from("C:\\Some\\Very\\Long\\Path");
+    ///
+    /// let file = VfsFile::new(path);
     /// let result = file.open();
     ///
-    /// assert!(result.is_err()); // Depends on whether file exists
+    /// assert!(result.is_err());
     /// ```
     pub fn open(&self) -> io::Result<StdFile> {
         let file = StdFile::open(&self.path)?;
@@ -78,7 +78,7 @@ impl VfsFile {
     ///
     /// # Returns
     ///
-    /// * `Some(&OsStr)` - If the path contains a valid file name.
+    /// * `Some(&str)` - If the path contains a valid file name.
     /// * `None` - If the path does not have a file name. This should be a rare exception as any
     /// files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
     /// binaries)
@@ -86,17 +86,17 @@ impl VfsFile {
     /// # Examples
     ///
     /// ```
+    /// use std::path::PathBuf;
     /// use vfstool::VfsFile;
-    /// use std::{path::PathBuf, ffi::OsStr};
     ///
     /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
     /// Files").join("Morrowind.esm");
     ///
     /// let file = VfsFile::new(morrowind_esm);
-    /// assert_eq!(file.file_name(), Some(OsStr::new("Morrowind.esm")));
+    /// assert_eq!(file.file_name(), Some("Morrowind.esm"));
     /// ```
-    pub fn file_name(&self) -> Option<&OsStr> {
-        self.path.file_name()
+    pub fn file_name(&self) -> Option<&str> {
+        self.path.file_name()?.to_str()
     }
 
     /// Returns the original (non-normalized) path of the file.
@@ -111,37 +111,13 @@ impl VfsFile {
     /// use vfstool::VfsFile;
     /// use std::path::PathBuf;
     ///
-    /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
+    /// let path = PathBuf::from("C:\\Morrowind\\Data Files\\Morrowind.esm");
     ///
-    /// let file = VfsFile::new(PathBuf::from(path));
-    /// assert_eq!(file.path().to_str(), Some(path));
+    /// let file = VfsFile::new(path.clone());
+    /// assert_eq!(file.path(), path);
     /// ```
     pub fn path(&self) -> &Path {
         &self.path
-    }
-}
-
-/// Sentinel VfsFile, representing an invalid path
-impl Default for VfsFile {
-    fn default() -> Self {
-        VfsFile {
-            path: PathBuf::new(),
-        }
-    }
-}
-
-/// Upon serialization, only write the file name
-impl Serialize for VfsFile {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let filename = self.path.file_name().and_then(|name| name.to_str());
-
-        match filename {
-            None => Err(serde::ser::Error::custom("Failed to get file name!")),
-            Some(name) => serializer.serialize_str(name),
-        }
     }
 }
 
@@ -305,6 +281,8 @@ END OF ACT IV, SCENE III";
         let _ = remove_file(PathBuf::from(path_str));
     }
 
+    /// The OS generally handles concurrent writes, so not much special needs done here
+    /// But do note that later iterations of this design won't implement writes this way
     #[test]
     fn test_concurrent_writing() {
         let path_str = "test_write.txt";
@@ -388,48 +366,5 @@ END OF ACT IV, SCENE III";
         }
 
         let _ = remove_file(PathBuf::from(path_str));
-    }
-}
-
-#[cfg(test)]
-mod write {
-    use crate::VfsFile;
-    use std::collections::BTreeMap;
-
-    /// Raw VFSFiles may not serialize to TOML
-    /// as the format requires k/v pairs
-    #[test]
-    fn serialize_toml() {
-        let mut tree = BTreeMap::new();
-
-        let vfs_file = VfsFile::new("serialized.toml".into());
-        tree.insert("Some_File", vfs_file);
-
-        let serialized = toml::to_string_pretty(&tree);
-
-        assert!(
-            serialized.is_ok(),
-            "Serialization to TOML should succeed : {}",
-            serialized.unwrap_err().to_string()
-        );
-    }
-
-    /// Serialize individual files straight to json or yaml
-    #[test]
-    fn test_serialize_yaml() {
-        let vfs_file = VfsFile::new("serialized.yaml".into());
-        let serialized = serde_yaml_with_quirks::to_string(&vfs_file);
-
-        assert!(serialized.is_ok(), "Serialization to YAML should succeed");
-    }
-
-    /// Serialize individual files straight to json or yaml
-    #[test]
-    fn test_serialize_json() {
-        let name = "serialized.json";
-        let vfs_file = VfsFile::new(name.into());
-        let serialized = serde_json::to_string_pretty(&vfs_file);
-
-        assert!(serialized.is_ok(), "Serialization to JSON should succeed");
     }
 }
