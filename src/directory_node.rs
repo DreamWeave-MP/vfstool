@@ -121,6 +121,7 @@ mod tests {
     use super::*;
     use serde_json;
     use serde_yaml_with_quirks;
+    use std::path::PathBuf;
     use toml;
 
     fn sample_directory_node() -> DirectoryNode {
@@ -303,5 +304,89 @@ subdir3:
 "#;
 
         assert_eq!(yaml_output, expected);
+    }
+
+    #[test]
+    fn test_directory_node_filter() {
+        let mut root = sample_directory_node();
+
+        root.filter(&|file| file.file_name().map_or(false, |name| name.contains('2')));
+
+        assert_eq!(
+            root.subdirs.len(),
+            3,
+            "Each subdirectory should have at least one file with the number 2 in its root"
+        );
+
+        let subdirs = ["subdir1", "subdir2", "subdir3"];
+        for &subdir in &subdirs {
+            assert!(
+                root.subdirs.contains_key(&PathBuf::from(&subdir)),
+                "{subdir} should still be present"
+            );
+        }
+
+        // Validate subdir1
+        let subdir1 = root
+            .subdirs
+            .get(&PathBuf::from("subdir1"))
+            .expect("subdir1 should exist");
+        assert_eq!(
+            subdir1.files.len(),
+            1,
+            "subdir1 should have exactly one file."
+        );
+
+        let child_subdir1 = subdir1
+            .subdirs
+            .get(&PathBuf::from("child_subdir1"))
+            .expect("child_subdir1 should still exist");
+        assert_eq!(
+            child_subdir1.files.len(),
+            1,
+            "child_subdir1 should have exactly one file."
+        );
+
+        // Validate subdir2
+        let subdir2 = root
+            .subdirs
+            .get(&PathBuf::from("subdir2"))
+            .expect("subdir2 should exist");
+        assert_eq!(
+            subdir2.files.len(),
+            3,
+            "subdir2 should have exactly three files with '2' in their names."
+        );
+
+        let child_subdir2 = subdir2
+            .subdirs
+            .get(&PathBuf::from("child_subdir2"))
+            .expect("child_subdir2 should still exist");
+        assert_eq!(
+            child_subdir2.files.len(),
+            3,
+            "child_subdir2 should have exactly three files with '2' in their names."
+        );
+
+        // Validate subdir3
+        let subdir3 = root
+            .subdirs
+            .get(&PathBuf::from("subdir3"))
+            .expect("subdir3 should exist");
+        assert_eq!(
+            subdir3.files.len(),
+            1,
+            "subdir3 should have exactly one file."
+        );
+
+        let child_subdir3 = subdir3
+            .subdirs
+            .get(&PathBuf::from("child_subdir3"))
+            .expect("child_subdir3 should still exist");
+        assert_eq!(
+            child_subdir3.files.len(),
+            1,
+            "child_subdir3 should have exactly one file."
+        );
     }
 }
