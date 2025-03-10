@@ -133,13 +133,12 @@ impl Serialize for VfsFile {
     where
         S: Serializer,
     {
-        let filename = self
-            .path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default(); // Ensure we never panic
+        let filename = self.path.file_name().and_then(|name| name.to_str());
 
-        serializer.serialize_str(filename)
+        match filename {
+            None => Err(serde::ser::Error::custom("Failed to get file name!")),
+            Some(result) => serializer.serialize_str(result),
+        }
     }
 }
 
