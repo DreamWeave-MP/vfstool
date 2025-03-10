@@ -115,3 +115,193 @@ impl Serialize for DirectoryNode {
         map.end()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+    use serde_yaml_with_quirks;
+    use toml;
+
+    fn sample_directory_node() -> DirectoryNode {
+        let mut root = DirectoryNode::new();
+
+        for i in 1..=3 {
+            let mut subdir = DirectoryNode::new();
+
+            // Add three files to the subdir
+            for j in 1..=3 {
+                subdir
+                    .files
+                    .push(VfsFile::from(format!("file{}_{}.txt", i, j)));
+            }
+
+            // Create a child subdirectory inside this subdir
+            let mut child_subdir = DirectoryNode::new();
+            for k in 1..=3 {
+                child_subdir
+                    .files
+                    .push(VfsFile::from(format!("nested_file{}_{}.txt", i, k)));
+            }
+
+            subdir
+                .subdirs
+                .insert(format!("child_subdir{}", i).into(), child_subdir);
+
+            root.subdirs.insert(format!("subdir{}", i).into(), subdir);
+        }
+
+        root
+    }
+
+    #[test]
+    fn serialize_to_json() {
+        let node = sample_directory_node();
+        let json_output = serde_json::to_string_pretty(&node).expect("JSON serialization failed");
+
+        println!("{}", &json_output);
+
+        let expected = r#"{
+  "subdir1": {
+    ".": [
+      "file1_1.txt",
+      "file1_2.txt",
+      "file1_3.txt"
+    ],
+    "child_subdir1": {
+      ".": [
+        "nested_file1_1.txt",
+        "nested_file1_2.txt",
+        "nested_file1_3.txt"
+      ]
+    }
+  },
+  "subdir2": {
+    ".": [
+      "file2_1.txt",
+      "file2_2.txt",
+      "file2_3.txt"
+    ],
+    "child_subdir2": {
+      ".": [
+        "nested_file2_1.txt",
+        "nested_file2_2.txt",
+        "nested_file2_3.txt"
+      ]
+    }
+  },
+  "subdir3": {
+    ".": [
+      "file3_1.txt",
+      "file3_2.txt",
+      "file3_3.txt"
+    ],
+    "child_subdir3": {
+      ".": [
+        "nested_file3_1.txt",
+        "nested_file3_2.txt",
+        "nested_file3_3.txt"
+      ]
+    }
+  }
+}"#;
+
+        assert_eq!(json_output, expected);
+    }
+
+    #[test]
+    fn serialize_to_toml() {
+        let node = sample_directory_node();
+        let toml_output = toml::to_string_pretty(&node).expect("TOML serialization failed");
+
+        println!("{}", &toml_output);
+        let expected = r#"[subdir1]
+"." = [
+    "file1_1.txt",
+    "file1_2.txt",
+    "file1_3.txt",
+]
+
+[subdir1.child_subdir1]
+"." = [
+    "nested_file1_1.txt",
+    "nested_file1_2.txt",
+    "nested_file1_3.txt",
+]
+
+[subdir2]
+"." = [
+    "file2_1.txt",
+    "file2_2.txt",
+    "file2_3.txt",
+]
+
+[subdir2.child_subdir2]
+"." = [
+    "nested_file2_1.txt",
+    "nested_file2_2.txt",
+    "nested_file2_3.txt",
+]
+
+[subdir3]
+"." = [
+    "file3_1.txt",
+    "file3_2.txt",
+    "file3_3.txt",
+]
+
+[subdir3.child_subdir3]
+"." = [
+    "nested_file3_1.txt",
+    "nested_file3_2.txt",
+    "nested_file3_3.txt",
+]
+"#;
+
+        assert_eq!(toml_output, expected);
+    }
+
+    #[test]
+    fn serialize_to_yaml() {
+        let node = sample_directory_node();
+        let yaml_output =
+            serde_yaml_with_quirks::to_string(&node).expect("YAML serialization failed");
+
+        println!("{}", &yaml_output);
+
+        let expected = r#"---
+subdir1:
+  ".":
+    - file1_1.txt
+    - file1_2.txt
+    - file1_3.txt
+  child_subdir1:
+    ".":
+      - nested_file1_1.txt
+      - nested_file1_2.txt
+      - nested_file1_3.txt
+subdir2:
+  ".":
+    - file2_1.txt
+    - file2_2.txt
+    - file2_3.txt
+  child_subdir2:
+    ".":
+      - nested_file2_1.txt
+      - nested_file2_2.txt
+      - nested_file2_3.txt
+subdir3:
+  ".":
+    - file3_1.txt
+    - file3_2.txt
+    - file3_3.txt
+  child_subdir3:
+    ".":
+      - nested_file3_1.txt
+      - nested_file3_2.txt
+      - nested_file3_3.txt
+"#;
+
+        assert_eq!(yaml_output, expected);
+    }
+}
