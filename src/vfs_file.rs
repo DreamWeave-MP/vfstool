@@ -130,6 +130,7 @@ impl Default for VfsFile {
     }
 }
 
+/// Upon serialization, only write the file name
 impl Serialize for VfsFile {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
