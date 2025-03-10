@@ -139,7 +139,7 @@ impl Serialize for VfsFile {
 
         match filename {
             None => Err(serde::ser::Error::custom("Failed to get file name!")),
-            Some(result) => serializer.serialize_str(result),
+            Some(name) => serializer.serialize_str(name),
         }
     }
 }
