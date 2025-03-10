@@ -111,8 +111,10 @@ impl VfsFile {
     /// use vfstool::VfsFile;
     /// use std::path::PathBuf;
     ///
-    /// let file = VfsFile::new(PathBuf::from("C:\\Morrowind\\Data Files\\Morrowind.esm"));
-    /// assert_eq!(file.path().to_str(), Some("C:\\Morrowind\\Data Files\\Morrowind.esm"));
+    /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
+    ///
+    /// let file = VfsFile::new(PathBuf::from(path));
+    /// assert_eq!(file.path().to_str(), Some(path));
     /// ```
     pub fn path(&self) -> &Path {
         &self.path
