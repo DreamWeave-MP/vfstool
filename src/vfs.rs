@@ -274,19 +274,61 @@ impl VFS {
     }
 }
 
-/// Currently only prints the root directory
-/// Needs to iterate over all child directories and print those as well.
+fn print_subdirs(
+    f: &mut std::fmt::Formatter<'_>,
+    files: &DirectoryNode,
+    parent_dir: &PathBuf,
+) -> std::fmt::Result {
+    for (subdir_name, subdir_files) in &files.subdirs {
+        let subdir_path = parent_dir.join(subdir_name);
+        write!(f, "\n{}", VFS::dir_str(subdir_path.to_string_lossy()))?;
+
+        for file in &subdir_files.files {
+            write!(
+                f,
+                "{}",
+                VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
+            )?;
+        }
+
+        print_subdirs(f, subdir_files, &subdir_path)?;
+    }
+    Ok(())
+}
+
 impl std::fmt::Display for VFS {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Iterate over the directories in the VFS tree.
         for (dir, files) in &self.tree(true) {
+            // Print the directory itself.
             let os_dir = dir.to_string_lossy();
             write!(f, "{}", Self::dir_str(os_dir))?;
+
+            // Print files in the current directory.
             for file in &files.files {
                 write!(
                     f,
                     "{}",
                     Self::file_str(file.path().file_name().unwrap().to_string_lossy())
                 )?;
+            }
+
+            // Recursively print subdirectories.
+            for (subdir_name, subdir_files) in &files.subdirs {
+                let subdir_path = dir.join(subdir_name); // Form the full path to the subdirectory.
+                write!(f, "\n{}", Self::dir_str(subdir_path.to_string_lossy()))?;
+
+                // Print files in the subdirectory.
+                for file in &subdir_files.files {
+                    write!(
+                        f,
+                        "{}",
+                        Self::file_str(file.path().file_name().unwrap().to_string_lossy())
+                    )?;
+                }
+
+                // Recursively handle further subdirectories.
+                print_subdirs(f, &subdir_files, &subdir_path)?;
             }
         }
         Ok(())
