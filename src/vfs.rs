@@ -242,6 +242,7 @@ impl VFS {
         output
     }
 
+    /// Serializes the result of `tree` or `display_filtered` functions to JSON, YAML, or TOML
     pub fn serialize_from_tree<P: AsRef<Path>>(
         tree: &DisplayTree,
         file_name: P,
