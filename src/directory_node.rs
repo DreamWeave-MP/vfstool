@@ -16,11 +16,11 @@ use std::collections::BTreeMap;
 ///
 /// let mut node = DirectoryNode::new();
 ///
-/// let file = VfsFile::new("test.txt".into());
+/// let file = VfsFile::from("test.txt");
 /// node.files.push(file);
 ///
 /// let mut subdir = DirectoryNode::new();
-/// subdir.files.push(VfsFile::new("nested.txt".into()));
+/// subdir.files.push(VfsFile::from("nested.txt"));
 ///
 /// node.subdirs.insert("sub".into(), subdir);
 ///
@@ -67,8 +67,8 @@ impl DirectoryNode {
     ///
     /// let mut node = DirectoryNode::new();
     ///
-    /// node.files.push(VfsFile::new("keep.txt".into()));
-    /// node.files.push(VfsFile::new("remove.txt".into()));
+    /// node.files.push(VfsFile::from("keep.txt"));
+    /// node.files.push(VfsFile::from("remove.txt"));
     ///
     /// node.filter(&|file| file.file_name() == Some("keep.txt"));
     ///

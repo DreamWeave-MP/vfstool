@@ -42,13 +42,9 @@ impl VfsFile {
     ///
     /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
     ///
-    /// let file = VfsFile::new(PathBuf::from(&path));
+    /// let file = VfsFile::from(path);
     /// assert_eq!(file.path().to_str(), Some(path));
     /// ```
-    pub fn new(path: PathBuf) -> Self {
-        VfsFile { path }
-    }
-
     pub fn from<P: AsRef<Path>>(path: P) -> Self {
         let path = path.as_ref().to_path_buf();
         VfsFile { path }
@@ -67,9 +63,9 @@ impl VfsFile {
     /// use std::path::PathBuf;
     /// use vfstool::VfsFile;
     ///
-    /// let path = PathBuf::from("C:\\Some\\Very\\Long\\Path");
+    /// let path = "C:\\Some\\Very\\Long\\Path";
     ///
-    /// let file = VfsFile::new(path);
+    /// let file = VfsFile::from(path);
     /// let result = file.open();
     ///
     /// assert!(result.is_err());
@@ -97,7 +93,7 @@ impl VfsFile {
     /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
     /// Files").join("Morrowind.esm");
     ///
-    /// let file = VfsFile::new(morrowind_esm);
+    /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some("Morrowind.esm"));
     /// ```
     pub fn file_name(&self) -> Option<&str> {
@@ -116,10 +112,10 @@ impl VfsFile {
     /// use vfstool::VfsFile;
     /// use std::path::PathBuf;
     ///
-    /// let path = PathBuf::from("C:\\Morrowind\\Data Files\\Morrowind.esm");
+    /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
     ///
-    /// let file = VfsFile::new(path.clone());
-    /// assert_eq!(file.path(), path);
+    /// let file = VfsFile::from(path);
+    /// assert_eq!(file.path(), PathBuf::from(path));
     /// ```
     pub fn path(&self) -> &Path {
         &self.path
@@ -131,7 +127,7 @@ mod read {
     use super::VfsFile;
     use crate::normalize_path;
     use std::{
-        fs::{File, create_dir, remove_dir_all, remove_file},
+        fs::{File, OpenOptions, create_dir, metadata, remove_dir_all, remove_file},
         io::{Read, Write},
         path::PathBuf,
         sync::Arc,
@@ -183,7 +179,7 @@ END OF ACT IV, SCENE III";
         let test_dir = PathBuf::from("SpOnGeBoBcAsEfIlE");
         let test_path = test_dir.join("wHoOpSyDoOpSy.EsM");
 
-        if std::fs::metadata(&test_dir).is_err() {
+        if metadata(&test_dir).is_err() {
             let path = create_dir(test_dir.clone());
             assert!(
                 path.is_ok(),
@@ -196,7 +192,7 @@ END OF ACT IV, SCENE III";
         }
 
         let _ = File::create(&test_path);
-        let vfs_file = VfsFile::new(test_path.clone());
+        let vfs_file = VfsFile::from(&test_path);
         let fd = vfs_file.open();
 
         assert!(fd.is_ok(), "TEST FAILURE: COULD NOT OPEN VFS FILE!");
@@ -208,17 +204,18 @@ END OF ACT IV, SCENE III";
 
     #[test]
     fn paths_must_match() {
-        let test_path = PathBuf::from("path/to/some/file");
-        let vfs_file = VfsFile::new(test_path.clone());
-        assert!(&test_path.eq(vfs_file.path()));
+        let path = "path/to/some/file";
+        let path_buf = PathBuf::from(&path);
+        let vfs_file = VfsFile::from(path);
+        assert!(&path_buf.eq(vfs_file.path()));
     }
 
     #[test]
     fn open_existing_file() {
-        let test_path = PathBuf::from("test_file.txt");
+        let test_path = "test_file.txt";
         let _ = File::create(&test_path);
 
-        let vfs_file = VfsFile::new(test_path);
+        let vfs_file = VfsFile::from(test_path);
 
         let fd = vfs_file.open();
         assert!(fd.is_ok(), "Opening an existing file should succeed");
@@ -227,8 +224,8 @@ END OF ACT IV, SCENE III";
 
     #[test]
     fn open_non_existing_file() {
-        let bad_path = PathBuf::from("non_existent_file");
-        let file = VfsFile::new(bad_path);
+        let bad_path = "non_existent_file";
+        let file = VfsFile::from(bad_path);
 
         let fd = file.open();
         assert!(fd.is_err(), "Opening a non-existent file should fail");
@@ -236,12 +233,10 @@ END OF ACT IV, SCENE III";
 
     #[test]
     fn open_file_with_weird_chars() {
-        let test_path = PathBuf::from(
-            "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt",
-        );
+        let test_path = "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt";
         let _ = File::create(&test_path);
 
-        let vfs_file = VfsFile::new(test_path);
+        let vfs_file = VfsFile::from(test_path);
 
         let fd = vfs_file.open();
 
@@ -260,7 +255,7 @@ END OF ACT IV, SCENE III";
         let mut test_file_content = File::create(path_str).unwrap();
         let _ = write!(test_file_content, "{}", TEST_DATA);
 
-        let vfs_file = Arc::new(VfsFile::new(path_str.into()));
+        let vfs_file = Arc::new(VfsFile::from(path_str));
 
         vfs_file.open().expect("File should open");
 
@@ -294,7 +289,7 @@ END OF ACT IV, SCENE III";
 
         let _ = File::create(path_str).unwrap();
 
-        let vfs_file = Arc::new(VfsFile::new(path_str.into()));
+        let vfs_file = Arc::new(VfsFile::from(path_str));
 
         vfs_file.open().expect("File should open");
 
@@ -302,7 +297,7 @@ END OF ACT IV, SCENE III";
             .map(|_| {
                 let vfs_clone = Arc::clone(&vfs_file);
                 thread::spawn(move || {
-                    let mut file = std::fs::OpenOptions::new()
+                    let mut file = OpenOptions::new()
                         .write(true)
                         .open(vfs_clone.path())
                         .expect("File should be openable in thread!");
@@ -333,7 +328,7 @@ END OF ACT IV, SCENE III";
 
         let _ = File::create(path_str).expect("Failed to create test file"); // Ensure the file exists
 
-        let vfs_file = Arc::new(VfsFile::new(path_str.into()));
+        let vfs_file = Arc::new(VfsFile::from(path_str));
         let file_lock = Arc::new(std::sync::RwLock::new(())); // Lock for write access
 
         let handles: Vec<_> = (0..10)
