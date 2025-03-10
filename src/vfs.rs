@@ -121,11 +121,12 @@ impl VFS {
             .filter_map(|entry| Self::valid_file(entry))
             .par_bridge()
             .map(move |entry| {
-                let path = entry.path().to_path_buf();
+                let path = entry.path();
+                let target_path = &path.strip_prefix(&dir).unwrap_or(&path);
 
-                let normalized_path = normalize_path(&path.strip_prefix(&dir).unwrap_or(&path));
+                let normalized_path = normalize_path(target_path);
 
-                let vfs_file = VfsFile::new(path);
+                let vfs_file = VfsFile::from(path);
                 (normalized_path, Arc::new(vfs_file))
             })
     }
