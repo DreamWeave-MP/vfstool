@@ -7,13 +7,12 @@ use std::{
     fmt,
     ops::Index,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 // Owned
-type MaybeFile<'a> = Option<&'a Arc<VfsFile>>;
-type VFSTuple<'a> = (&'a Path, &'a Arc<VfsFile>);
-type VFSFiles = HashMap<PathBuf, Arc<VfsFile>>;
+type MaybeFile<'a> = Option<&'a VfsFile>;
+type VFSTuple<'a> = (&'a Path, &'a VfsFile);
+type VFSFiles = HashMap<PathBuf, VfsFile>;
 
 pub struct VFS {
     file_map: VFSFiles,
@@ -113,12 +112,12 @@ impl VFS {
     /// Only used when appending a directory or set of directories into the file map
     fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
         dir: I,
-    ) -> impl ParallelIterator<Item = (PathBuf, Arc<VfsFile>)> {
+    ) -> impl ParallelIterator<Item = (PathBuf, VfsFile)> {
         let dir = dir.as_ref().to_path_buf();
 
         WalkDir::new(&dir)
             .into_iter()
-            .filter_map(|entry| Self::valid_file(entry))
+            .filter_map(|entry| entry.ok().filter(|e| e.file_type().is_file()))
             .par_bridge()
             .map(move |entry| {
                 let path = entry.path();
@@ -127,7 +126,7 @@ impl VFS {
                 let normalized_path = normalize_path(target_path);
 
                 let vfs_file = VfsFile::from(path);
-                (normalized_path, Arc::new(vfs_file))
+                (normalized_path, vfs_file)
             })
     }
 
@@ -199,7 +198,7 @@ impl VFS {
                     .or_insert_with(DirectoryNode::new);
             }
 
-            current_node.files.push(entry.clone());
+            current_node.files.push(VfsFile::from(path));
         }
 
         tree.get_mut(&root_path)
@@ -214,7 +213,7 @@ impl VFS {
     pub fn tree_filtered(
         &self,
         relative: bool,
-        file_filter: impl Fn(&Arc<VfsFile>) -> bool,
+        file_filter: impl Fn(&VfsFile) -> bool,
     ) -> DisplayTree {
         let mut tree = self.tree(relative);
 
@@ -241,7 +240,7 @@ impl VFS {
     pub fn display_filtered<'a>(
         &self,
         relative: bool,
-        file_filter: impl Fn(&Arc<VfsFile>) -> bool,
+        file_filter: impl Fn(&VfsFile) -> bool,
     ) -> String {
         use fmt::Write;
 
@@ -290,12 +289,9 @@ impl Index<&str> for VFS {
         let normalized_path = normalize_path(index);
 
         // If the path exists in the file_map, return the file, otherwise return a default value
-        self.file_map
-            .get(&normalized_path)
-            .map(|file| file.as_ref()) // Dereference Arc<VfsFile> to &VfsFile
-            .unwrap_or_else(|| {
-                static DEFAULT_FILE: std::sync::OnceLock<VfsFile> = std::sync::OnceLock::new();
-                DEFAULT_FILE.get_or_init(|| VfsFile::default())
-            })
+        self.file_map.get(&normalized_path).unwrap_or_else(|| {
+            static DEFAULT_FILE: std::sync::OnceLock<VfsFile> = std::sync::OnceLock::new();
+            DEFAULT_FILE.get_or_init(|| VfsFile::default())
+        })
     }
 }

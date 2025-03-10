@@ -1,6 +1,6 @@
 use crate::{DisplayTree, VfsFile};
 use serde::{Serialize, Serializer, ser::SerializeMap};
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 /// Represents a directory node in the Virtual File System (VFS).
 ///
@@ -11,16 +11,16 @@ use std::{collections::BTreeMap, sync::Arc};
 /// # Examples
 ///
 /// ```
-/// use std::{collections::BTreeMap, sync::Arc};
+/// use std::collections::BTreeMap;
 /// use vfstool::{directory_node::DirectoryNode, VfsFile};
 ///
 /// let mut node = DirectoryNode::new();
 ///
-/// let file = Arc::new(VfsFile::new("test.txt".into()));
+/// let file = VfsFile::new("test.txt".into());
 /// node.files.push(file);
 ///
 /// let mut subdir = DirectoryNode::new();
-/// subdir.files.push(Arc::new(VfsFile::new("nested.txt".into())));
+/// subdir.files.push(VfsFile::new("nested.txt".into()));
 ///
 /// node.subdirs.insert("sub".into(), subdir);
 ///
@@ -31,7 +31,7 @@ use std::{collections::BTreeMap, sync::Arc};
 /// The `sort` and `filter` methods allow organizing and modifying the directory contents.
 #[derive(Debug)]
 pub struct DirectoryNode {
-    pub files: Vec<Arc<VfsFile>>,
+    pub files: Vec<VfsFile>,
     pub subdirs: DisplayTree,
 }
 
@@ -62,13 +62,13 @@ impl DirectoryNode {
     /// # Examples
     ///
     /// ```
-    /// # use std::{sync::Arc, ffi::OsStr};
+    /// # use std::ffi::OsStr;
     /// use vfstool::{DirectoryNode, VfsFile};
     ///
     /// let mut node = DirectoryNode::new();
     ///
-    /// node.files.push(Arc::new(VfsFile::new("keep.txt".into())));
-    /// node.files.push(Arc::new(VfsFile::new("remove.txt".into())));
+    /// node.files.push(VfsFile::new("keep.txt".into()));
+    /// node.files.push(VfsFile::new("remove.txt".into()));
     ///
     /// node.filter(&|file| file.file_name() == Some("keep.txt"));
     ///
@@ -76,7 +76,7 @@ impl DirectoryNode {
     /// ```
     pub fn filter<F>(&mut self, file_filter: &F)
     where
-        F: Fn(&Arc<VfsFile>) -> bool,
+        F: Fn(&VfsFile) -> bool,
     {
         self.files.retain(file_filter);
         self.subdirs.retain(|_path, subdir| {
