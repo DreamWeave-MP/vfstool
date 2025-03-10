@@ -49,6 +49,11 @@ impl VfsFile {
         VfsFile { path }
     }
 
+    pub fn from<P: AsRef<Path>>(path: P) -> Self {
+        let path = path.as_ref().to_path_buf();
+        VfsFile { path }
+    }
+
     /// Opens the file and returns a standard `File` handle.
     ///
     /// # Returns
