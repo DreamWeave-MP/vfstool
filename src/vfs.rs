@@ -96,18 +96,6 @@ impl VFS {
         })
     }
 
-    /// Walkdir helper to filter out directories
-    /// and somehow-nonexistent or inaccessible files
-    fn valid_file(entry: Result<walkdir::DirEntry, WalkError>) -> Option<walkdir::DirEntry> {
-        match entry {
-            Err(_) => None,
-            Ok(entry) => match entry.metadata().is_ok() && entry.file_type().is_file() {
-                true => Some(entry),
-                false => None,
-            },
-        }
-    }
-
     /// Returns a parallel iterator meant to be fed into par_extend
     /// Only used when appending a directory or set of directories into the file map
     fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
