@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use walkdir::{Error as WalkError, WalkDir};
 
-use crate::{DirectoryNode, DisplayTree, VFSDirectory, VfsFile, normalize_path};
+use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,

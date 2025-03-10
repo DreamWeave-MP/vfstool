@@ -3,7 +3,7 @@ pub mod display_tree;
 pub mod vfs;
 pub mod vfs_file;
 
-pub(crate) use directory_node::{DirectoryNode, VFSDirectory};
+pub use directory_node::DirectoryNode;
 pub use display_tree::{DisplayTree, SerializeType, VFSSerialize};
 pub use vfs::VFS;
 pub use vfs_file::VfsFile;
