@@ -302,6 +302,91 @@ END OF ACT IV, SCENE III";
 
         let _ = remove_file(PathBuf::from(path_str));
     }
+
+    #[test]
+    fn test_concurrent_writing() {
+        let path_str = "test_write.txt";
+
+        let _ = File::create(path_str).unwrap();
+
+        let vfs_file = Arc::new(VfsFile::new(path_str.into()));
+
+        vfs_file.open().expect("File should open");
+
+        let handles: Vec<_> = (0..10)
+            .map(|_| {
+                let vfs_clone = Arc::clone(&vfs_file);
+                thread::spawn(move || {
+                    let mut file = std::fs::OpenOptions::new()
+                        .write(true)
+                        .open(vfs_clone.path())
+                        .expect("File should be openable in thread!");
+
+                    let write_result = file.write_all(TEST_DATA.as_bytes());
+
+                    assert!(
+                        write_result.is_ok(),
+                        "Write operations are not natively thread-safe {}!",
+                        write_result.unwrap_err()
+                    );
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let _ = remove_file(PathBuf::from(path_str));
+    }
+
+    /// This usage isn't really necessary, as the OS will handle sequencing of read and write ops
+    /// However, if explicit sequencing is required, this is the way to do it
+    #[test]
+    fn test_concurrent_writing_with_rwlock() {
+        let path_str = "test_write_safe.txt";
+
+        let _ = File::create(path_str).expect("Failed to create test file"); // Ensure the file exists
+
+        let vfs_file = Arc::new(VfsFile::new(path_str.into()));
+        let file_lock = Arc::new(std::sync::RwLock::new(())); // Lock for write access
+
+        let handles: Vec<_> = (0..10)
+            .map(|i| {
+                let vfs_clone = Arc::clone(&vfs_file);
+                let lock_clone = Arc::clone(&file_lock);
+
+                thread::spawn(move || {
+                    let _guard = lock_clone.write().expect("Write lock should succeed");
+
+                    let mut file = match std::fs::OpenOptions::new()
+                        .write(true)
+                        .open(vfs_clone.path())
+                    {
+                        Ok(f) => f,
+                        Err(e) => {
+                            eprintln!("Thread {} failed to open file: {}", i, e);
+                            return;
+                        }
+                    };
+
+                    let result = file.write_all(TEST_DATA.as_bytes());
+                    assert!(
+                        result.is_ok(),
+                        "Thread {} failed to write: {}",
+                        i,
+                        result.unwrap_err()
+                    );
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let _ = remove_file(PathBuf::from(path_str));
+    }
 }
 
 #[cfg(test)]
@@ -336,6 +421,7 @@ mod write {
         assert!(serialized.is_ok(), "Serialization to YAML should succeed");
     }
 
+    /// Serialize individual files straight to json or yaml
     #[test]
     fn test_serialize_json() {
         let name = "serialized.json";
