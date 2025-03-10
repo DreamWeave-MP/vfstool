@@ -173,20 +173,17 @@ impl VFS {
     /// Easier to display.
     pub fn tree(&self, relative: bool) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
-        let root_path: PathBuf = match relative {
-            true => "Data Files",
-            false => "/",
-        }.into();
+        let root_path: PathBuf = if relative { "Data Files" } else { "/" }.into();
 
         tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
             let path = if relative { key } else { entry.path() };
-            let parent = path.parent().unwrap_or(&root_path);
+            let parent = path.parent().unwrap_or_else(|| root_path.as_path());
 
             let mut current_path = PathBuf::new();
             let mut current_node = tree
-                .get_mut(&root_path.clone())
+                .get_mut(&root_path)
                 .expect("Root path should be guaranteed to always exist!");
 
             for component in parent.components() {
@@ -222,7 +219,6 @@ impl VFS {
         let mut tree = self.tree(relative);
 
         tree.iter_mut().for_each(|(_root_dir, files)| {
-            dbg!(&_root_dir);
             files.filter(&file_filter);
         });
 
