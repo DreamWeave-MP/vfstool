@@ -173,10 +173,10 @@ impl VFS {
     /// Easier to display.
     pub fn tree(&self, relative: bool) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
-        let root_path = PathBuf::from(match relative {
+        let root_path: PathBuf = match relative {
             true => "Data Files",
             false => "/",
-        });
+        }.into();
 
         tree.insert(root_path.clone(), DirectoryNode::new());
 
