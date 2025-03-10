@@ -1,14 +1,24 @@
 pub mod directory_node;
-pub mod display_tree;
 pub mod vfs;
 pub mod vfs_file;
 
 pub use directory_node::DirectoryNode;
-pub use display_tree::{DisplayTree, SerializeType, VFSSerialize};
 pub use vfs::VFS;
 pub use vfs_file::VfsFile;
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
+
+pub type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
+
+pub enum SerializeType {
+    Json,
+    Yaml,
+    Toml,
+}
+
 /// Lowercase path and convert path separators to unix-style
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
     PathBuf::from(
