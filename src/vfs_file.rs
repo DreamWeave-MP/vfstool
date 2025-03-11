@@ -1,12 +1,20 @@
+use bsatoollib::BSAFile;
 use std::{
     fs::File as StdFile,
-    io,
+    io::{self, Cursor, Error, ErrorKind, Read},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 #[derive(Debug)]
+pub struct ArchiveReference {
+    path: PathBuf,
+    parent_archive: Arc<BSAFile>,
+}
+
+#[derive(Debug)]
 pub enum FileType {
-    Archive(String),
+    Archive(ArchiveReference),
     Loose(PathBuf),
 }
 
@@ -62,9 +70,13 @@ impl VfsFile {
         }
     }
 
-    pub fn from_archive<S: AsRef<str>>(archive_path: S) -> Self {
+    pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<BSAFile>) -> Self {
+        let path = PathBuf::from(path.as_ref());
         VfsFile {
-            file: FileType::Archive(archive_path.as_ref().to_string()),
+            file: FileType::Archive(ArchiveReference {
+                path,
+                parent_archive,
+            }),
         }
     }
 
@@ -88,13 +100,20 @@ impl VfsFile {
     ///
     /// assert!(result.is_err());
     /// ```
-    pub fn open(&self) -> io::Result<StdFile> {
+    pub fn open(&self) -> io::Result<Box<dyn Read>> {
         match &self.file {
             FileType::Loose(path) => {
                 let file = StdFile::open(&path)?;
-                Ok(file)
+                Ok(Box::new(file))
             }
-            FileType::Archive(_) => todo!(),
+            FileType::Archive(archive_ref) => {
+                let data = archive_ref
+                    .parent_archive
+                    .get_file(&archive_ref.path.to_string_lossy())
+                    .map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))?;
+                let cursor = Cursor::new(data);
+                Ok(Box::new(cursor))
+            }
         }
     }
 
@@ -119,18 +138,12 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some("Morrowind.esm"));
     /// ```
-    pub fn file_name(&self) -> Option<String> {
+    pub fn file_name(&self) -> Option<&str> {
         match &self.file {
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
-            FileType::Archive(str) => str
-                .replace("\\", "/")
-                .to_ascii_lowercase()
-                .rsplit('/')
-                .next()
-                .map(|s| s.to_string()),
-
-            FileType::Loose(path) => Some(path.file_name()?.to_string_lossy().to_string()),
+            FileType::Archive(archive_ref) => archive_ref.path.file_name()?.to_str(),
+            FileType::Loose(path) => path.file_name()?.to_str(),
         }
     }
 
@@ -154,7 +167,7 @@ impl VfsFile {
     pub fn path(&self) -> &Path {
         match &self.file {
             FileType::Loose(path) => path.as_path(),
-            FileType::Archive(str) => Path::new(str),
+            FileType::Archive(archive_ref) => &archive_ref.path,
         }
     }
 }
@@ -269,21 +282,25 @@ END OF ACT IV, SCENE III";
     }
 
     #[test]
-    fn open_file_with_weird_chars() {
+    fn open_loose_file_with_weird_chars() -> std::io::Result<()> {
         let test_path = "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt";
-        let _ = File::create(&test_path);
+
+        let mut fd = File::create(&test_path)?;
+
+        write!(fd, "{}", TEST_DATA)?;
 
         let vfs_file = VfsFile::from(test_path);
 
-        let fd = vfs_file.open();
+        let mut reader = vfs_file.open()?;
 
-        assert!(
-            fd.is_ok(),
-            "Opening an existing file should succeed: {}",
-            fd.unwrap_err()
-        );
+        let mut data_buf = String::new();
+        let _written = reader.read_to_string(&mut data_buf);
 
-        let _ = remove_file(vfs_file.path());
+        assert_eq!(data_buf, TEST_DATA);
+
+        remove_file(vfs_file.path())?;
+
+        Ok(())
     }
 
     #[test]
