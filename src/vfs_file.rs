@@ -109,7 +109,7 @@ impl VfsFile {
             FileType::Archive(archive_ref) => {
                 let data = archive_ref
                     .parent_archive
-                    .get_file(&archive_ref.path.to_string_lossy())
+                    .get_file(&archive_ref.path.to_string_lossy()[..])
                     .map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))?;
                 let cursor = Cursor::new(data);
                 Ok(Box::new(cursor))
