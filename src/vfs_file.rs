@@ -80,6 +80,27 @@ impl VfsFile {
         }
     }
 
+    pub fn is_loose(&self) -> bool {
+        match self.file {
+            FileType::Archive(_) => false,
+            FileType::Loose(_) => true,
+        }
+    }
+
+    pub fn is_archive(&self) -> bool {
+        match self.file {
+            FileType::Archive(_) => true,
+            FileType::Loose(_) => false,
+        }
+    }
+
+    pub fn parent_archive(&self) -> Result<String, Error> {
+        match &self.file {
+            FileType::Archive(archive_ref) => Ok(archive_ref.parent_archive.file_name().to_string()),
+            FileType::Loose(_) => Err(Error::new(ErrorKind::InvalidData, "Loose files may not return an archive reference!"))
+        }
+    }
+
     /// Opens the file and returns a standard `File` handle.
     ///
     /// # Returns
