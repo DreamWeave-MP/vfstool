@@ -63,7 +63,7 @@ impl DirectoryNode {
     ///
     /// ```
     /// # use std::ffi::OsStr;
-    /// use vfstool::{DirectoryNode, VfsFile};
+    /// use vfstool::{directory_node::DirectoryNode, VfsFile};
     ///
     /// let mut node = DirectoryNode::new();
     ///

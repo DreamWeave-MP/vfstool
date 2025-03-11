@@ -4,6 +4,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug)]
+pub enum FileType {
+    Archive(String),
+    Loose(PathBuf),
+}
+
 /// Represents a file within the Virtual File System (VFS).
 ///
 /// This struct encapsulates a file that exists in the real filesystem but is managed
@@ -13,12 +19,17 @@ use std::{
 ///
 /// Files in the VFS should be **unique** and stored in a HashMap inside the `VFS` struct.
 /// They are typically wrapped in `Arc<VfsFile>` for safe concurrent access.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct VfsFile {
-    /// The original path of the file on disk.
-    /// This is **not normalized** to ensure that OS-dependent behavior remains valid.
-    /// Normalization should be applied only when querying paths.
-    path: PathBuf,
+    file: FileType,
+}
+
+impl Default for VfsFile {
+    fn default() -> Self {
+        Self {
+            file: FileType::Loose(PathBuf::default()),
+        }
+    }
 }
 
 impl VfsFile {
@@ -46,8 +57,15 @@ impl VfsFile {
     /// assert_eq!(file.path().to_str(), Some(path));
     /// ```
     pub fn from<P: AsRef<Path>>(path: P) -> Self {
-        let path = path.as_ref().to_path_buf();
-        VfsFile { path }
+        VfsFile {
+            file: FileType::Loose(path.as_ref().to_path_buf()),
+        }
+    }
+
+    pub fn from_archive<S: AsRef<str>>(archive_path: S) -> Self {
+        VfsFile {
+            file: FileType::Archive(archive_path.as_ref().to_string()),
+        }
     }
 
     /// Opens the file and returns a standard `File` handle.
@@ -71,8 +89,13 @@ impl VfsFile {
     /// assert!(result.is_err());
     /// ```
     pub fn open(&self) -> io::Result<StdFile> {
-        let file = StdFile::open(&self.path)?;
-        Ok(file)
+        match &self.file {
+            FileType::Loose(path) => {
+                let file = StdFile::open(&path)?;
+                Ok(file)
+            }
+            FileType::Archive(_) => todo!(),
+        }
     }
 
     /// Retrieves the file name (i.e., the last component of the path).
@@ -96,8 +119,19 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some("Morrowind.esm"));
     /// ```
-    pub fn file_name(&self) -> Option<&str> {
-        self.path.file_name()?.to_str()
+    pub fn file_name(&self) -> Option<String> {
+        match &self.file {
+            // This doesn't actually retrieve the filename, it just normalizes it
+            // Now it does retrieve the filename, but wtf
+            FileType::Archive(str) => str
+                .replace("\\", "/")
+                .to_ascii_lowercase()
+                .rsplit('/')
+                .next()
+                .map(|s| s.to_string()),
+
+            FileType::Loose(path) => Some(path.file_name()?.to_string_lossy().to_string()),
+        }
     }
 
     /// Returns the original (non-normalized) path of the file.
@@ -118,7 +152,10 @@ impl VfsFile {
     /// assert_eq!(file.path(), PathBuf::from(path));
     /// ```
     pub fn path(&self) -> &Path {
-        &self.path
+        match &self.file {
+            FileType::Loose(path) => path.as_path(),
+            FileType::Archive(str) => Path::new(str),
+        }
     }
 }
 
@@ -219,7 +256,7 @@ END OF ACT IV, SCENE III";
 
         let fd = vfs_file.open();
         assert!(fd.is_ok(), "Opening an existing file should succeed");
-        let _ = remove_file(vfs_file.path);
+        let _ = remove_file(vfs_file.path());
     }
 
     #[test]
@@ -246,7 +283,7 @@ END OF ACT IV, SCENE III";
             fd.unwrap_err()
         );
 
-        let _ = remove_file(vfs_file.path);
+        let _ = remove_file(vfs_file.path());
     }
 
     #[test]
