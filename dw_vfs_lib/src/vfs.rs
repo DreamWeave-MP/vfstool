@@ -502,7 +502,7 @@ END OF ACT IV, SCENE III";
         ];
         let archive_list = vec!["archive1.bsa", "archive2.bsa", "archive3.bsa"];
 
-        let vfs = VFS::from_directories(search_dirs.clone(), archive_list);
+        let vfs = VFS::from_directories(search_dirs.clone(), Some(archive_list));
 
         // Verify file locations
         verify_file_locations(&vfs, &bsa1, &bsa2, &bsa3, &dir1, &dir2, &dir3);
