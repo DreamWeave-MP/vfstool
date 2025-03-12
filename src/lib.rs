@@ -35,11 +35,21 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
 }
 
 pub mod archives {
-    use super::{VFS, VfsFile};
-    use bsatoollib::BSAFile;
-    use std::{collections::HashMap, path::PathBuf, sync::Arc};
+    use super::VfsFile;
+    use ba2::{prelude::*, tes3::Archive as TES3Archive};
+    use std::{collections::HashMap, fs::File, path::PathBuf, sync::Arc};
 
-    pub type ArchiveList = Vec<Arc<BSAFile>>;
+    /// Privatize the shit out of this
+    #[derive(Debug)]
+    pub struct StoredArchive {
+        // Not actually used, but necessary to keep the `archive` alive
+        #[allow(dead_code)]
+        file_handle: File,
+        pub archive: TES3Archive<'static>,
+        pub path: PathBuf,
+    }
+
+    pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
     pub fn in_config(config: &openmw_cfg::Ini) -> Vec<&str> {
         config
@@ -56,19 +66,32 @@ pub mod archives {
         archive_list
             .iter()
             .filter_map(|archive| file_map.get(&PathBuf::from(archive.to_ascii_lowercase())))
-            .filter_map(|valid_archive| BSAFile::from(valid_archive.path().to_string_lossy()).ok())
-            .map(Arc::new)
+            .filter_map(|valid_archive| {
+                let path = valid_archive.path();
+                let file_handle = File::open(&path).unwrap();
+                let archive = TES3Archive::read(&file_handle).unwrap();
+
+                let archive_ref = StoredArchive {
+                    file_handle,
+                    archive,
+                    path: path.to_path_buf(),
+                };
+
+                Some(Arc::new(archive_ref))
+            })
             .collect()
     }
 
     pub fn file_map(archives: &ArchiveList) -> HashMap<PathBuf, VfsFile> {
         archives
             .iter()
-            .flat_map(|archive| {
-                archive.get_list().into_iter().map(|file_struct| {
+            .flat_map(|stored_archive| {
+                stored_archive.archive.iter().map(|(key, _value)| {
+                    let name_string = key.name().to_string();
+                    let normalized = crate::normalize_path(&name_string);
                     (
-                        PathBuf::from(&file_struct.name),
-                        VfsFile::from_archive(&file_struct.name, Arc::clone(archive)),
+                        normalized,
+                        VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
                     )
                 })
             })

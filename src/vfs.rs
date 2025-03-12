@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::{DirectoryNode, DisplayTree, SerializeType, VfsFile, normalize_path};
+use crate::{archives, normalize_path, DirectoryNode, DisplayTree, SerializeType, VfsFile};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -163,10 +163,10 @@ impl VFS {
             .flat_map(Self::directory_contents_to_file_map)
             .collect();
 
-        let archive_handles = crate::archives::from_set(&map, archive_list);
+        let archive_handles = archives::from_set(&map, archive_list);
 
         vfs.file_map
-            .par_extend(crate::archives::file_map(&archive_handles));
+            .par_extend(archives::file_map(&archive_handles));
 
         vfs.file_map.par_extend(map);
 
@@ -416,5 +416,191 @@ impl Index<&str> for VFS {
             static DEFAULT_FILE: std::sync::OnceLock<VfsFile> = std::sync::OnceLock::new();
             DEFAULT_FILE.get_or_init(|| VfsFile::default())
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ba2::tes3::{Archive, ArchiveKey, File};
+    use std::fs;
+    use std::path::PathBuf;
+
+    const TEST_DATA: &[&str] = &[
+        "file1.txt",
+        "file2.txt",
+        "file3.txt",
+        "file4.txt",
+        "file5.txt",
+        "file6.txt",
+    ];
+
+    const TEST_STRING: &str = "Act IV, Scene III, continued
+
+Lifts-Her-Tail
+Certainly not, kind sir! I am here but to clean your chambers.
+
+Crantius Colto
+Is that all you have come here for, little one? My chambers?
+
+Lifts-Her-Tail
+I have no idea what it is you imply, master. I am but a poor Argonian maid.
+
+Crantius Colto
+So you are, my dumpling. And a good one at that. Such strong legs and shapely tail.
+
+Lifts-Her-Tail
+You embarrass me, sir!
+
+Crantius Colto
+Fear not. You are safe here with me.
+
+Lifts-Her-Tail
+I must finish my cleaning, sir. The mistress will have my head if I do not!
+
+Crantius Colto
+Cleaning, eh? I have something for you. Here, polish my spear.
+
+Lifts-Her-Tail
+But it is huge! It could take me all night!
+
+Crantius Colto
+Plenty of time, my sweet. Plenty of time.
+
+END OF ACT IV, SCENE III";
+
+    fn create_files(dir: &PathBuf, files: &[&str]) {
+        fs::create_dir_all(dir).unwrap();
+        for file in files {
+            let file_path = dir.join(file);
+            fs::write(file_path, TEST_STRING).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_vfs_from_directories() {
+        let temp_path = std::env::current_dir().unwrap();
+        let archive_dir = temp_path.join("archives");
+
+        fs::create_dir_all(&archive_dir).unwrap();
+
+        // Create directories
+        let dir1 = temp_path.join("dir1");
+        let dir2 = temp_path.join("dir2");
+        let dir3 = temp_path.join("dir3");
+
+        create_files(&dir1, &TEST_DATA[0..3]); // 1 file
+        create_files(&dir2, &TEST_DATA[0..2]); // 2 files
+        create_files(&dir3, &TEST_DATA[0..1]); // 3 files
+        create_files(&temp_path, &TEST_DATA[..]);
+
+        // Create BSA archives using ba2
+        let bsa1 = archive_dir.join("archive1.bsa");
+        let bsa2 = archive_dir.join("archive2.bsa");
+        let bsa3 = archive_dir.join("archive3.bsa");
+
+        // Writing BSA1
+        let archive1: Archive = TEST_DATA[0..6]
+            .iter()
+            .map(|s| {
+                let key: ArchiveKey = s.to_string().into();
+                let file: File = File::from(s.as_bytes());
+                (key, file)
+            })
+            .collect();
+        let mut dst = fs::File::create(&bsa1).unwrap();
+        archive1.write(&mut dst).unwrap();
+
+        // Writing BSA2
+        let archive2: Archive = TEST_DATA[0..5]
+            .iter()
+            .map(|s| {
+                let key: ArchiveKey = s.to_string().into();
+                let file: File = File::from(s.as_bytes());
+                (key, file)
+            })
+            .collect();
+        let mut dst = fs::File::create(&bsa2).unwrap();
+        archive2.write(&mut dst).unwrap();
+
+        // Writing BSA3
+        let archive3: Archive = TEST_DATA[0..4]
+            .iter()
+            .map(|s| {
+                let key: ArchiveKey = s.to_string().into();
+                let file: File = File::from(s.as_bytes());
+                (key, file)
+            })
+            .collect();
+        let mut dst = fs::File::create(&bsa3).unwrap();
+        archive3.write(&mut dst).unwrap();
+
+        // Construct VFS
+        let search_dirs = vec![archive_dir, dir1.clone(), dir2.clone(), dir3.clone()];
+        let archive_list = vec!["archive1.bsa", "archive2.bsa", "archive3.bsa"];
+
+        let vfs = VFS::from_directories(search_dirs.clone(), archive_list);
+
+        dbg!(&vfs.file_map);
+
+        // Verify file locations
+        assert_eq!(
+            vfs.file_map
+                .get(&PathBuf::from("file6.txt"))
+                .unwrap()
+                .parent_archive_path()
+                .unwrap(),
+            bsa1.to_str().unwrap()
+        );
+
+        assert_eq!(
+            vfs.file_map
+                .get(&PathBuf::from("file5.txt"))
+                .unwrap()
+                .parent_archive_path()
+                .unwrap(),
+            bsa2.to_str().unwrap()
+        );
+
+        assert_eq!(
+            vfs.file_map
+                .get(&PathBuf::from("file4.txt"))
+                .unwrap()
+                .parent_archive_path()
+                .unwrap(),
+            bsa3.to_str().unwrap()
+        );
+
+        assert_eq!(
+            vfs.file_map
+                .get(&PathBuf::from("file3.txt"))
+                .unwrap()
+                .path(),
+            dir1.join("file3.txt")
+        );
+
+        assert_eq!(
+            vfs.file_map
+                .get(&PathBuf::from("file2.txt"))
+                .unwrap()
+                .path(),
+            dir2.join("file2.txt")
+        );
+
+        assert_eq!(
+            vfs.file_map
+                .get(&PathBuf::from("file1.txt"))
+                .unwrap()
+                .path(),
+            dir3.join("file1.txt")
+        );
+
+        search_dirs
+            .iter()
+            .for_each(|dir| fs::remove_dir_all(dir).unwrap());
+
+        TEST_DATA
+            .iter()
+            .for_each(|test_file| fs::remove_file(test_file).unwrap());
     }
 }

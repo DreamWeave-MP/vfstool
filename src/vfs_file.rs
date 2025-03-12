@@ -1,4 +1,5 @@
-use bsatoollib::BSAFile;
+use ba2::tes3::ArchiveKey;
+
 use std::{
     fs::File as StdFile,
     io::{self, Cursor, Error, ErrorKind, Read},
@@ -6,10 +7,12 @@ use std::{
     sync::Arc,
 };
 
+use crate::archives::StoredArchive;
+
 #[derive(Debug)]
 pub struct ArchiveReference {
     path: PathBuf,
-    parent_archive: Arc<BSAFile>,
+    parent_archive: Arc<StoredArchive>,
 }
 
 #[derive(Debug)]
@@ -70,7 +73,7 @@ impl VfsFile {
         }
     }
 
-    pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<BSAFile>) -> Self {
+    pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> Self {
         let path = PathBuf::from(path.as_ref());
         VfsFile {
             file: FileType::Archive(ArchiveReference {
@@ -97,7 +100,16 @@ impl VfsFile {
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
             FileType::Archive(archive_ref) => {
-                Some(archive_ref.parent_archive.file_name().to_string())
+                let path_str = archive_ref
+                    .parent_archive
+                    .path
+                    // This was supposed to return the full path.. right?
+                    // .file_name()
+                    // .unwrap()
+                    .to_string_lossy()
+                    .to_string();
+
+                Some(path_str)
             }
             FileType::Loose(_) => None,
         }
@@ -106,16 +118,20 @@ impl VfsFile {
     pub fn parent_archive_name(&self) -> Option<String> {
         match &self.file {
             FileType::Archive(archive_ref) => {
-                let name = archive_ref.parent_archive.file_name();
-                let split = name.rsplit("/").next().unwrap().to_string();
+                let name = archive_ref
+                    .parent_archive
+                    .path
+                    .file_name()?
+                    .to_string_lossy()
+                    .to_string();
 
-                Some(split)
+                Some(name)
             }
             FileType::Loose(_) => None,
         }
     }
 
-    pub fn parent_archive_handle(&self) -> Result<Arc<BSAFile>, Error> {
+    pub fn parent_archive_handle(&self) -> Result<Arc<StoredArchive>, Error> {
         match &self.file {
             FileType::Archive(archive_ref) => Ok(Arc::clone(&archive_ref.parent_archive)),
             FileType::Loose(_) => Err(Error::new(
@@ -145,18 +161,18 @@ impl VfsFile {
     ///
     /// assert!(result.is_err());
     /// ```
-    pub fn open(&self) -> io::Result<Box<dyn Read>> {
+    pub fn open(&self) -> io::Result<Box<dyn Read + '_>> {
         match &self.file {
             FileType::Loose(path) => {
                 let file = StdFile::open(&path)?;
                 Ok(Box::new(file))
             }
             FileType::Archive(archive_ref) => {
-                let data = archive_ref
-                    .parent_archive
-                    .get_file(&archive_ref.path.to_string_lossy()[..])
-                    .map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))?;
-                let cursor = Cursor::new(data);
+                let key: ArchiveKey = archive_ref.path.to_string_lossy().to_string().into();
+
+                let data = archive_ref.parent_archive.archive.get(&key).unwrap();
+                let cursor = Cursor::new(data.as_bytes());
+
                 Ok(Box::new(cursor))
             }
         }
@@ -222,7 +238,7 @@ mod read {
     use super::VfsFile;
     use crate::normalize_path;
     use std::{
-        fs::{File, OpenOptions, create_dir, metadata, remove_dir_all, remove_file},
+        fs::{create_dir, metadata, remove_dir_all, remove_file, File, OpenOptions},
         io::{Read, Write},
         path::PathBuf,
         sync::Arc,
