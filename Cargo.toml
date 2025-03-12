@@ -1,8 +1,11 @@
 [package]
-name = "vfstool"
+name = "dw_vfstool"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 dw_vfs_lib = { path = "dw_vfs_lib" }
-openmw-cfg = "0.5.1"
+
+[dependencies.openmw-cfg]
+git = "https://gitlab.com/magicaldave1/openmw-cfg"
+branch = "master"
