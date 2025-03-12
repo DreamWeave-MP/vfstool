@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::{archives, normalize_path, DirectoryNode, DisplayTree, SerializeType, VfsFile};
+use crate::{DirectoryNode, DisplayTree, SerializeType, VfsFile, archives, normalize_path};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -484,66 +484,69 @@ END OF ACT IV, SCENE III";
 
         fs::create_dir_all(&archive_dir).unwrap();
 
-        // Create directories
-        let dir1 = temp_path.join("dir1");
-        let dir2 = temp_path.join("dir2");
-        let dir3 = temp_path.join("dir3");
+        // Create directories and files
+        let (dir1, dir2, dir3) = create_test_dirs_and_files(&temp_path);
 
-        create_files(&dir1, &TEST_DATA[0..3]); // 1 file
-        create_files(&dir2, &TEST_DATA[0..2]); // 2 files
-        create_files(&dir3, &TEST_DATA[0..1]); // 3 files
-        create_files(&temp_path, &TEST_DATA[..]);
-
-        // Create BSA archives using ba2
-        let bsa1 = archive_dir.join("archive1.bsa");
-        let bsa2 = archive_dir.join("archive2.bsa");
-        let bsa3 = archive_dir.join("archive3.bsa");
-
-        // Writing BSA1
-        let archive1: Archive = TEST_DATA[0..6]
-            .iter()
-            .map(|s| {
-                let key: ArchiveKey = s.to_string().into();
-                let file: File = File::from(s.as_bytes());
-                (key, file)
-            })
-            .collect();
-        let mut dst = fs::File::create(&bsa1).unwrap();
-        archive1.write(&mut dst).unwrap();
-
-        // Writing BSA2
-        let archive2: Archive = TEST_DATA[0..5]
-            .iter()
-            .map(|s| {
-                let key: ArchiveKey = s.to_string().into();
-                let file: File = File::from(s.as_bytes());
-                (key, file)
-            })
-            .collect();
-        let mut dst = fs::File::create(&bsa2).unwrap();
-        archive2.write(&mut dst).unwrap();
-
-        // Writing BSA3
-        let archive3: Archive = TEST_DATA[0..4]
-            .iter()
-            .map(|s| {
-                let key: ArchiveKey = s.to_string().into();
-                let file: File = File::from(s.as_bytes());
-                (key, file)
-            })
-            .collect();
-        let mut dst = fs::File::create(&bsa3).unwrap();
-        archive3.write(&mut dst).unwrap();
+        // Create BSA archives
+        let bsa1 = create_bsa_archive(&archive_dir, "archive1.bsa", &TEST_DATA[0..6]);
+        let bsa2 = create_bsa_archive(&archive_dir, "archive2.bsa", &TEST_DATA[0..5]);
+        let bsa3 = create_bsa_archive(&archive_dir, "archive3.bsa", &TEST_DATA[0..4]);
 
         // Construct VFS
-        let search_dirs = vec![archive_dir, dir1.clone(), dir2.clone(), dir3.clone()];
+        let search_dirs = vec![
+            archive_dir.clone(),
+            dir1.clone(),
+            dir2.clone(),
+            dir3.clone(),
+        ];
         let archive_list = vec!["archive1.bsa", "archive2.bsa", "archive3.bsa"];
 
         let vfs = VFS::from_directories(search_dirs.clone(), archive_list);
 
-        dbg!(&vfs.file_map);
-
         // Verify file locations
+        verify_file_locations(&vfs, &bsa1, &bsa2, &bsa3, &dir1, &dir2, &dir3);
+
+        // Clean up test files and directories
+        clean_up_test_files(&search_dirs);
+    }
+
+    fn create_test_dirs_and_files(temp_path: &Path) -> (PathBuf, PathBuf, PathBuf) {
+        let dir1 = temp_path.join("dir1");
+        let dir2 = temp_path.join("dir2");
+        let dir3 = temp_path.join("dir3");
+
+        create_files(&dir1, &TEST_DATA[0..3]); // file1.txt, file2.txt, file3.txt
+        create_files(&dir2, &TEST_DATA[0..2]); // file1.txt, file2.txt
+        create_files(&dir3, &TEST_DATA[0..1]); // file1.txt
+        create_files(&temp_path.to_path_buf(), &TEST_DATA[..]);
+
+        (dir1, dir2, dir3)
+    }
+
+    fn create_bsa_archive(archive_dir: &Path, archive_name: &str, data: &[&str]) -> PathBuf {
+        let archive_path = archive_dir.join(archive_name);
+        let archive: Archive = data
+            .iter()
+            .map(|s| {
+                let key: ArchiveKey = s.to_string().into();
+                let file: File = File::from(s.as_bytes());
+                (key, file)
+            })
+            .collect();
+        let mut dst = fs::File::create(&archive_path).unwrap();
+        archive.write(&mut dst).unwrap();
+        archive_path
+    }
+
+    fn verify_file_locations(
+        vfs: &VFS,
+        bsa1: &PathBuf,
+        bsa2: &PathBuf,
+        bsa3: &PathBuf,
+        dir1: &PathBuf,
+        dir2: &PathBuf,
+        dir3: &PathBuf,
+    ) {
         assert_eq!(
             vfs.file_map
                 .get(&PathBuf::from("file6.txt"))
@@ -594,11 +597,12 @@ END OF ACT IV, SCENE III";
                 .path(),
             dir3.join("file1.txt")
         );
+    }
 
+    fn clean_up_test_files(search_dirs: &[PathBuf]) {
         search_dirs
             .iter()
             .for_each(|dir| fs::remove_dir_all(dir).unwrap());
-
         TEST_DATA
             .iter()
             .for_each(|test_file| fs::remove_file(test_file).unwrap());
