@@ -94,11 +94,36 @@ impl VfsFile {
         }
     }
 
-    pub fn parent_archive(&self) -> Result<String, Error> {
+    pub fn parent_archive_path(&self) -> Result<String, Error> {
         match &self.file {
             FileType::Archive(archive_ref) => {
                 Ok(archive_ref.parent_archive.file_name().to_string())
             }
+            FileType::Loose(_) => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Loose files may not return an archive reference!",
+            )),
+        }
+    }
+
+    pub fn parent_archive_name(&self) -> Result<String, Error> {
+        match &self.file {
+            FileType::Archive(archive_ref) => {
+                let name = archive_ref.parent_archive.file_name();
+                let split = name.rsplit("/").next().unwrap().to_string();
+
+                Ok(split)
+            }
+            FileType::Loose(_) => Err(Error::new(
+                ErrorKind::InvalidData,
+                "Loose files may not return an archive reference!",
+            )),
+        }
+    }
+
+    pub fn parent_archive_handle(&self) -> Result<Arc<BSAFile>, Error> {
+        match &self.file {
+            FileType::Archive(archive_ref) => Ok(Arc::clone(&archive_ref.parent_archive)),
             FileType::Loose(_) => Err(Error::new(
                 ErrorKind::InvalidData,
                 "Loose files may not return an archive reference!",
