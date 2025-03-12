@@ -24,6 +24,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bsatoollib"
+version = "0.2.1"
+source = "git+https://github.com/DreamWeave-MP/bsatool_rs.git#80bbc6aa7410b320e60c4402932a2ad0238e199d"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -217,7 +225,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d499ce49fa29a3238581cff8e226b06dca5662737a16db777d2d938116dcdccf"
 dependencies = [
- "bsatoollib",
+ "bsatoollib 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "dirs",
  "rayon",
  "rust-ini",
@@ -461,6 +469,7 @@ checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
 name = "vfstool"
 version = "0.1.0"
 dependencies = [
+ "bsatoollib 0.2.1 (git+https://github.com/DreamWeave-MP/bsatool_rs.git)",
  "openmw-cfg",
  "rayon",
  "serde",
