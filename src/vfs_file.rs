@@ -102,7 +102,7 @@ impl VfsFile {
             FileType::Archive(archive_ref) => {
                 let path_str = archive_ref
                     .parent_archive
-                    .path
+                    .path()
                     // This was supposed to return the full path.. right?
                     // .file_name()
                     // .unwrap()
@@ -120,7 +120,7 @@ impl VfsFile {
             FileType::Archive(archive_ref) => {
                 let name = archive_ref
                     .parent_archive
-                    .path
+                    .path()
                     .file_name()?
                     .to_string_lossy()
                     .to_string();
@@ -170,7 +170,7 @@ impl VfsFile {
             FileType::Archive(archive_ref) => {
                 let key: ArchiveKey = archive_ref.path.to_string_lossy().to_string().into();
 
-                let data = archive_ref.parent_archive.archive.get(&key).unwrap();
+                let data = archive_ref.parent_archive.handle().get(&key).unwrap();
                 let cursor = Cursor::new(data.as_bytes());
 
                 Ok(Box::new(cursor))
@@ -238,7 +238,7 @@ mod read {
     use super::VfsFile;
     use crate::normalize_path;
     use std::{
-        fs::{create_dir, metadata, remove_dir_all, remove_file, File, OpenOptions},
+        fs::{File, OpenOptions, create_dir, metadata, remove_dir_all, remove_file},
         io::{Read, Write},
         path::PathBuf,
         sync::Arc,

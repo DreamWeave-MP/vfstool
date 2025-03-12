@@ -37,7 +37,12 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
 pub mod archives {
     use super::VfsFile;
     use ba2::{prelude::*, tes3::Archive as TES3Archive};
-    use std::{collections::HashMap, fs::File, path::PathBuf, sync::Arc};
+    use std::{
+        collections::HashMap,
+        fs::File,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
 
     /// Privatize the shit out of this
     #[derive(Debug)]
@@ -45,8 +50,18 @@ pub mod archives {
         // Not actually used, but necessary to keep the `archive` alive
         #[allow(dead_code)]
         file_handle: File,
-        pub archive: TES3Archive<'static>,
-        pub path: PathBuf,
+        archive: TES3Archive<'static>,
+        path: PathBuf,
+    }
+
+    impl StoredArchive {
+        pub fn handle(&self) -> &TES3Archive<'static> {
+            &self.archive
+        }
+
+        pub fn path(&self) -> &Path {
+            &self.path
+        }
     }
 
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
