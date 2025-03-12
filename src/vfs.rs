@@ -154,8 +154,23 @@ impl VFS {
 
     pub fn from_directories(
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
+        archive_list: Vec<&str>,
     ) -> Self {
-        Self::new().add_directories(search_dirs)
+        let mut vfs = Self::new();
+
+        let map: HashMap<PathBuf, VfsFile> = search_dirs
+            .into_par_iter()
+            .flat_map(Self::directory_contents_to_file_map)
+            .collect();
+
+        let archive_handles = crate::archives::from_set(&map, archive_list);
+
+        vfs.file_map
+            .par_extend(crate::archives::file_map(&archive_handles));
+
+        vfs.file_map.par_extend(map);
+
+        vfs
     }
 
     /// Returns a sorted version of the VFS contents as a binary tree
@@ -167,8 +182,27 @@ impl VFS {
         tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
-            let path = if relative { key } else { entry.path() };
-            let parent = path.parent().unwrap_or_else(|| root_path.as_path());
+            let path = if entry.is_archive() {
+                let parent_archive_name = entry.parent_archive_name().unwrap();
+                PathBuf::from(parent_archive_name).join(key)
+            } else if relative {
+                key.into()
+            } else {
+                entry.path().to_path_buf()
+            };
+
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or_else(|| root_path.as_path());
+
+            if path.to_string_lossy().to_string().is_empty() {
+                panic!();
+            }
+
+            if parent.to_string_lossy().to_string().is_empty() {
+                panic!();
+            }
 
             let mut current_path = PathBuf::new();
             let mut current_node = tree
@@ -182,13 +216,23 @@ impl VFS {
                     continue;
                 }
 
+                // println!("{:#?} being added to tree map", current_path);
+
                 current_node = current_node
                     .subdirs
                     .entry(current_path.clone())
                     .or_insert_with(DirectoryNode::new);
             }
 
-            current_node.files.push(VfsFile::from(path));
+            let new_file = match entry.is_archive() {
+                false => VfsFile::from(path),
+                true => VfsFile::from_archive(
+                    path.to_string_lossy(),
+                    entry.parent_archive_handle().unwrap(),
+                ),
+            };
+
+            current_node.files.push(new_file);
         }
 
         tree.get_mut(&root_path)
