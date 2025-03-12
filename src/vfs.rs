@@ -165,8 +165,7 @@ impl VFS {
 
         let archive_handles = archives::from_set(&map, archive_list);
 
-        vfs.file_map
-            .par_extend(archives::file_map(&archive_handles));
+        vfs.file_map.par_extend(archives::file_map(archive_handles));
 
         vfs.file_map.par_extend(map);
 

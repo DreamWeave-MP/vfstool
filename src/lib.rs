@@ -64,29 +64,33 @@ pub mod archives {
 
     pub fn from_set(file_map: &HashMap<PathBuf, VfsFile>, archive_list: Vec<&str>) -> ArchiveList {
         archive_list
-            .iter()
-            .filter_map(|archive| file_map.get(&PathBuf::from(archive.to_ascii_lowercase())))
-            .filter_map(|valid_archive| {
-                let path = valid_archive.path();
-                let file_handle = File::open(&path).unwrap();
-                let archive = TES3Archive::read(&file_handle).unwrap();
-
-                let archive_ref = StoredArchive {
-                    file_handle,
-                    archive,
-                    path: path.to_path_buf(),
-                };
-
-                Some(Arc::new(archive_ref))
+            .into_iter()
+            .filter_map(|archive| {
+                let archive_path = PathBuf::from(archive.to_ascii_lowercase());
+                // Try to get the archive from the file map
+                file_map.get(&archive_path).and_then(|valid_archive| {
+                    let path = valid_archive.path();
+                    // Attempt to open the archive file
+                    File::open(&path).ok().and_then(|file_handle| {
+                        // Attempt to read the archive
+                        TES3Archive::read(&file_handle).ok().map(|archive| {
+                            Arc::new(StoredArchive {
+                                file_handle,
+                                archive,
+                                path: path.to_path_buf(),
+                            })
+                        })
+                    })
+                })
             })
             .collect()
     }
 
-    pub fn file_map(archives: &ArchiveList) -> HashMap<PathBuf, VfsFile> {
+    pub fn file_map(archives: ArchiveList) -> HashMap<PathBuf, VfsFile> {
         archives
             .iter()
             .flat_map(|stored_archive| {
-                stored_archive.archive.iter().map(|(key, _value)| {
+                stored_archive.archive.iter().map(move |(key, _value)| {
                     let name_string = key.name().to_string();
                     let normalized = crate::normalize_path(&name_string);
                     (
