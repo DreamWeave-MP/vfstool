@@ -154,7 +154,7 @@ impl VFS {
 
     pub fn from_directories(
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
-        archive_list: Vec<&str>,
+        archive_list: Option<Vec<&str>>,
     ) -> Self {
         let mut vfs = Self::new();
 
@@ -163,9 +163,11 @@ impl VFS {
             .flat_map(Self::directory_contents_to_file_map)
             .collect();
 
-        let archive_handles = archives::from_set(&map, archive_list);
+        if let Some(list) = archive_list {
+            let archive_handles = archives::from_set(&map, list);
 
-        vfs.file_map.par_extend(archives::file_map(archive_handles));
+            vfs.file_map.par_extend(archives::file_map(archive_handles));
+        }
 
         vfs.file_map.par_extend(map);
 

@@ -66,17 +66,6 @@ pub mod archives {
 
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
-    pub fn in_config(config: &openmw_cfg::Ini) -> Vec<&str> {
-        config
-            .general_section()
-            .iter()
-            .filter_map(|(k, v)| match k == "fallback-archive" {
-                false => None,
-                true => Some(v),
-            })
-            .collect()
-    }
-
     pub fn from_set(file_map: &HashMap<PathBuf, VfsFile>, archive_list: Vec<&str>) -> ArchiveList {
         archive_list
             .into_iter()
