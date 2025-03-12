@@ -205,14 +205,6 @@ impl VFS {
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or_else(|| root_path.as_path());
 
-            if path.to_string_lossy().to_string().is_empty() {
-                panic!();
-            }
-
-            if parent.to_string_lossy().to_string().is_empty() {
-                panic!();
-            }
-
             let mut current_path = PathBuf::new();
             let mut current_node = tree
                 .get_mut(&root_path)
@@ -224,8 +216,6 @@ impl VFS {
                 if current_path == root_path {
                     continue;
                 }
-
-                // println!("{:#?} being added to tree map", current_path);
 
                 current_node = current_node
                     .subdirs
