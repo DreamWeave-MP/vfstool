@@ -60,7 +60,7 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use vfstool::VfsFile;
+    /// use dw_vfs_lib::VfsFile;
     ///
     /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
     ///
@@ -152,7 +152,7 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use vfstool::VfsFile;
+    /// use dw_vfs_lib::VfsFile;
     ///
     /// let path = "C:\\Some\\Very\\Long\\Path";
     ///
@@ -191,7 +191,7 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use vfstool::VfsFile;
+    /// use dw_vfs_lib::VfsFile;
     ///
     /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
     /// Files").join("Morrowind.esm");
@@ -217,7 +217,7 @@ impl VfsFile {
     /// # Examples
     ///
     /// ```
-    /// use vfstool::VfsFile;
+    /// use dw_vfs_lib::VfsFile;
     /// use std::path::PathBuf;
     ///
     /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";

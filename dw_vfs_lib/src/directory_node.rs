@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 ///
 /// ```
 /// use std::collections::BTreeMap;
-/// use vfstool::{directory_node::DirectoryNode, VfsFile};
+/// use dw_vfs_lib::{directory_node::DirectoryNode, VfsFile};
 ///
 /// let mut node = DirectoryNode::new();
 ///
@@ -63,7 +63,7 @@ impl DirectoryNode {
     ///
     /// ```
     /// # use std::ffi::OsStr;
-    /// use vfstool::{directory_node::DirectoryNode, VfsFile};
+    /// use dw_vfs_lib::{directory_node::DirectoryNode, VfsFile};
     ///
     /// let mut node = DirectoryNode::new();
     ///
