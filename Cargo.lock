@@ -376,8 +376,7 @@ checksum = "945462a4b81e43c4e3ba96bd7b49d834c6f61198356aa858733bc4acf3cbe62e"
 [[package]]
 name = "openmw-cfg"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d499ce49fa29a3238581cff8e226b06dca5662737a16db777d2d938116dcdccf"
+source = "git+https://gitlab.com/magicaldave1/openmw-cfg?branch=master#d2de73875de8a71dea7ea099243017d4e7dc248d"
 dependencies = [
  "bsatoollib",
  "dirs",
