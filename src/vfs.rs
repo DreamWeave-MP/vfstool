@@ -182,14 +182,23 @@ impl VFS {
         tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
-            let path = if entry.is_archive() {
-                let parent_archive_name = entry.parent_archive_name().unwrap();
-                PathBuf::from(parent_archive_name).join(key)
-            } else if relative {
-                key.into()
-            } else {
-                entry.path().to_path_buf()
-            };
+            let path = PathBuf::from(
+                if relative {
+                    entry.parent_archive_name()
+                } else {
+                    entry.parent_archive_path()
+                }
+                .map_or_else(
+                    || {
+                        if relative {
+                            key.into()
+                        } else {
+                            entry.path().to_path_buf()
+                        }
+                    },
+                    |parent| PathBuf::from(parent).join(key),
+                ),
+            );
 
             let parent = path
                 .parent()
