@@ -36,7 +36,7 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
 
 pub mod archives {
     use super::VfsFile;
-    use ba2::{prelude::*, tes3::Archive as TES3Archive};
+    use ba2::{self, prelude::*, tes3::Archive as TES3Archive};
     use std::{
         collections::HashMap,
         fs::File,
@@ -44,18 +44,25 @@ pub mod archives {
         sync::Arc,
     };
 
+    #[derive(Debug)]
+    pub enum TypedArchive {
+        Tes3(ba2::tes3::Archive<'static>),
+        Tes4(ba2::tes4::Archive<'static>),
+        Fo4(ba2::fo4::Archive<'static>),
+    }
+
     /// Privatize the shit out of this
     #[derive(Debug)]
     pub struct StoredArchive {
         // Not actually used, but necessary to keep the `archive` alive
         #[allow(dead_code)]
         file_handle: File,
-        archive: TES3Archive<'static>,
+        archive: TypedArchive,
         path: PathBuf,
     }
 
     impl StoredArchive {
-        pub fn handle(&self) -> &TES3Archive<'static> {
+        pub fn handle(&self) -> &TypedArchive {
             &self.archive
         }
 
@@ -75,15 +82,40 @@ pub mod archives {
                 file_map.get(&archive_path).and_then(|valid_archive| {
                     let path = valid_archive.path();
                     // Attempt to open the archive file
-                    File::open(&path).ok().and_then(|file_handle| {
+                    File::open(&path).ok().and_then(|mut file_handle| {
                         // Attempt to read the archive
-                        TES3Archive::read(&file_handle).ok().map(|archive| {
-                            Arc::new(StoredArchive {
-                                file_handle,
-                                archive,
-                                path: path.to_path_buf(),
-                            })
-                        })
+                        match ba2::guess_format(&mut file_handle) {
+                            None => None,
+                            Some(format) => match format {
+                                ba2::FileFormat::TES3 => {
+                                    TES3Archive::read(&file_handle).ok().map(|archive| {
+                                        Arc::new(StoredArchive {
+                                            file_handle,
+                                            archive: TypedArchive::Tes3(archive),
+                                            path: path.to_path_buf(),
+                                        })
+                                    })
+                                }
+                                ba2::FileFormat::TES4 => ba2::tes4::Archive::read(&file_handle)
+                                    .ok()
+                                    .map(|(archive, _meta)| {
+                                        Arc::new(StoredArchive {
+                                            file_handle,
+                                            archive: TypedArchive::Tes4(archive),
+                                            path: path.to_path_buf(),
+                                        })
+                                    }),
+                                ba2::FileFormat::FO4 => ba2::fo4::Archive::read(&file_handle)
+                                    .ok()
+                                    .map(|(archive, _meta)| {
+                                        Arc::new(StoredArchive {
+                                            file_handle,
+                                            archive: TypedArchive::Fo4(archive),
+                                            path: path.to_path_buf(),
+                                        })
+                                    }),
+                            },
+                        }
                     })
                 })
             })
@@ -94,14 +126,34 @@ pub mod archives {
         archives
             .iter()
             .flat_map(|stored_archive| {
-                stored_archive.archive.iter().map(move |(key, _value)| {
-                    let name_string = key.name().to_string();
-                    let normalized = crate::normalize_path(&name_string);
-                    (
-                        normalized,
-                        VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
-                    )
-                })
+                let iter: Box<dyn Iterator<Item = (PathBuf, VfsFile)>> =
+                    match &stored_archive.archive {
+                        TypedArchive::Tes3(data) => Box::new(data.iter().map(|(key, _value)| {
+                            let name_string = key.name().to_string();
+                            let normalized = crate::normalize_path(&name_string);
+                            (
+                                normalized,
+                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
+                            )
+                        })),
+                        TypedArchive::Tes4(data) => Box::new(data.iter().map(|(key, _value)| {
+                            let name_string = key.name().to_string();
+                            let normalized = crate::normalize_path(&name_string);
+                            (
+                                normalized,
+                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
+                            )
+                        })),
+                        TypedArchive::Fo4(data) => Box::new(data.iter().map(|(key, _value)| {
+                            let name_string = key.name().to_string();
+                            let normalized = crate::normalize_path(&name_string);
+                            (
+                                normalized,
+                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
+                            )
+                        })),
+                    };
+                iter
             })
             .collect()
     }

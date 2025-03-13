@@ -1,4 +1,7 @@
-use ba2::tes3::ArchiveKey;
+use ba2::{
+    tes3::ArchiveKey as Tes3Key,
+    tes4::{ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey},
+};
 
 use std::{
     fs::File as StdFile,
@@ -7,12 +10,35 @@ use std::{
     sync::Arc,
 };
 
-use crate::archives::StoredArchive;
+use crate::archives::{StoredArchive, TypedArchive};
 
 #[derive(Debug)]
 pub struct ArchiveReference {
     path: PathBuf,
     parent_archive: Arc<StoredArchive>,
+}
+
+impl ArchiveReference {
+    pub fn tes4_keys(path: &PathBuf) -> io::Result<(Tes4ArchiveKey, Tes4DirKey)> {
+        let dir_key: Tes4ArchiveKey = path
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned().into())
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Missing parent directory in TES4 archive",
+                )
+            })?;
+
+        let file_key: Tes4DirKey = path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned().into())
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, "Missing file name in TES4 archive")
+            })?;
+
+        Ok((dir_key, file_key))
+    }
 }
 
 #[derive(Debug)]
@@ -168,10 +194,28 @@ impl VfsFile {
                 Ok(Box::new(file))
             }
             FileType::Archive(archive_ref) => {
-                let key: ArchiveKey = archive_ref.path.to_string_lossy().to_string().into();
+                let typed_archive = archive_ref.parent_archive.handle();
+                let path_string = archive_ref.path.to_string_lossy().to_string();
 
-                let data = archive_ref.parent_archive.handle().get(&key).unwrap();
-                let cursor = Cursor::new(data.as_bytes());
+                let data = match typed_archive {
+                    TypedArchive::Tes3(archive) => {
+                        let key: Tes3Key = path_string.into();
+                        archive.get(&key).and_then(|data| Some(data.as_bytes()))
+                    }
+
+                    TypedArchive::Tes4(archive) => {
+                        let (dir_key, file_key) = ArchiveReference::tes4_keys(&archive_ref.path)?;
+
+                        archive
+                            .get(&dir_key)
+                            .and_then(|dir| dir.get(&file_key))
+                            .map(|file| file.as_bytes())
+                    }
+
+                    TypedArchive::Fo4(_archive) => panic!("Fallout 4 archives were a mistake"),
+                };
+
+                let cursor = Cursor::new(data.unwrap());
 
                 Ok(Box::new(cursor))
             }
