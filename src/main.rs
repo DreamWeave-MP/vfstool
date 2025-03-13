@@ -30,7 +30,7 @@ struct Cli {
     ///
     /// If you need to use an openmw.cfg which is named something else,
     ///
-    /// set the `OPENMW_CONFIG` variable to the absolute path to your desired config file instead.
+    /// set the `OPENMW_CONFIG` variable to the absolute path of your desired config file instead.
     #[arg(short, long)]
     config: Option<PathBuf>,
 
@@ -38,7 +38,6 @@ struct Cli {
     #[arg(short = 'r', long)]
     use_relative: bool,
 
-    /// Subcommands
     #[command(subcommand)]
     command: Commands,
 }
