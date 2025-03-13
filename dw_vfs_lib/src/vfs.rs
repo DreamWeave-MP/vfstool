@@ -35,6 +35,14 @@ impl VFS {
         self.file_map.get(&normalized_path)
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &VfsFile)> {
+        self.file_map.iter()
+    }
+
+    pub fn par_iter(&self) -> impl ParallelIterator<Item = (&PathBuf, &VfsFile)> {
+        self.file_map.par_iter()
+    }
+
     /// Given a substring, return an iterator over all paths that contain it.
     pub fn paths_matching<S: AsRef<str>>(&self, substring: S) -> impl Iterator<Item = VFSTuple> {
         let normalized_substring = normalize_path(substring.as_ref())
