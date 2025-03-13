@@ -5,8 +5,7 @@ use crate::{DirectoryNode, DisplayTree, SerializeType, VfsFile, archives, normal
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
-    fs::File,
-    io::{Error, ErrorKind, Result, Write as _},
+    io::{Error, ErrorKind, Result},
     ops::Index,
     path::{Path, PathBuf},
 };
@@ -287,11 +286,7 @@ impl VFS {
     }
 
     /// Serializes the result of `tree` or `display_filtered` functions to JSON, YAML, or TOML
-    pub fn serialize_from_tree<P: AsRef<Path>>(
-        tree: &DisplayTree,
-        file_name: P,
-        write_type: SerializeType,
-    ) -> Result<()> {
+    pub fn serialize_from_tree(tree: &DisplayTree, write_type: SerializeType) -> Result<String> {
         fn to_io_error<E: std::fmt::Display>(err: E) -> Error {
             Error::new(ErrorKind::InvalidData, err.to_string())
         }
@@ -302,10 +297,7 @@ impl VFS {
             SerializeType::Toml => toml::to_string_pretty(&tree).map_err(to_io_error)?,
         };
 
-        let mut output_file = File::create(file_name)?;
-        write!(output_file, "{}", serialized_content)?;
-
-        Ok(())
+        Ok(serialized_content)
     }
 }
 
