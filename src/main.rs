@@ -24,6 +24,13 @@ struct Cli {
     /// Note this is the directory containing it, not the path to the file itself.
     ///
     /// Example: C:\Documents\My Games\openmw
+    ///
+    /// This argument assumes the config used is called `openmw.cfg`
+    /// (case-insensitive).
+    ///
+    /// If you need to use an openmw.cfg which is named something else,
+    ///
+    /// set the `OPENMW_CONFIG` variable to the absolute path to your desired config file instead.
     #[arg(short, long)]
     config: Option<PathBuf>,
 
