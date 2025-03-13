@@ -1,4 +1,5 @@
 use ba2::{
+    fo4::{ArchiveKey as Fo4ArchiveKey, File as Fo4File},
     tes3::ArchiveKey as Tes3Key,
     tes4::{ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey},
 };
@@ -11,6 +12,63 @@ use std::{
 };
 
 use crate::archives::{StoredArchive, TypedArchive};
+
+pub struct Fo4FileReader<'a> {
+    chunks: std::vec::IntoIter<&'a [u8]>,
+    current_chunk: Option<&'a [u8]>,
+    position: usize,
+}
+
+/// Since FO4 Archives are stored in chunks, implement a custom reader for them
+/// This allows to seamlessly call read on them as we do for other all other file types
+impl<'a> Fo4FileReader<'a> {
+    pub fn new(file: &'a Fo4File) -> Self {
+        let mut chunks = file
+            .iter()
+            .map(|chunk| chunk.as_bytes())
+            .collect::<Vec<_>>()
+            .into_iter();
+        let current_chunk = chunks.next();
+
+        Self {
+            chunks,
+            current_chunk,
+            position: 0,
+        }
+    }
+}
+
+impl Read for Fo4FileReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut total_read = 0;
+
+        while total_read < buf.len() {
+            let chunk = match self.current_chunk {
+                Some(chunk) if self.position < chunk.len() => chunk,
+                _ => {
+                    // Move to the next chunk
+                    self.current_chunk = self.chunks.next();
+                    self.position = 0;
+                    match self.current_chunk {
+                        Some(chunk) => chunk,
+                        None => return Ok(total_read), // No more data
+                    }
+                }
+            };
+
+            let remaining = chunk.len() - self.position;
+            let to_read = (buf.len() - total_read).min(remaining);
+
+            buf[total_read..total_read + to_read]
+                .copy_from_slice(&chunk[self.position..self.position + to_read]);
+
+            self.position += to_read;
+            total_read += to_read;
+        }
+
+        Ok(total_read)
+    }
+}
 
 #[derive(Debug)]
 pub struct ArchiveReference {
@@ -194,10 +252,10 @@ impl VfsFile {
                 Ok(Box::new(file))
             }
             FileType::Archive(archive_ref) => {
-                let typed_archive = archive_ref.parent_archive.handle();
+                let parent = archive_ref.parent_archive.handle();
                 let path_string = archive_ref.path.to_string_lossy().to_string();
 
-                let data = match typed_archive {
+                let data = match parent {
                     TypedArchive::Tes3(archive) => {
                         let key: Tes3Key = path_string.into();
                         archive.get(&key).and_then(|data| Some(data.as_bytes()))
@@ -212,7 +270,11 @@ impl VfsFile {
                             .map(|file| file.as_bytes())
                     }
 
-                    TypedArchive::Fo4(_archive) => panic!("Fallout 4 archives were a mistake"),
+                    TypedArchive::Fo4(archive) => {
+                        let key: Fo4ArchiveKey = path_string.into();
+                        let file: &Fo4File = archive.get(&key).unwrap();
+                        return Ok(Box::new(Fo4FileReader::new(file)));
+                    }
                 };
 
                 let cursor = Cursor::new(data.unwrap());
