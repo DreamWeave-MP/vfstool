@@ -314,6 +314,38 @@ impl VfsFile {
         }
     }
 
+    ///
+    /// Retrieves the file name (i.e., the last component of the path), without
+    /// extensions.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&str)` - If the path contains a valid file name.
+    /// * `None` - If the path does not have a file name. This should be a rare exception as any
+    /// files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
+    /// binaries)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::PathBuf;
+    /// use dw_vfs_lib::VfsFile;
+    ///
+    /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
+    /// Files").join("Morrowind.esm");
+    ///
+    /// let file = VfsFile::from(morrowind_esm);
+    /// assert_eq!(file.file_stem(), Some("Morrowind"));
+    /// ```
+    pub fn file_stem(&self) -> Option<&str> {
+        match &self.file {
+            // This doesn't actually retrieve the filename, it just normalizes it
+            // Now it does retrieve the filename, but wtf
+            FileType::Archive(archive_ref) => archive_ref.path.file_stem()?.to_str(),
+            FileType::Loose(path) => path.file_stem()?.to_str(),
+        }
+    }
+
     /// Returns the original (non-normalized) path of the file.
     ///
     /// # Returns
