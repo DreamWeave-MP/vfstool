@@ -119,38 +119,6 @@ impl VFS {
             })
     }
 
-    /// Append a single directory to the existing VFS instance
-    /// NOTE: Writing directories in sequence can be dangerous and should be avoided when possible!
-    /// When a directory (or set) is appended after the initial creation time, this may be useful,
-    /// but it will also overwrite the contents of *all* directories added before it
-    /// Use this functionality *with caution*
-    pub fn add_directory<I: AsRef<Path> + Sync>(mut self, dir: I) -> Self {
-        self.file_map
-            .par_extend(Self::directory_contents_to_file_map(dir));
-        self
-    }
-
-    /// Given some set which can be interpreted as a parallel iterator of paths,
-    /// Load all of them into the VFS in parallel fashion
-    /// WARN: When a directory (or set) is appended after the initial creation time, this may be useful,
-    /// but it will also overwrite the contents of *all* directories added before it
-    /// Use this functionality *with caution*
-    pub fn add_directories(
-        mut self,
-        search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
-    ) -> Self {
-        self.file_map.par_extend(
-            search_dirs
-                .into_par_iter()
-                .flat_map(Self::directory_contents_to_file_map),
-        );
-        self
-    }
-
-    pub fn from_directory<I: AsRef<Path> + Sync>(dir: I) -> Self {
-        Self::new().add_directory(dir)
-    }
-
     pub fn from_directories(
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
         archive_list: Option<Vec<&str>>,
