@@ -245,6 +245,20 @@ impl VFS {
         format!("{}{}/\n", Self::DIR_PREFIX, dir,)
     }
 
+    pub fn has_normalized_file(&self, target: &Path) -> bool {
+        let normalized = normalize_path(target);
+        self.file_map
+            .keys()
+            .any(|relative_path| normalized.ends_with(&relative_path))
+    }
+
+    pub fn has_file(&self, target: &Path) -> bool {
+        let normalized = normalize_path(target);
+        self.file_map
+            .values()
+            .any(|file| normalize_path(file.path()).eq(&normalized))
+    }
+
     /// Returns the formatted file tree for a filtered subset
     pub fn display_filtered<'a>(
         &self,
