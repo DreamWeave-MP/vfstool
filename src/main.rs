@@ -249,6 +249,28 @@ fn construct_vfs() -> VFS {
     VFS::from_directories(data_paths, Some(archives))
 }
 
+fn write_serialized_vfs(
+    path: Option<PathBuf>,
+    format: OutputFormat,
+    files: &dw_vfs_lib::DisplayTree,
+) -> io::Result<()> {
+    let serialized = VFS::serialize_from_tree(files, output_to_serialize_type(format))?;
+
+    match path {
+        None => println!("{serialized}"),
+        Some(path) => {
+            let parent = path
+                .parent()
+                .expect("Failed to extract parent directory from output param!");
+            fs::create_dir_all(parent)?;
+            let mut file = fs::File::create(&path)?;
+            write!(file, "{serialized}")?;
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Cli::parse();
 
@@ -469,19 +491,7 @@ fn main() -> Result<()> {
 
             let tree = vfs.tree_filtered(args.use_relative, filter_closure);
 
-            let serialized = VFS::serialize_from_tree(&tree, output_to_serialize_type(format))?;
-
-            match output {
-                None => println!("{serialized}"),
-                Some(path) => {
-                    let parent = path
-                        .parent()
-                        .expect("Failed to extract parent directory from output param!");
-                    std::fs::create_dir_all(parent)?;
-                    let mut file = std::fs::File::create(&path)?;
-                    write!(file, "{serialized}")?;
-                }
-            }
+            write_serialized_vfs(output, format, &tree)?;
         }
         Commands::FindFile { path, simple } => {
             let file = vfs.get_file(&path);
@@ -532,20 +542,7 @@ fn main() -> Result<()> {
                 }
             });
 
-            let serialized =
-                VFS::serialize_from_tree(&files_remaining, output_to_serialize_type(format))?;
-
-            match output {
-                None => println!("{serialized}"),
-                Some(path) => {
-                    let parent = path
-                        .parent()
-                        .expect("Failed to extract parent directory from output param!");
-                    std::fs::create_dir_all(parent)?;
-                    let mut file = std::fs::File::create(&path)?;
-                    write!(file, "{serialized}")?;
-                }
-            }
+            write_serialized_vfs(output, format, &files_remaining)?;
         }
     }
 
