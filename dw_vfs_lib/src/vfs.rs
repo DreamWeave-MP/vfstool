@@ -265,10 +265,13 @@ impl VFS {
             .any(|file| normalize_path(file.path()).eq(&normalized))
     }
 
+    /// Takes a filesystem path as input and checks if it exists in this VFS
+    /// WARNING: This is a real, non-normalized path from the filesystem
+    /// Preferably returned by `VfsFile.path()`
     pub fn has_normalized_not_exact(&self, target: &Path) -> bool {
         let normalized = normalize_path(target);
-        self.file_map.par_iter().any(|(relative_path, vfs_file)| {
-            !normalize_path(vfs_file.path()).eq(&normalized) && normalized.ends_with(&relative_path)
+        self.file_map.iter().any(|(relative_path, vfs_file)| {
+            vfs_file.path().ne(target) && normalized.ends_with(&relative_path)
         })
     }
 
