@@ -122,6 +122,25 @@ enum Commands {
         #[arg(short, long, default_value = "name")]
         r#type: FindType,
     },
+    /// Given an absolute path, return a filtered version of the VFS containing either things
+    /// replacing it, or files from this directory which are not being replaced
+    Remaining {
+        filter_path: PathBuf,
+
+        /// If used, show only files replacing contents of this path, instead of ones still in it
+        #[arg(short, long)]
+        replacements_only: bool,
+
+        /// Output format when serializing as text.
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+
+        /// Path to save the resulting search tree to.
+        ///
+        /// If omitted, the result is printed directly to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Supported output formats
@@ -182,13 +201,30 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
     Ok(())
 }
 
+fn get_config() -> openmw_cfg::Ini {
+    openmw_cfg::get_config().expect(&format!(
+        "{RED}[ CRITICAL ERROR ]{RESET}: Failed to read openmw_cfg!"
+    ))
+}
+
+fn get_data_paths(config: &openmw_cfg::Ini) -> Vec<PathBuf> {
+    openmw_cfg::get_data_dirs(&config)
+        .expect(&format!(
+            "{RED}[CRITICAL ERROR ]{RESET}: Failed to get data directories from Openmw.cfg!"
+        ))
+        .iter()
+        .map(PathBuf::from)
+        .collect()
+}
+
+fn filter_data_paths(to_keep: &PathBuf, paths: &mut Vec<PathBuf>) {
+    paths.retain(|path| normalize_path(&path).eq(&normalize_path(&to_keep)))
+}
+
 fn construct_vfs() -> VFS {
-    let config = openmw_cfg::get_config().expect(&format!("{RED}[ CRITICAL ERROR ]{RESET}: Failed to read openmw_cfg!"));
+    let config = get_config();
 
-    let data_directories = openmw_cfg::get_data_dirs(&config)
-        .expect(&format!("{RED}[CRITICAL ERROR ]{RESET}: Failed to get data directories from Openmw.cfg!"));
-
-    let data_paths: Vec<PathBuf> = data_directories.iter().map(PathBuf::from).collect();
+    let data_paths = get_data_paths(&config);
 
     // Collect archives from openmw.cfg, in order
     let archives = config
@@ -466,6 +502,49 @@ fn main() -> Result<()> {
                     "{RED}[ ERROR ]{RESET}: Failed to locate {BLUE}{}{RESET} in the provided VFS.",
                     path.display()
                 )
+            }
+        }
+        Commands::Remaining {
+            filter_path,
+            replacements_only,
+            format,
+            output,
+        } => {
+            let mut paths = get_data_paths(&get_config());
+            filter_data_paths(&filter_path, &mut paths);
+
+            let filtered_vfs = VFS::from_directories(&paths, None);
+            let files_remaining = vfs.tree_filtered(args.use_relative, |file| {
+
+                // Check if there's a file whose ending matches this path, but not this exact path
+                if replacements_only {
+                    let result = filtered_vfs.has_normalized_file(file.path())
+                        && !filtered_vfs.has_file(file.path());
+                    result
+                } else {
+                    normalize_path(&file.path()).starts_with(&normalize_path(&filter_path))
+                }
+            });
+
+            let serialized = VFS::serialize_from_tree(
+                &files_remaining,
+                match format {
+                    OutputFormat::Json => SerializeType::Json,
+                    OutputFormat::Yaml => SerializeType::Yaml,
+                    OutputFormat::Toml => SerializeType::Toml,
+                },
+            )?;
+
+            match output {
+                None => println!("{serialized}"),
+                Some(path) => {
+                    let parent = path
+                        .parent()
+                        .expect("Failed to extract parent directory from output param!");
+                    std::fs::create_dir_all(parent)?;
+                    let mut file = std::fs::File::create(&path)?;
+                    write!(file, "{serialized}")?;
+                }
             }
         }
     }
