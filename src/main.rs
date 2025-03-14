@@ -520,6 +520,7 @@ fn main() -> Result<()> {
             filter_data_paths(&filter_path, &mut paths);
 
             let filtered_vfs = VFS::from_directories(&paths, None);
+            let filter_normalized = normalize_path(&filter_path);
 
             let files_remaining = vfs.tree_filtered(args.use_relative, |file| {
                 let path = file.path();
@@ -527,7 +528,7 @@ fn main() -> Result<()> {
                 if replacements_only {
                     filtered_vfs.has_normalized_not_exact(path)
                 } else {
-                    normalize_path(path).starts_with(&normalize_path(&filter_path))
+                    normalize_path(path).starts_with(&filter_normalized)
                 }
             });
 
