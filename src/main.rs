@@ -515,14 +515,14 @@ fn main() -> Result<()> {
             filter_data_paths(&filter_path, &mut paths);
 
             let filtered_vfs = VFS::from_directories(&paths, None);
+
             let files_remaining = vfs.tree_filtered(args.use_relative, |file| {
+                let path = file.path();
                 // Check if there's a file whose ending matches this path, but not this exact path
                 if replacements_only {
-                    filtered_vfs.has_normalized_not_exact(file.path())
+                    filtered_vfs.has_normalized_not_exact(path)
                 } else {
-                    let file_normalized_path = normalize_path(&file.path());
-
-                    file_normalized_path.starts_with(&normalize_path(&filter_path))
+                    normalize_path(path).starts_with(&normalize_path(&filter_path))
                 }
             });
 
