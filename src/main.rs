@@ -59,6 +59,10 @@ enum Commands {
         /// collapsing.
         #[arg(short, long)]
         allow_copying: bool,
+
+        /// If enabled, allows extracting files out of BSA/BA2 archives during collapsing
+        #[arg(short, long)]
+        extract_archives: bool,
     },
     /// Extract a given file from the VFS into a given directory
     Extract {
@@ -261,6 +265,7 @@ fn main() -> Result<()> {
         Commands::Collapse {
             collapse_into,
             allow_copying,
+            extract_archives,
         } => {
             if metadata(&collapse_into).is_err() {
                 fs::create_dir_all(&collapse_into)?;
@@ -284,7 +289,9 @@ fn main() -> Result<()> {
                     // Since we extract files *out of* BSA archives
                     // Don't bother including them in the collapsed directory
                     if let Some(extension) = file.path().extension() {
-                        if extension == "bsa" && allow_copying {
+                        let extension = extension.to_ascii_lowercase();
+
+                        if (extension == "bsa" || extension == "ba2") && extract_archives {
                             println!("Skipping archive {}", file.file_name().unwrap());
                             return;
                         }
@@ -314,7 +321,7 @@ fn main() -> Result<()> {
                         println!("Successfully wrote {} to {}", file.path().display(), merged_path.display());
                     };
                 } else {
-                    if !allow_copying {
+                    if !extract_archives {
                         println!(
                             "Skipping {}, which is loaded from a BSA file at: {}",
                             relative_path.display(),
