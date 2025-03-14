@@ -8,18 +8,31 @@ use std::{
     path::PathBuf,
 };
 
-pub const RED: &str = "\x1b[31m";
-pub const GREEN: &str = "\x1b[32m";
-pub const BLUE: &str = "\x1b[34m";
-pub const WHITE: &str = "\x1b[37m";
-pub const RESET: &str = "\x1b[0m"; // Reset to default terminal color
+mod print {
+    pub const RED: &str = "\x1b[31m";
+    pub const GREEN: &str = "\x1b[32m";
+    pub const BLUE: &str = "\x1b[34m";
+    pub const RESET: &str = "\x1b[0m";
 
-const fn err_prefix() -> &'static str {
-    concat!("\x1b[31m", "[ ERROR ]", "\x1b[0m", ": ")
-}
+    pub const fn err_prefix() -> &'static str {
+        concat!("\x1b[31m", "[ ERROR ]", "\x1b[0m", ": ")
+    }
 
-const fn success_prefix() -> &'static str {
-    concat!("\x1b[32m", "[ SUCCESS ]", "\x1b[0m", ": ")
+    pub const fn success_prefix() -> &'static str {
+        concat!("\x1b[32m", "[ SUCCESS ]", "\x1b[0m", ": ")
+    }
+
+    pub fn red<S: std::fmt::Display>(input: S) -> String {
+        format!("{RED}{input}{RESET}")
+    }
+
+    pub fn blue<S: std::fmt::Display>(input: S) -> String {
+        format!("{BLUE}{input}{RESET}")
+    }
+
+    pub fn green<S: std::fmt::Display>(input: S) -> String {
+        format!("{GREEN}{input}{RESET}")
+    }
 }
 
 #[derive(Parser)]
@@ -211,14 +224,17 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
 }
 
 fn get_config() -> openmw_cfg::Ini {
-    openmw_cfg::get_config().expect(&format!("{}Failed to read openmw_cfg!", err_prefix()))
+    openmw_cfg::get_config().expect(&format!(
+        "{}Failed to read openmw_cfg!",
+        print::err_prefix()
+    ))
 }
 
 fn get_data_paths(config: &openmw_cfg::Ini) -> Vec<PathBuf> {
     openmw_cfg::get_data_dirs(&config)
         .expect(&format!(
             "{}Failed to get data directories from Openmw.cfg!",
-            err_prefix()
+            print::err_prefix()
         ))
         .iter()
         .map(PathBuf::from)
@@ -398,16 +414,16 @@ fn main() -> Result<()> {
                             if file.is_loose() {
                                 if let Err(error) = fs::copy(file.path(), &target_path) {
                                     eprintln!(
-                                        "{}Failed extracting loose file from the vfs: {GREEN}{}{RESET}",
-                                        err_prefix(),
-                                        error.to_string()
+                                        "{}Failed extracting loose file from the vfs: {}",
+                                        print::err_prefix(),
+                                        print::red(error.to_string()),
                                     );
                                 } else {
                                     println!(
-                                        "{}Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
-                                        success_prefix(),
-                                        file.path().display(),
-                                        target_dir.display()
+                                        "{}Successfully extracted {} to {}",
+                                        print::success_prefix(),
+                                        print::green(file.path().display()),
+                                        print::blue(target_dir.display())
                                     );
                                 };
                             } else {
@@ -417,50 +433,50 @@ fn main() -> Result<()> {
                                         if let Ok(_) = data.read_to_end(&mut buf) {
                                             if let Err(error) = fs::write(&target_path, buf) {
                                                 eprintln!(
-                                                    "{}Extracting archived file {GREEN}{}{RESET} to {BLUE}{}{RESET} failed due to {RED}{}{RESET}!",
-                                                    err_prefix(),
-                                                    source_file.display(),
-                                                    target_path.display(),
-                                                    error.to_string()
+                                                    "{}Extracting archived file {} to {} failed due to {}!",
+                                                    print::err_prefix(),
+                                                    print::green(source_file.display()),
+                                                    print::blue(target_path.display()),
+                                                    print::red(error.to_string()),
                                                 );
                                             } else {
                                                 println!(
-                                                    "{}Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
-                                                    success_prefix(),
-                                                    file.path().display(),
-                                                    target_dir.display()
+                                                    "{}Successfully extracted {} to {}",
+                                                    print::success_prefix(),
+                                                    print::green(file.path().display()),
+                                                    print::blue(target_dir.display()),
                                                 );
                                             };
                                         };
                                     }
                                     Err(error) => {
                                         eprintln!(
-                                            "{}Failed to open archived file: {GREEN}{}{RESET}",
-                                            err_prefix(),
-                                            error.to_string()
+                                            "{}Failed to open archived file: {}",
+                                            print::err_prefix(),
+                                            print::green(error.to_string())
                                         )
                                     }
                                 }
                             }
                         }
                         None => eprintln!(
-                            "{}Source file {GREEN}{}{RESET} does not have a file name! Cannot extract it!",
-                            err_prefix(),
-                            source_file.display()
+                            "{}Source file {} does not have a file name! Cannot extract it!",
+                            print::err_prefix(),
+                            print::green(source_file.display()),
                         ),
                     };
                 } else {
                     eprintln!(
-                        "{}Provided argument {GREEN}{}{RESET} is not a directory! Cannot extract here!",
-                        err_prefix(),
-                        target_dir.display()
+                        "{}Provided argument {} is not a directory! Cannot extract here!",
+                        print::err_prefix(),
+                        print::green(target_dir.display()),
                     );
                 }
             }
             None => eprintln!(
-                "{}Couldn't locate {GREEN}{}{RESET} in the vfs!",
-                err_prefix(),
-                source_file.display()
+                "{}Couldn't locate {} in the vfs!",
+                print::err_prefix(),
+                print::green(source_file.display()),
             ),
         },
         Commands::Find {
@@ -528,17 +544,17 @@ fn main() -> Result<()> {
                     println!("{}", path_display);
                 } else {
                     println!(
-                        "{}Successfully found VFS File {BLUE}{}{RESET} at path {GREEN}{}{RESET}",
-                        success_prefix(),
-                        &path.display(),
-                        &path_display,
+                        "{}Successfully found VFS File {} at path {}",
+                        print::success_prefix(),
+                        print::blue(&path.display()),
+                        print::green(&path_display),
                     )
                 }
             } else {
                 eprintln!(
-                    "{}Failed to locate {BLUE}{}{RESET} in the provided VFS.",
-                    err_prefix(),
-                    path.display()
+                    "{}Failed to locate {} in the provided VFS.",
+                    print::err_prefix(),
+                    print::blue(path.display()),
                 )
             }
         }
