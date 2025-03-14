@@ -200,7 +200,7 @@ impl VFS {
             }
 
             let new_file = match entry.is_archive() {
-                false => VfsFile::from(path),
+                false => VfsFile::from(entry.path()),
                 true => VfsFile::from_archive(
                     path.to_string_lossy(),
                     entry.parent_archive_handle().unwrap(),
