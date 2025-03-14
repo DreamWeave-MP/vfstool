@@ -355,12 +355,15 @@ fn main() -> Result<()> {
             let file = vfs.get_file(&path);
             if let Some(found_file) = file {
                 let path_display = match found_file.is_archive() {
-                    true => found_file.parent_archive_path().unwrap(),
+                    true => PathBuf::from(found_file.parent_archive_path().unwrap())
+                        .join(&path)
+                        .to_string_lossy()
+                        .to_string(),
                     false => found_file.path().to_string_lossy().to_string(),
                 };
 
                 if simple {
-                    println!("{}", path.display());
+                    println!("{}", path_display);
                 } else {
                     println!(
                         "{GREEN}[ SUCCESS ]{RESET}: Successfully found VFS File {BLUE}{}{RESET} at path {GREEN}{}{RESET}",
