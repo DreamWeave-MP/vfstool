@@ -245,6 +245,9 @@ impl VFS {
         format!("{}{}/\n", Self::DIR_PREFIX, dir,)
     }
 
+    /// Return whether any relative path in the vfs corresponds to the absolute path given
+    /// Note that the path is normalized by this function, so it's not necessary to do so
+    /// beforehand
     pub fn has_normalized_file(&self, target: &Path) -> bool {
         let normalized = normalize_path(target);
         self.file_map
@@ -252,11 +255,21 @@ impl VFS {
             .any(|relative_path| normalized.ends_with(&relative_path))
     }
 
+    /// Return whether or not a file exists in the VFS at the given absolute path
+    /// Note that the path is normalized by this function, so it's not necessary to do so
+    /// beforehand
     pub fn has_file(&self, target: &Path) -> bool {
         let normalized = normalize_path(target);
         self.file_map
             .values()
             .any(|file| normalize_path(file.path()).eq(&normalized))
+    }
+
+    pub fn has_normalized_not_exact(&self, target: &Path) -> bool {
+        let normalized = normalize_path(target);
+        self.file_map.par_iter().any(|(relative_path, vfs_file)| {
+            !normalize_path(vfs_file.path()).eq(&normalized) && normalized.ends_with(&relative_path)
+        })
     }
 
     /// Returns the formatted file tree for a filtered subset
