@@ -312,21 +312,49 @@ fn main() -> Result<()> {
                 if dir_meta.is_dir() {
                     match source_file.file_name() {
                         Some(name) => {
+                            let target_path = target_dir.join(name);
+
                             if file.is_loose() {
-                                if let Err(error) = fs::copy(file.path(), target_dir.join(name)) {
+                                if let Err(error) = fs::copy(file.path(), &target_path) {
                                     eprintln!(
-                                        "{RED}[ ERROR ]{RESET}: Failed extracting loose file from the vfs: {}",
+                                        "{RED}[ ERROR ]{RESET}: Failed extracting loose file from the vfs: {GREEN}{}{RESET}",
                                         error.to_string()
                                     );
                                 } else {
                                     println!(
-                                        "{GREEN}[ SUCCESS ]{RESET}: Successfully extracted {} to {}",
+                                        "{GREEN}[ SUCCESS ]{RESET}: Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
                                         file.path().display(),
                                         target_dir.display()
                                     );
                                 };
                             } else {
-                                eprintln!("I don't feel like extracting from BSA files right now!");
+                                match file.open() {
+                                    Ok(mut data) => {
+                                        let mut buf: Vec<u8> = Vec::new();
+                                        if let Ok(_) = data.read_to_end(&mut buf) {
+                                            if let Err(error) = fs::write(&target_path, buf) {
+                                                eprintln!(
+                                                    "{RED}[ ERROR ]{RESET}: Extracting archived file {GREEN}{}{RESET} to {BLUE}{}{RESET} failed due to {RED}{}{RESET}!",
+                                                    source_file.display(),
+                                                    target_path.display(),
+                                                    error.to_string()
+                                                );
+                                            } else {
+                                                println!(
+                                                    "{GREEN}[ SUCCESS ]{RESET}: Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
+                                                    file.path().display(),
+                                                    target_dir.display()
+                                                );
+                                            };
+                                        };
+                                    }
+                                    Err(error) => {
+                                        eprintln!(
+                                            "{RED}[ ERROR ]{RESET}: Failed to open archived file: {GREEN}{}{RESET}",
+                                            error.to_string()
+                                        )
+                                    }
+                                }
                             }
                         }
                         None => eprintln!(
