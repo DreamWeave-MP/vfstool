@@ -305,12 +305,12 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some("Morrowind.esm"));
     /// ```
-    pub fn file_name(&self) -> Option<&str> {
+    pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
-            FileType::Archive(archive_ref) => archive_ref.path.file_name()?.to_str(),
-            FileType::Loose(path) => path.file_name()?.to_str(),
+            FileType::Archive(archive_ref) => archive_ref.path.file_name(),
+            FileType::Loose(path) => path.file_name(),
         }
     }
 
@@ -337,12 +337,12 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_stem(), Some("Morrowind"));
     /// ```
-    pub fn file_stem(&self) -> Option<&str> {
+    pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
-            FileType::Archive(archive_ref) => archive_ref.path.file_stem()?.to_str(),
-            FileType::Loose(path) => path.file_stem()?.to_str(),
+            FileType::Archive(archive_ref) => archive_ref.path.file_stem(),
+            FileType::Loose(path) => path.file_stem(),
         }
     }
 

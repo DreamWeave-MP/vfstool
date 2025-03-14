@@ -102,7 +102,8 @@ impl Serialize for DirectoryNode {
                     .files
                     .iter()
                     .filter_map(|file| file.file_name())
-                    .collect::<Vec<&str>>(),
+                    .map(|file| file.to_string_lossy())
+                    .collect::<Vec<std::borrow::Cow<'_, str>>>(),
             )?;
         }
 
