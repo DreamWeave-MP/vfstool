@@ -183,10 +183,10 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
 }
 
 fn construct_vfs() -> VFS {
-    let config = openmw_cfg::get_config().expect("[ CRITICAL ERROR ]: FAILED TO READ OPENMW_CFG!");
+    let config = openmw_cfg::get_config().expect(&format!("{RED}[ CRITICAL ERROR ]{RESET}: Failed to read openmw_cfg!"));
 
     let data_directories = openmw_cfg::get_data_dirs(&config)
-        .expect("[CRITICAL ERROR ]: FAILED TO GET DATA DIRECTORIES FROM OPENMW.CFG!");
+        .expect(&format!("{RED}[CRITICAL ERROR ]{RESET}: Failed to get data directories from Openmw.cfg!"));
 
     let data_paths: Vec<PathBuf> = data_directories.iter().map(PathBuf::from).collect();
 
