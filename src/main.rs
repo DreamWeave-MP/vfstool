@@ -45,6 +45,17 @@ struct Cli {
 /// Subcommands for `vfstool`
 #[derive(Subcommand)]
 enum Commands {
+    /// Given a target directory, create a set of hardlinks for the entire virtual
+    /// filesystem inside of it. Skyrim support ;)
+    Collapse {
+        /// Target folder to collapse the VFS into
+        collapse_into: PathBuf,
+
+        /// If this is used, any case where hard linking failed or won't work (files in BSA
+        /// archives), falls back to normal copying operations
+        #[arg(short, long)]
+        allow_copying: bool,
+    },
     /// Given some VFS path, like `meshes/xbase_anim.nif`, return its absolute path (if found)
     FindFile {
         /// Full (relative) VFS Path to query.
@@ -186,6 +197,96 @@ fn main() -> Result<()> {
     let vfs = construct_vfs();
 
     match args.command {
+        Commands::Collapse {
+            collapse_into,
+            allow_copying,
+        } => {
+            if metadata(&collapse_into).is_err() {
+                fs::create_dir_all(&collapse_into)?;
+            };
+
+            for (relative_path, file) in vfs.iter() {
+                let merged_path = collapse_into.join(relative_path);
+                let merged_dir = merged_path.parent().unwrap();
+
+                println!(
+                    "Merging file {} into directory {} . . .",
+                    relative_path.display(),
+                    merged_path.display(),
+                );
+
+                if metadata(&merged_dir).is_err() {
+                    fs::create_dir_all(&merged_dir)?;
+                };
+
+                if file.is_loose() {
+                    assert!(file.path().exists());
+
+                    if metadata(&merged_path).is_ok() {
+                        fs::remove_file(&merged_path)?;
+                    }
+
+                    // Since we extract files *out of* BSA archives
+                    // Don't bother including them in the collapsed directory
+                    if let Some(extension) = file.path().extension() {
+                        if extension == "bsa" && allow_copying {
+                            println!("Skipping archive {}", file.file_name().unwrap());
+                            continue;
+                        }
+                    }
+
+                    if let Err(error) = hard_link(file.path(), &merged_path) {
+                        eprintln!(
+                            "Hardlink attempt for {} failed due to error: {}",
+                            file.path().display(),
+                            error.to_string()
+                        );
+
+                        if allow_copying {
+                            if let Err(error) = fs::copy(file.path(), &merged_path) {
+                                eprintln!(
+                                    "Fallback file copying was enabled, but copying {} to {} failed due to {}!",
+                                    file.path().display(),
+                                    merged_path.display(),
+                                    error.to_string()
+                                );
+                            }
+                        }
+                    } else {
+                        let new_metadata = metadata(&merged_path)?;
+                        let old_metadata = metadata(file.path())?;
+                        assert_eq!(new_metadata.len(), old_metadata.len());
+                    };
+                } else {
+                    if !allow_copying {
+                        println!(
+                            "Skipping {}, which is loaded from a BSA file at: {}",
+                            relative_path.display(),
+                            file.parent_archive_path().unwrap()
+                        )
+                    } else {
+                        match file.open() {
+                            Ok(mut data) => {
+                                let mut buf: Vec<u8> = Vec::new();
+                                if let Ok(_) = data.read_to_end(&mut buf) {
+                                    if let Err(error) = fs::write(&merged_path, buf) {
+                                        eprintln!(
+                                            "Extracting archived file {} to {} failed due to {}!",
+                                            relative_path.display(),
+                                            merged_path.display(),
+                                            error.to_string()
+                                        );
+                                    };
+                                };
+                            }
+                            Err(error) => {
+                                eprintln!("Failed to open archived file: {}", error.to_string())
+                            }
+                        };
+                    }
+                }
+            }
+        }
         Commands::Find {
             path,
             format,
