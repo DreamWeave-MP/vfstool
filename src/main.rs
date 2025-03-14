@@ -419,7 +419,7 @@ fn main() -> Result<()> {
             output,
             r#type,
         } => {
-            let path_string = path.to_string_lossy().to_string();
+            let path_string = path.to_string_lossy().to_ascii_lowercase();
             let filter_closure = |vfs_file: &VfsFile| match r#type {
                 FindType::Extension => vfs_file.path().extension().unwrap_or_default() == &path,
                 FindType::NameExact => vfs_file
@@ -449,7 +449,7 @@ fn main() -> Result<()> {
                 FindType::Contains => vfs_file
                     .path()
                     .to_string_lossy()
-                    .to_string()
+                    .to_ascii_lowercase()
                     .replace("\\", "/")
                     .contains(&path_string),
             };
