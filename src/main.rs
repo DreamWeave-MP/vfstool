@@ -57,6 +57,14 @@ enum Commands {
         #[arg(short, long)]
         allow_copying: bool,
     },
+    /// Extract a given file from the VFS into a given directory
+    Extract {
+        /// Full relative path to a VFS file, eg meshes/xbase_anim.nif
+        source_file: PathBuf,
+
+        /// Directory to extract the file to
+        target_dir: PathBuf,
+    },
     /// Given some VFS path, like `meshes/xbase_anim.nif`, return its absolute path (if found)
     FindFile {
         /// Full (relative) VFS Path to query.
@@ -287,6 +295,57 @@ fn main() -> Result<()> {
                 }
             });
         }
+        Commands::Extract {
+            source_file,
+            target_dir,
+        } => match vfs.get_file(&source_file) {
+            Some(file) => {
+                let mut dir_meta = metadata(&target_dir);
+
+                if dir_meta.is_err() {
+                    fs::create_dir_all(&target_dir)?;
+                    dir_meta = metadata(&target_dir);
+                }
+
+                let dir_meta = dir_meta.unwrap();
+
+                if dir_meta.is_dir() {
+                    match source_file.file_name() {
+                        Some(name) => {
+                            if file.is_loose() {
+                                if let Err(error) = fs::copy(file.path(), target_dir.join(name)) {
+                                    eprintln!(
+                                        "Failed extracting loose file from the vfs: {}",
+                                        error.to_string()
+                                    );
+                                } else {
+                                    println!(
+                                        "Successfully extracted {} to {}",
+                                        file.path().display(),
+                                        target_dir.display()
+                                    );
+                                };
+                            } else {
+                                eprintln!("I don't feel like extracting from BSA files right now!");
+                            }
+                        }
+                        None => eprintln!(
+                            "Source file {} does not have a file name! Cannot extract it!",
+                            source_file.display()
+                        ),
+                    };
+                } else {
+                    eprintln!(
+                        "{RED}[ ERROR ]{RESET}: Provided argument {GREEN}{}{RESET} is not a directory! Cannot extract here!",
+                        target_dir.display()
+                    );
+                }
+            }
+            None => eprintln!(
+                "{RED}[ ERROR ]{RESET}: Couldn't locate {GREEN}{}{RESET} in the vfs!",
+                source_file.display()
+            ),
+        },
         Commands::Find {
             path,
             format,
