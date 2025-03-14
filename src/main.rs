@@ -218,7 +218,8 @@ fn get_data_paths(config: &openmw_cfg::Ini) -> Vec<PathBuf> {
 }
 
 fn filter_data_paths(to_keep: &PathBuf, paths: &mut Vec<PathBuf>) {
-    paths.retain(|path| normalize_path(&path).eq(&normalize_path(&to_keep)))
+    let normalized_input = normalize_path(&to_keep);
+    paths.retain(|path| normalize_path(&path).eq(&normalized_input))
 }
 
 fn construct_vfs() -> VFS {
