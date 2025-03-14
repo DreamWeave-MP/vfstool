@@ -54,9 +54,6 @@ enum Commands {
 
         /// If this is used, any case where hard linking failed or won't work (files in BSA
         /// archives), falls back to normal copying operations
-        ///
-        /// Without this argument, files inside of BSA archives are ignored completely during
-        /// collapsing.
         #[arg(short, long)]
         allow_copying: bool,
 
