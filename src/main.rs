@@ -65,6 +65,10 @@ enum Commands {
         ///
         /// C:\Games\Morrowind\Data Files\Meshes\XBase_Anim.nif
         path: PathBuf,
+
+        /// Simple output, no coloration or formatting. Useful for pipes
+        #[arg(short, long)]
+        simple: bool,
     },
     /// Given some query term, locate all matches in the vfs.
     Find {
@@ -351,7 +355,7 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Commands::FindFile { path } => {
+        Commands::FindFile { path, simple } => {
             let file = vfs.get_file(&path);
             if let Some(found_file) = file {
                 let path_display = match found_file.is_archive() {
@@ -359,11 +363,15 @@ fn main() -> Result<()> {
                     false => found_file.path().to_string_lossy().to_string(),
                 };
 
-                println!(
-                    "{GREEN}[ SUCCESS ]{RESET}: Successfully found VFS File {BLUE}{}{RESET} at path {GREEN}{}{RESET}",
-                    &path.display(),
-                    &path_display,
-                )
+                if simple {
+                    println!("{}", path.display());
+                } else {
+                    println!(
+                        "{GREEN}[ SUCCESS ]{RESET}: Successfully found VFS File {BLUE}{}{RESET} at path {GREEN}{}{RESET}",
+                        &path.display(),
+                        &path_display,
+                    )
+                }
             } else {
                 eprintln!(
                     "{RED}[ ERROR ]{RESET}: Failed to locate {BLUE}{}{RESET} in the provided VFS.",
