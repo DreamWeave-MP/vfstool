@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use dw_vfs_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
+use rayon::prelude::*;
 use std::{
     env,
-    fs::{self, hard_link, metadata, read_dir},
+    fs::{self, hard_link, metadata},
     io::{self, Result, Write},
     path::PathBuf,
 };
@@ -209,25 +210,19 @@ fn main() -> Result<()> {
                 fs::create_dir_all(&collapse_into)?;
             };
 
-            for (relative_path, file) in vfs.iter() {
+            vfs.par_iter().for_each(|(relative_path, file)| {
                 let merged_path = collapse_into.join(relative_path);
                 let merged_dir = merged_path.parent().unwrap();
 
-                println!(
-                    "Merging file {} into directory {} . . .",
-                    relative_path.display(),
-                    merged_path.display(),
-                );
-
                 if metadata(&merged_dir).is_err() {
-                    fs::create_dir_all(&merged_dir)?;
+                    fs::create_dir_all(&merged_dir).unwrap();
                 };
 
                 if file.is_loose() {
                     assert!(file.path().exists());
 
                     if metadata(&merged_path).is_ok() {
-                        fs::remove_file(&merged_path)?;
+                        fs::remove_file(&merged_path).unwrap();
                     }
 
                     // Since we extract files *out of* BSA archives
@@ -235,7 +230,7 @@ fn main() -> Result<()> {
                     if let Some(extension) = file.path().extension() {
                         if extension == "bsa" && allow_copying {
                             println!("Skipping archive {}", file.file_name().unwrap());
-                            continue;
+                            return;
                         }
                     }
 
@@ -257,9 +252,10 @@ fn main() -> Result<()> {
                             }
                         }
                     } else {
-                        let new_metadata = metadata(&merged_path)?;
-                        let old_metadata = metadata(file.path())?;
+                        let new_metadata = metadata(&merged_path).unwrap();
+                        let old_metadata = metadata(file.path()).unwrap();
                         assert_eq!(new_metadata.len(), old_metadata.len());
+                        println!("Successfully wrote {} to {}", file.path().display(), merged_path.display());
                     };
                 } else {
                     if !allow_copying {
@@ -289,7 +285,7 @@ fn main() -> Result<()> {
                         };
                     }
                 }
-            }
+            });
         }
         Commands::Find {
             path,

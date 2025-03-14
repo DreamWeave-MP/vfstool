@@ -309,6 +309,7 @@ dependencies = [
  "clap",
  "dw_vfs_lib",
  "openmw-cfg",
+ "rayon",
 ]
 
 [[package]]

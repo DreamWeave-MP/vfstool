@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.32", features = ["derive"] }
 dw_vfs_lib = { path = "dw_vfs_lib" }
+rayon = "1.10.0"
 
 [dependencies.openmw-cfg]
 git = "https://gitlab.com/magicaldave1/openmw-cfg"
