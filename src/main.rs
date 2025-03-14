@@ -14,6 +14,14 @@ pub const BLUE: &str = "\x1b[34m";
 pub const WHITE: &str = "\x1b[37m";
 pub const RESET: &str = "\x1b[0m"; // Reset to default terminal color
 
+const fn err_prefix() -> &'static str {
+    concat!("\x1b[31m", "[ ERROR ]", "\x1b[0m", ": ")
+}
+
+const fn success_prefix() -> &'static str {
+    concat!("\x1b[32m", "[ SUCCESS ]", "\x1b[0m", ": ")
+}
+
 #[derive(Parser)]
 #[command(
     name = "vfstool",
@@ -311,7 +319,7 @@ fn main() -> Result<()> {
                         let extension = extension.to_ascii_lowercase();
 
                         if (extension == "bsa" || extension == "ba2") && extract_archives {
-                            println!("Skipping archive {}", file.file_name().unwrap());
+                            println!("Skipping archive {}", file.file_name().unwrap().to_string_lossy());
                             return;
                         }
                     }
@@ -460,33 +468,38 @@ fn main() -> Result<()> {
                 FindType::NameExact => vfs_file
                     .file_name()
                     .unwrap_or_default()
-                    .eq_ignore_ascii_case(&path_string),
+                    .eq_ignore_ascii_case(path.as_os_str()),
                 FindType::Name => vfs_file
                     .file_name()
                     .unwrap_or_default()
+                    .to_string_lossy()
                     .to_ascii_lowercase()
                     .contains(&path_string),
                 FindType::Folder => normalize_path(vfs_file.path().parent().unwrap())
                     .to_string_lossy()
                     .contains(&path_string),
-                FindType::Prefix => normalize_path(vfs_file.path())
-                    .to_string_lossy()
-                    .starts_with(&path_string),
+                FindType::Prefix => normalize_path(vfs_file.path()).starts_with(&path_string),
                 FindType::Stem => vfs_file
                     .file_stem()
                     .unwrap_or_default()
+                    .to_string_lossy()
                     .to_ascii_lowercase()
                     .contains(&path_string),
                 FindType::StemExact => vfs_file
                     .file_stem()
                     .unwrap_or_default()
                     .eq_ignore_ascii_case(&path_string),
-                FindType::Contains => vfs_file
-                    .path()
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .replace("\\", "/")
-                    .contains(&path_string),
+                FindType::Contains => {
+                    let vfs_normalized = normalize_path(vfs_file.path());
+                    let query_normalized = normalize_path(&path);
+
+                    let vfs_path = vfs_normalized.as_os_str().as_encoded_bytes();
+                    let query = query_normalized.as_os_str().as_encoded_bytes();
+
+                    vfs_path
+                        .windows(query.len())
+                        .any(|window| window.eq_ignore_ascii_case(query))
+                }
             };
 
             let tree = vfs.tree_filtered(args.use_relative, filter_closure);
@@ -508,14 +521,16 @@ fn main() -> Result<()> {
                     println!("{}", path_display);
                 } else {
                     println!(
-                        "{GREEN}[ SUCCESS ]{RESET}: Successfully found VFS File {BLUE}{}{RESET} at path {GREEN}{}{RESET}",
+                        "{}Successfully found VFS File {BLUE}{}{RESET} at path {GREEN}{}{RESET}",
+                        success_prefix(),
                         &path.display(),
                         &path_display,
                     )
                 }
             } else {
                 eprintln!(
-                    "{RED}[ ERROR ]{RESET}: Failed to locate {BLUE}{}{RESET} in the provided VFS.",
+                    "{}Failed to locate {BLUE}{}{RESET} in the provided VFS.",
+                    err_prefix(),
                     path.display()
                 )
             }
