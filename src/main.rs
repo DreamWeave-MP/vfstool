@@ -211,15 +211,14 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
 }
 
 fn get_config() -> openmw_cfg::Ini {
-    openmw_cfg::get_config().expect(&format!(
-        "{RED}[ CRITICAL ERROR ]{RESET}: Failed to read openmw_cfg!"
-    ))
+    openmw_cfg::get_config().expect(&format!("{}Failed to read openmw_cfg!", err_prefix()))
 }
 
 fn get_data_paths(config: &openmw_cfg::Ini) -> Vec<PathBuf> {
     openmw_cfg::get_data_dirs(&config)
         .expect(&format!(
-            "{RED}[CRITICAL ERROR ]{RESET}: Failed to get data directories from Openmw.cfg!"
+            "{}Failed to get data directories from Openmw.cfg!",
+            err_prefix()
         ))
         .iter()
         .map(PathBuf::from)
@@ -399,12 +398,14 @@ fn main() -> Result<()> {
                             if file.is_loose() {
                                 if let Err(error) = fs::copy(file.path(), &target_path) {
                                     eprintln!(
-                                        "{RED}[ ERROR ]{RESET}: Failed extracting loose file from the vfs: {GREEN}{}{RESET}",
+                                        "{}Failed extracting loose file from the vfs: {GREEN}{}{RESET}",
+                                        err_prefix(),
                                         error.to_string()
                                     );
                                 } else {
                                     println!(
-                                        "{GREEN}[ SUCCESS ]{RESET}: Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
+                                        "{}Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
+                                        success_prefix(),
                                         file.path().display(),
                                         target_dir.display()
                                     );
@@ -416,14 +417,16 @@ fn main() -> Result<()> {
                                         if let Ok(_) = data.read_to_end(&mut buf) {
                                             if let Err(error) = fs::write(&target_path, buf) {
                                                 eprintln!(
-                                                    "{RED}[ ERROR ]{RESET}: Extracting archived file {GREEN}{}{RESET} to {BLUE}{}{RESET} failed due to {RED}{}{RESET}!",
+                                                    "{}Extracting archived file {GREEN}{}{RESET} to {BLUE}{}{RESET} failed due to {RED}{}{RESET}!",
+                                                    err_prefix(),
                                                     source_file.display(),
                                                     target_path.display(),
                                                     error.to_string()
                                                 );
                                             } else {
                                                 println!(
-                                                    "{GREEN}[ SUCCESS ]{RESET}: Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
+                                                    "{}Successfully extracted {GREEN}{}{RESET} to {BLUE}{}{RESET}",
+                                                    success_prefix(),
                                                     file.path().display(),
                                                     target_dir.display()
                                                 );
@@ -432,7 +435,8 @@ fn main() -> Result<()> {
                                     }
                                     Err(error) => {
                                         eprintln!(
-                                            "{RED}[ ERROR ]{RESET}: Failed to open archived file: {GREEN}{}{RESET}",
+                                            "{}Failed to open archived file: {GREEN}{}{RESET}",
+                                            err_prefix(),
                                             error.to_string()
                                         )
                                     }
@@ -440,19 +444,22 @@ fn main() -> Result<()> {
                             }
                         }
                         None => eprintln!(
-                            "{RED}[ ERROR ]{RESET}: Source file {GREEN}{}{RESET} does not have a file name! Cannot extract it!",
+                            "{}Source file {GREEN}{}{RESET} does not have a file name! Cannot extract it!",
+                            err_prefix(),
                             source_file.display()
                         ),
                     };
                 } else {
                     eprintln!(
-                        "{RED}[ ERROR ]{RESET}: Provided argument {GREEN}{}{RESET} is not a directory! Cannot extract here!",
+                        "{}Provided argument {GREEN}{}{RESET} is not a directory! Cannot extract here!",
+                        err_prefix(),
                         target_dir.display()
                     );
                 }
             }
             None => eprintln!(
-                "{RED}[ ERROR ]{RESET}: Couldn't locate {GREEN}{}{RESET} in the vfs!",
+                "{}Couldn't locate {GREEN}{}{RESET} in the vfs!",
+                err_prefix(),
                 source_file.display()
             ),
         },
