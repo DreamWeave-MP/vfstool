@@ -315,12 +315,12 @@ fn main() -> Result<()> {
                             if file.is_loose() {
                                 if let Err(error) = fs::copy(file.path(), target_dir.join(name)) {
                                     eprintln!(
-                                        "Failed extracting loose file from the vfs: {}",
+                                        "{RED}[ ERROR ]{RESET}: Failed extracting loose file from the vfs: {}",
                                         error.to_string()
                                     );
                                 } else {
                                     println!(
-                                        "Successfully extracted {} to {}",
+                                        "{GREEN}[ SUCCESS ]{RESET}: Successfully extracted {} to {}",
                                         file.path().display(),
                                         target_dir.display()
                                     );
@@ -330,7 +330,7 @@ fn main() -> Result<()> {
                             }
                         }
                         None => eprintln!(
-                            "Source file {} does not have a file name! Cannot extract it!",
+                            "{RED}[ ERROR ]{RESET}: Source file {GREEN}{}{RESET} does not have a file name! Cannot extract it!",
                             source_file.display()
                         ),
                     };
