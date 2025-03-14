@@ -222,6 +222,14 @@ fn filter_data_paths(to_keep: &PathBuf, paths: &mut Vec<PathBuf>) {
     paths.retain(|path| normalize_path(&path).eq(&normalized_input))
 }
 
+fn output_to_serialize_type(format: OutputFormat) -> SerializeType {
+    match format {
+        OutputFormat::Json => SerializeType::Json,
+        OutputFormat::Yaml => SerializeType::Yaml,
+        OutputFormat::Toml => SerializeType::Toml,
+    }
+}
+
 fn construct_vfs() -> VFS {
     let config = get_config();
 
@@ -457,14 +465,7 @@ fn main() -> Result<()> {
 
             let tree = vfs.tree_filtered(args.use_relative, filter_closure);
 
-            let serialized = VFS::serialize_from_tree(
-                &tree,
-                match format {
-                    OutputFormat::Json => SerializeType::Json,
-                    OutputFormat::Yaml => SerializeType::Yaml,
-                    OutputFormat::Toml => SerializeType::Toml,
-                },
-            )?;
+            let serialized = VFS::serialize_from_tree(&tree, output_to_serialize_type(format))?;
 
             match output {
                 None => println!("{serialized}"),
@@ -526,14 +527,8 @@ fn main() -> Result<()> {
                 }
             });
 
-            let serialized = VFS::serialize_from_tree(
-                &files_remaining,
-                match format {
-                    OutputFormat::Json => SerializeType::Json,
-                    OutputFormat::Yaml => SerializeType::Yaml,
-                    OutputFormat::Toml => SerializeType::Toml,
-                },
-            )?;
+            let serialized =
+                VFS::serialize_from_tree(&files_remaining, output_to_serialize_type(format))?;
 
             match output {
                 None => println!("{serialized}"),
