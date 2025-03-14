@@ -310,7 +310,7 @@ fn main() -> Result<()> {
                     dir_meta = metadata(&target_dir);
                 }
 
-                let dir_meta = dir_meta.unwrap();
+                let dir_meta = dir_meta?;
 
                 if dir_meta.is_dir() {
                     match source_file.file_name() {
