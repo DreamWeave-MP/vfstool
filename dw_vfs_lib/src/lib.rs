@@ -19,19 +19,20 @@ pub enum SerializeType {
     Toml,
 }
 
-/// Lowercase path and convert path separators to unix-style
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
-    PathBuf::from(
-        path.as_ref()
-            .to_string_lossy()
-            .to_lowercase()
-            .replace("\\", "/"), // Additional handling for duplicate path separators
-                                 // But probably too expensive to actually use?
-                                 // .split('/')
-                                 // .filter(|s| !s.is_empty())
-                                 // .collect::<Vec<_>>()
-                                 // .join("/"),
-    )
+    let normalized = path
+        .as_ref()
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .map(|&byte| match byte {
+            b'\\' => '/' as u8,
+            b'A'..=b'Z' => byte + 32,
+            _ => byte,
+        })
+        .collect::<Vec<_>>();
+
+    PathBuf::from(unsafe { std::ffi::OsString::from_encoded_bytes_unchecked(normalized) })
 }
 
 pub mod archives {
