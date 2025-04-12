@@ -1,7 +1,7 @@
 use ba2::{
     fo4::{ArchiveKey as Fo4ArchiveKey, File as Fo4File},
     tes3::ArchiveKey as Tes3Key,
-    tes4::{ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey},
+    tes4::{ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey, File as Tes4File, FileCompressionOptions as Tes4CompressionOptions},
 };
 
 use std::{
@@ -70,6 +70,35 @@ impl Read for Fo4FileReader<'_> {
     }
 }
 
+pub struct TES4FileReader {
+    data: Cursor<Vec<u8>>, // Cursor over the file's data (decompressed or raw)
+}
+
+impl TES4FileReader {
+    /// Creates a new `TES4FileReader` for a TES4 file.
+    ///
+    /// If the file is compressed, it will be decompressed before being wrapped in the reader.
+    pub fn new(file: &Tes4File) -> io::Result<Self> {
+        let data = if file.is_compressed() {
+            file.decompress(&Tes4CompressionOptions::default())
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+                .as_bytes()
+                .to_vec()
+        } else {
+            file.as_bytes().to_vec()
+        };
+
+        Ok(Self {
+            data: Cursor::new(data),
+        })
+    }
+}
+
+impl Read for TES4FileReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.data.read(buf)
+    }
+}
 #[derive(Debug)]
 pub struct ArchiveReference {
     path: PathBuf,
@@ -264,10 +293,11 @@ impl VfsFile {
                     TypedArchive::Tes4(archive) => {
                         let (dir_key, file_key) = ArchiveReference::tes4_keys(&archive_ref.path)?;
 
-                        archive
+                        let file: &Tes4File = archive
                             .get(&dir_key)
-                            .and_then(|dir| dir.get(&file_key))
-                            .map(|file| file.as_bytes())
+                            .and_then(|dir| dir.get(&file_key)).unwrap();
+
+                        return Ok(Box::new(TES4FileReader::new(file)?));     
                     }
 
                     TypedArchive::Fo4(archive) => {
