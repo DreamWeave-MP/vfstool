@@ -137,14 +137,20 @@ pub mod archives {
                                 VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
                             )
                         })),
-                        TypedArchive::Tes4(data) => Box::new(data.iter().map(|(key, _value)| {
-                            let name_string = key.name().to_string();
-                            let normalized = crate::normalize_path(&name_string);
-                            (
-                                normalized,
-                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
-                            )
-                        })),
+                        TypedArchive::Tes4(data) => {
+                            Box::new(data.iter().flat_map(move |(dir_key, dir)| {
+                                let dir_string = dir_key.name();
+                                dir.iter().map(move |(key, _value)| {
+                                    let archive_path = format!("{}\\{}", dir_string, key.name());
+                                    let normalized = crate::normalize_path(&archive_path);
+                                    let vfs_file = VfsFile::from_archive(
+                                        &normalized.to_string_lossy(),
+                                        Arc::clone(stored_archive),
+                                    );
+                                    (normalized, vfs_file)
+                                })
+                            }))
+                        }
                         TypedArchive::Fo4(data) => Box::new(data.iter().map(|(key, _value)| {
                             let name_string = key.name().to_string();
                             let normalized = crate::normalize_path(&name_string);
