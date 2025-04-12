@@ -332,8 +332,9 @@ fn main() -> Result<()> {
                     // Don't bother including them in the collapsed directory
                     if let Some(extension) = file.path().extension() {
                         let extension = extension.to_ascii_lowercase();
+                        let file_name = file.file_name().unwrap_or_default().to_ascii_lowercase();
 
-                        if (extension == "bsa" || extension == "ba2") && extract_archives {
+                        if (extension == "bsa" || extension == "ba2") && extract_archives && file_name != "archiveinvalidationinvalidated!.bsa" {
                             println!("Skipping archive {}", file.file_name().unwrap().to_string_lossy());
                             return;
                         }
