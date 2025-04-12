@@ -3,10 +3,17 @@ use dw_vfs_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
 use rayon::prelude::*;
 use std::{
     env,
-    fs::{self, hard_link, metadata},
+    fs::{self, metadata},
     io::{self, Result, Write},
     path::PathBuf,
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::symlink as soft_link;
+
+#[cfg(windows)]
+use std::os::windows::fs::symlink_file as soft_link;
+
 
 mod print {
     pub const RED: &str = "\x1b[31m";
@@ -340,9 +347,9 @@ fn main() -> Result<()> {
                         }
                     }
 
-                    if let Err(error) = hard_link(file.path(), &merged_path) {
+                    if let Err(error) = soft_link(file.path(), &merged_path) {
                         eprintln!(
-                            "Hardlink attempt for {} failed due to error: {}",
+                            "Symlink attempt for {} failed due to error: {}",
                             file.path().display(),
                             error.to_string()
                         );
