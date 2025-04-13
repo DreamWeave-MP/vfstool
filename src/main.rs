@@ -3,7 +3,7 @@ use dw_vfs_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
 use rayon::prelude::*;
 use std::{
     env,
-    fs::{self, metadata},
+    fs::{self, hard_link, metadata},
     io::{self, Result, Write},
     path::PathBuf,
 };
@@ -88,6 +88,10 @@ enum Commands {
         /// If enabled, allows extracting files out of BSA/BA2 archives during collapsing
         #[arg(short, long)]
         extract_archives: bool,
+
+        /// Use symbolic instead of hardlinks, to allow cross-device links
+        #[arg(short, long)]
+        symbolic: bool,
     },
     /// Extract a given file from the VFS into a given directory
     Extract {
@@ -315,6 +319,7 @@ fn main() -> Result<()> {
             collapse_into,
             allow_copying,
             extract_archives,
+            symbolic,
         } => {
             if metadata(&collapse_into).is_err() {
                 fs::create_dir_all(&collapse_into)?;
@@ -347,7 +352,13 @@ fn main() -> Result<()> {
                         }
                     }
 
-                    if let Err(error) = soft_link(file.path(), &merged_path) {
+                    let link_fn = if symbolic {
+                        soft_link
+                    } else {
+                        hard_link
+                    };
+
+                    if let Err(error) = link_fn(file.path(), &merged_path) {
                         eprintln!(
                             "Symlink attempt for {} failed due to error: {}",
                             file.path().display(),
