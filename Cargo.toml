@@ -1,10 +1,10 @@
 [package]
-name = "dw_vfstool"
+name = "vfstool"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.32", features = ["derive"] }
+clap = { version = "4.5.37", features = ["derive"] }
 dw_vfs_lib = { path = "dw_vfs_lib" }
 rayon = "1.10.0"
 
