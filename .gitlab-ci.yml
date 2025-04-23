@@ -5,7 +5,7 @@ stages:
   - release
 
 variables:
-  build_img: "$CI_REGISTRY/modding-openmw/iced-netch:netchbuild_0.26"
+  build_img: "$CI_REGISTRY/modding-openmw/iced-netch:netchbuild_0.27"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
   COSIGN_YES: "true"
   LINUX_ARCHIVE: "vfstool-linux.zip"
