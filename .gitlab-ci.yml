@@ -54,7 +54,7 @@ build-windows:
     TARGET: x86_64-pc-windows-gnu
     OUTPUT_ARCHIVE: $WIN_ARCHIVE
   script: 
-    - >
+    - |
       apt install -y gcc-mingw-w64-x86-64
       "build_scan_sign"
   artifacts:
