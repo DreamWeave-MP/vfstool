@@ -53,7 +53,10 @@ build-windows:
     SIG_BUNDLE: "vfstool-win-${CI_COMMIT_REF_NAME}-sig.bundle"
     TARGET: x86_64-pc-windows-gnu
     OUTPUT_ARCHIVE: $WIN_ARCHIVE
-  script: "build_scan_sign"
+  script: 
+    - >
+      apt install -y g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64
+      "build_scan_sign"
   artifacts:
     name: "vfstool-windows"
     paths:
