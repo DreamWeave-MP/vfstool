@@ -55,7 +55,7 @@ build-windows:
     OUTPUT_ARCHIVE: $WIN_ARCHIVE
   script: 
     - |
-      apt install -y mingw-w64 gcc-mingw-w64-x86-64
+      apt install -y g++-mingw-w64 gcc-mingw-w64-x86-64
       "build_scan_sign"
   artifacts:
     name: "vfstool-windows"
