@@ -22,7 +22,7 @@ jobs:
           - os: macos-latest
             binary: vfstool
             archive: macos-latest.zip
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             binary: vfstool
             archive: ubuntu-latest.zip
           - os: windows-latest
@@ -45,7 +45,7 @@ jobs:
         run: 7z a -tzip ${{matrix.archive}} vfstool-${{ matrix.os }}.bundle ./target/release/${{matrix.binary}}
 
       - name: upload
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
