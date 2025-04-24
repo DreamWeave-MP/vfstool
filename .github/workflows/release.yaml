@@ -61,8 +61,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.release_name }}
-          release_name: ${{ env.release_name }}
           prerelease: ${{ env.tagged == 'false' }}
+          generate_release_notes: true
           files: |
             ${{ matrix.archive }}
 
