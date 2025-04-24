@@ -51,6 +51,7 @@ jobs:
         with:
           files: |
             ${{ matrix.archive }}
+            README.md
 
       - name: VirusTotal Scan
         uses: crazy-max/ghaction-virustotal@v4
