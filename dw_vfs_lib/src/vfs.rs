@@ -1,11 +1,16 @@
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use crate::{DirectoryNode, DisplayTree, SerializeType, VfsFile, archives, normalize_path};
+#[cfg(feature = "serialize")]
+use crate::SerializeType;
+#[cfg(feature = "serialize")]
+use std::io::Result;
+
+use crate::{DirectoryNode, DisplayTree, VfsFile, archives, normalize_path};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
-    io::{Error, ErrorKind, Result},
+    io::{Error, ErrorKind},
     ops::Index,
     path::{Path, PathBuf},
 };
@@ -292,6 +297,7 @@ impl VFS {
     }
 
     /// Serializes the result of `tree` or `display_filtered` functions to JSON, YAML, or TOML
+    #[cfg(feature = "serialize")]
     pub fn serialize_from_tree(tree: &DisplayTree, write_type: SerializeType) -> Result<String> {
         fn to_io_error<E: std::fmt::Display>(err: E) -> Error {
             Error::new(ErrorKind::InvalidData, err.to_string())

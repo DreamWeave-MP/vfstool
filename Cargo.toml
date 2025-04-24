@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.37", features = ["derive"] }
-dw_vfs_lib = { path = "dw_vfs_lib" }
+dw_vfs_lib = { path = "dw_vfs_lib", features = ["serialize"] }
 rayon = "1.10.0"
 
 [dependencies.openmw-cfg]

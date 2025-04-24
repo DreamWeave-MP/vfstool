@@ -1,6 +1,8 @@
 use crate::{DisplayTree, VfsFile};
-use serde::{Serialize, Serializer, ser::SerializeMap};
 use std::collections::BTreeMap;
+
+#[cfg(feature = "serialize")]
+use serde::{Serialize, Serializer, ser::SerializeMap};
 
 /// Represents a directory node in the Virtual File System (VFS).
 ///
@@ -86,6 +88,7 @@ impl DirectoryNode {
     }
 }
 
+#[cfg(feature = "serialize")]
 impl Serialize for DirectoryNode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
