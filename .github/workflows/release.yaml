@@ -42,6 +42,7 @@ jobs:
           else
             echo "tagged=false" >> $GITHUB_ENV
             echo "release_name=development" >> $GITHUB_ENV
+          fi
         shell: bash
 
       - name: Upload Release
