@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 readme = "README.md"
 homepage = "https://github.com/magicaldave/vfstool"
 repository = "https://github.com/magicaldave/vfstool"
-keywords = ["vfs", "virtual file system", "filesystem", "openmw", "gamedev", "modding", "bethesda", ]
+keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda", ]
 
 [dependencies]
 ba2 = "3.0.1"
