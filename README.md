@@ -35,7 +35,7 @@ Clone the repository and build the tool using `cargo`:
 ```bash
 git clone https://github.com/magicaldave/vfstool.git
 cd vfstool
-cargo build --release
+cargo install --path .
 ```
 
 ---
