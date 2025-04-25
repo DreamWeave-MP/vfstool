@@ -290,19 +290,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dw_vfs_lib"
-version = "0.1.0"
-dependencies = [
- "ba2",
- "rayon",
- "serde",
- "serde_json",
- "serde_yaml_with_quirks",
- "toml",
- "walkdir",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -805,9 +792,22 @@ name = "vfstool"
 version = "0.1.0"
 dependencies = [
  "clap",
- "dw_vfs_lib",
  "openmw-cfg",
  "rayon",
+ "vfstool_lib",
+]
+
+[[package]]
+name = "vfstool_lib"
+version = "0.1.0"
+dependencies = [
+ "ba2",
+ "rayon",
+ "serde",
+ "serde_json",
+ "serde_yaml_with_quirks",
+ "toml",
+ "walkdir",
 ]
 
 [[package]]

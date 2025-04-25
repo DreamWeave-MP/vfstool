@@ -1,2 +1,3 @@
 /target
-dw_vfs_lib/target
+vfstool_lib/target
+.vscode/

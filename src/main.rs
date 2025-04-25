@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use dw_vfs_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
+use vfstool_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
 use rayon::prelude::*;
 use std::{
     env,
@@ -286,7 +286,7 @@ fn construct_vfs() -> VFS {
 fn write_serialized_vfs(
     path: Option<PathBuf>,
     format: OutputFormat,
-    files: &dw_vfs_lib::DisplayTree,
+    files: &vfstool_lib::DisplayTree,
 ) -> io::Result<()> {
     let serialized = VFS::serialize_from_tree(files, output_to_serialize_type(format))?;
 
