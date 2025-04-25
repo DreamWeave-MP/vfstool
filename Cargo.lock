@@ -290,6 +290,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dw-openmw-cfg"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "265fcfb8687a2a26bcc45adbee69d6fa6667f994083da22aaafa84ebd4ad11d3"
+dependencies = [
+ "bsatoollib",
+ "dirs",
+ "rayon",
+ "rust-ini",
+ "shellexpand",
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -472,19 +486,6 @@ name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
-
-[[package]]
-name = "openmw-cfg"
-version = "0.5.2"
-source = "git+https://gitlab.com/magicaldave1/openmw-cfg?rev=e0128a73360fdf226b4038c27c4e0c95e9735f2e#e0128a73360fdf226b4038c27c4e0c95e9735f2e"
-dependencies = [
- "bsatoollib",
- "dirs",
- "rayon",
- "rust-ini",
- "shellexpand",
- "thiserror 2.0.12",
-]
 
 [[package]]
 name = "option-ext"
@@ -792,7 +793,7 @@ name = "vfstool"
 version = "0.1.0"
 dependencies = [
  "clap",
- "openmw-cfg",
+ "dw-openmw-cfg",
  "rayon",
  "vfstool_lib",
 ]

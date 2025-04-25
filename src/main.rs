@@ -199,7 +199,7 @@ enum FindType {
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
     let dir_metadata = metadata(&dir);
-    let default_location = openmw_cfg::config_path();
+    let default_location = dw_openmw_cfg::config_path();
 
     let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
         false => Some(format!(
@@ -234,15 +234,15 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
     Ok(())
 }
 
-fn get_config() -> openmw_cfg::Ini {
-    openmw_cfg::get_config().expect(&format!(
+fn get_config() -> dw_openmw_cfg::Ini {
+    dw_openmw_cfg::get_config().expect(&format!(
         "{}Failed to read openmw_cfg!",
         print::err_prefix()
     ))
 }
 
-fn get_data_paths(config: &openmw_cfg::Ini) -> Vec<PathBuf> {
-    openmw_cfg::get_data_dirs(&config)
+fn get_data_paths(config: &dw_openmw_cfg::Ini) -> Vec<PathBuf> {
+    dw_openmw_cfg::get_data_dirs(&config)
         .expect(&format!(
             "{}Failed to get data directories from Openmw.cfg!",
             print::err_prefix()
