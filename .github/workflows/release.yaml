@@ -2,6 +2,9 @@ name: release
 on:
   push:
 
+env:
+  CARGO_HOME: ${{ github.workspace }}/.cargo
+
 jobs:
   build:
     strategy:
@@ -28,9 +31,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
+            .cargo/
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: build
