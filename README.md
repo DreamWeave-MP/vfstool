@@ -14,6 +14,22 @@
 
 ## Installation
 
+As of version 0.1.6, vfstool is published in many places!
+
+### GitHub
+
+The latest stable release can be downloaded from GitHub for macOS, Linux, and Windows [here](https://github.com/magicaldave/vfstool/releases/latest). Development builds can be found at [here](https://github.com/magicaldave/vfstool/releases/development).
+
+### AUR
+
+`yay -S vfstool-git`.
+
+### crates.io
+
+`cargo install vfstool`
+
+### source
+
 Clone the repository and build the tool using `cargo`:
 
 ```bash
