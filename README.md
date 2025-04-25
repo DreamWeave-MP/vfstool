@@ -33,7 +33,7 @@ The latest stable release can be downloaded from GitHub for macOS, Linux, and Wi
 Clone the repository and build the tool using `cargo`:
 
 ```bash
-git clone https://github.com/yourusername/vfstool.git
+git clone https://github.com/magicaldave/vfstool.git
 cd vfstool
 cargo build --release
 ```
