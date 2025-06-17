@@ -1,6 +1,6 @@
 [package]
 name = "vfstool"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 description = "A command-line tool for constructing, manipulating, and introspecting virtual file systems in Rust, based on OpenMW's VFS implementation."
 license = "GPL-3.0-or-later"
