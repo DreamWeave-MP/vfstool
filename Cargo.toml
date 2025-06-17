@@ -16,7 +16,8 @@ rayon = "1.10.0"
 
 [dependencies.openmw-config]
 git = "https://github.com/magicaldave/Openmw_Config.git"
-rev = "d75bfe2a29a36fc71b76f1b8813c1a1187b87ed8"
+version = "0.1.0"
+# rev = "d75bfe2a29a36fc71b76f1b8813c1a1187b87ed8"
 
 # [dependencies.openmw-cfg]
 # git = "https://gitlab.com/magicaldave1/openmw-cfg"
