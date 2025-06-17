@@ -1,19 +1,17 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use vfstool_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
 use rayon::prelude::*;
 use std::{
-    env,
     fs::{self, hard_link, metadata},
     io::{self, Result, Write},
     path::PathBuf,
 };
+use vfstool_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink as soft_link;
 
 #[cfg(windows)]
 use std::os::windows::fs::symlink_file as soft_link;
-
 
 mod print {
     pub const RED: &str = "\x1b[31m";
@@ -197,9 +195,9 @@ enum FindType {
     NameExact,
 }
 
-fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
+fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
     let dir_metadata = metadata(&dir);
-    let default_location = dw_openmw_cfg::config_path();
+    let default_location = openmw_config::default_config_path();
 
     let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
         false => Some(format!(
@@ -218,11 +216,7 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
                     dir.display(),
                     &default_location.display()
                 )),
-                Some(dir) => {
-                    // This is a single threaded application!
-                    unsafe { env::set_var("OPENMW_CONFIG", &dir) };
-                    None
-                }
+                Some(dir) => return Ok(dir),
             }
         }
     };
@@ -231,25 +225,10 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<()> {
         eprintln!("{}", fail_message);
     };
 
-    Ok(())
-}
-
-fn get_config() -> dw_openmw_cfg::Ini {
-    dw_openmw_cfg::get_config().expect(&format!(
-        "{}Failed to read openmw_cfg!",
-        print::err_prefix()
+    Err(std::io::Error::new(
+        io::ErrorKind::NotFound,
+        "Unable to resolve configuration directory!",
     ))
-}
-
-fn get_data_paths(config: &dw_openmw_cfg::Ini) -> Vec<PathBuf> {
-    dw_openmw_cfg::get_data_dirs(&config)
-        .expect(&format!(
-            "{}Failed to get data directories from Openmw.cfg!",
-            print::err_prefix()
-        ))
-        .iter()
-        .map(PathBuf::from)
-        .collect()
 }
 
 fn filter_data_paths(to_keep: &PathBuf, paths: &mut Vec<PathBuf>) {
@@ -265,19 +244,20 @@ fn output_to_serialize_type(format: OutputFormat) -> SerializeType {
     }
 }
 
-fn construct_vfs() -> VFS {
-    let config = get_config();
+fn construct_vfs(config_path: PathBuf) -> VFS {
+    let config = match openmw_config::OpenMWConfiguration::new(Some(config_path)) {
+        Err(config_err) => {
+            eprintln!("Failed to load configuration file: {config_err}");
+            std::process::exit(255);
+        }
+        Ok(config) => config,
+    };
 
-    let data_paths = get_data_paths(&config);
+    let data_paths = config.data_directories();
 
-    // Collect archives from openmw.cfg, in order
     let archives = config
-        .general_section()
-        .iter()
-        .filter_map(|(k, v)| match k == "fallback-archive" {
-            false => None,
-            true => Some(v),
-        })
+        .fallback_archives_iter()
+        .map(|archive| archive.value().as_str())
         .collect();
 
     VFS::from_directories(data_paths, Some(archives))
@@ -307,12 +287,11 @@ fn write_serialized_vfs(
 
 fn main() -> Result<()> {
     let args = Cli::parse();
+    let config_dir = args.config.unwrap_or(openmw_config::default_config_path());
 
-    if let Some(config_path) = args.config {
-        validate_config_dir(&config_path)?;
-    }
+    let resolved_config_dir = validate_config_dir(&config_dir)?;
 
-    let vfs = construct_vfs();
+    let vfs: VFS = construct_vfs(resolved_config_dir.clone());
 
     match args.command {
         Commands::Collapse {
@@ -583,7 +562,20 @@ fn main() -> Result<()> {
             format,
             output,
         } => {
-            let mut paths = get_data_paths(&get_config());
+            let config =
+                match openmw_config::OpenMWConfiguration::new(Some(resolved_config_dir.clone())) {
+                    Err(config_err) => {
+                        eprintln!("Failed to load openmw.cfg for comparison: {config_err}");
+                        std::process::exit(256);
+                    }
+                    Ok(config) => config,
+                };
+
+            let mut paths = config
+                .data_directories_iter()
+                .map(|dir| dir.parsed().to_owned())
+                .collect();
+
             filter_data_paths(&filter_path, &mut paths);
 
             let filtered_vfs = VFS::from_directories(&paths, None);
