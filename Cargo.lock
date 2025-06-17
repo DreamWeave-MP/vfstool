@@ -425,9 +425,9 @@ checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
 
 [[package]]
 name = "openmw-config"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f35029ee5377add4ffd8b94234af55e1471c541966f3e5bd9b0af689a588e27a"
+checksum = "dcf0230b1f44e975283a24835e30732b0433a7aa58de921cd86c875199f9bb7d"
 dependencies = [
  "dirs",
 ]
