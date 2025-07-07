@@ -35,15 +35,17 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
     PathBuf::from(unsafe { std::ffi::OsString::from_encoded_bytes_unchecked(normalized) })
 }
 
+#[cfg(feature = "bsa")]
 pub mod archives {
-    use super::VfsFile;
-    use ba2::{self, prelude::*, tes3::Archive as TES3Archive};
     use std::{
         collections::HashMap,
         fs::File,
         path::{Path, PathBuf},
         sync::Arc,
     };
+
+    use super::VfsFile;
+    use ba2::{self, prelude::*, tes3::Archive as TES3Archive};
 
     #[derive(Debug)]
     pub enum TypedArchive {
@@ -123,6 +125,7 @@ pub mod archives {
             .collect()
     }
 
+    #[cfg(feature = "bsa")]
     pub fn file_map(archives: ArchiveList) -> HashMap<PathBuf, VfsFile> {
         archives
             .iter()

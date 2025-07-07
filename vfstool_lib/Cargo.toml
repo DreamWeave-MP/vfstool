@@ -1,23 +1,29 @@
 [package]
 name = "vfstool_lib"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A library for constructing and manipulating virtual file systems in Rust, based on OpenMW's VFS implementation."
 license = "GPL-3.0-or-later"
 readme = "README.md"
 homepage = "https://github.com/magicaldave/vfstool"
 repository = "https://github.com/magicaldave/vfstool"
-keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda", ]
+keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 
 [dependencies]
-ba2 = "3.0.1"
+ba2 = { version = "3.0.1", optional = true }
 rayon = "1.10.0"
-serde = { version = "1.0.218", features = ["derive"], optional  = true }
+serde = { version = "1.0.218", features = ["derive"], optional = true }
 serde_json = { version = "1.0.140", optional = true }
-serde_yaml_with_quirks = { version = "0.8.24", optional = true }
-toml = { version = "0.8.20", optional = true}
+serde_yaml_with_quirks = { version = "0.9.34", optional = true }
+toml = { version = "0.8.23", optional = true }
 walkdir = "2.5.0"
 
 [features]
 default = []
-serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml_with_quirks", "dep:toml"]
+bsa = ["dep:ba2"]
+serialize = [
+    "dep:serde",
+    "dep:serde_json",
+    "dep:serde_yaml_with_quirks",
+    "dep:toml",
+]

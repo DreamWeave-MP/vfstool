@@ -1,24 +1,36 @@
+#[cfg(feature = "bsa")]
 use ba2::{
     fo4::{ArchiveKey as Fo4ArchiveKey, File as Fo4File},
     tes3::ArchiveKey as Tes3Key,
-    tes4::{ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey, File as Tes4File, FileCompressionOptions as Tes4CompressionOptions},
+    tes4::{
+        ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey, File as Tes4File,
+        FileCompressionOptions as Tes4CompressionOptions,
+    },
+};
+
+#[cfg(feature = "bsa")]
+use std::{
+    io::{Cursor, Error, ErrorKind},
+    sync::Arc,
 };
 
 use std::{
     fs::File as StdFile,
-    io::{self, Cursor, Error, ErrorKind, Read},
+    io::{self, Read},
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
+#[cfg(feature = "bsa")]
 use crate::archives::{StoredArchive, TypedArchive};
 
+#[cfg(feature = "bsa")]
 pub struct Fo4FileReader<'a> {
     chunks: std::vec::IntoIter<&'a [u8]>,
     current_chunk: Option<&'a [u8]>,
     position: usize,
 }
 
+#[cfg(feature = "bsa")]
 /// Since FO4 Archives are stored in chunks, implement a custom reader for them
 /// This allows to seamlessly call read on them as we do for other all other file types
 impl<'a> Fo4FileReader<'a> {
@@ -38,6 +50,7 @@ impl<'a> Fo4FileReader<'a> {
     }
 }
 
+#[cfg(feature = "bsa")]
 impl Read for Fo4FileReader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let mut total_read = 0;
@@ -70,10 +83,12 @@ impl Read for Fo4FileReader<'_> {
     }
 }
 
+#[cfg(feature = "bsa")]
 pub struct TES4FileReader {
     data: Cursor<Vec<u8>>, // Cursor over the file's data (decompressed or raw)
 }
 
+#[cfg(feature = "bsa")]
 impl TES4FileReader {
     /// Creates a new `TES4FileReader` for a TES4 file.
     ///
@@ -94,17 +109,21 @@ impl TES4FileReader {
     }
 }
 
+#[cfg(feature = "bsa")]
 impl Read for TES4FileReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.data.read(buf)
     }
 }
+
+#[cfg(feature = "bsa")]
 #[derive(Debug)]
 pub struct ArchiveReference {
     path: PathBuf,
     parent_archive: Arc<StoredArchive>,
 }
 
+#[cfg(feature = "bsa")]
 impl ArchiveReference {
     pub fn tes4_keys(path: &PathBuf) -> io::Result<(Tes4ArchiveKey, Tes4DirKey)> {
         let dir_key: Tes4ArchiveKey = path
@@ -130,6 +149,7 @@ impl ArchiveReference {
 
 #[derive(Debug)]
 pub enum FileType {
+    #[cfg(feature = "bsa")]
     Archive(ArchiveReference),
     Loose(PathBuf),
 }
@@ -186,6 +206,7 @@ impl VfsFile {
         }
     }
 
+    #[cfg(feature = "bsa")]
     pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> Self {
         let path = PathBuf::from(path.as_ref());
         VfsFile {
@@ -198,20 +219,24 @@ impl VfsFile {
 
     pub fn is_loose(&self) -> bool {
         match self.file {
-            FileType::Archive(_) => false,
             FileType::Loose(_) => true,
+            #[cfg(feature = "bsa")]
+            FileType::Archive(_) => false,
         }
     }
 
     pub fn is_archive(&self) -> bool {
         match self.file {
-            FileType::Archive(_) => true,
             FileType::Loose(_) => false,
+            #[cfg(feature = "bsa")]
+            FileType::Archive(_) => true,
         }
     }
 
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
+            FileType::Loose(_) => None,
+            #[cfg(feature = "bsa")]
             FileType::Archive(archive_ref) => {
                 let path_str = archive_ref
                     .parent_archive
@@ -224,12 +249,14 @@ impl VfsFile {
 
                 Some(path_str)
             }
-            FileType::Loose(_) => None,
         }
     }
 
     pub fn parent_archive_name(&self) -> Option<String> {
         match &self.file {
+            FileType::Loose(_) => None,
+
+            #[cfg(feature = "bsa")]
             FileType::Archive(archive_ref) => {
                 let name = archive_ref
                     .parent_archive
@@ -240,17 +267,17 @@ impl VfsFile {
 
                 Some(name)
             }
-            FileType::Loose(_) => None,
         }
     }
 
+    #[cfg(feature = "bsa")]
     pub fn parent_archive_handle(&self) -> Result<Arc<StoredArchive>, Error> {
         match &self.file {
-            FileType::Archive(archive_ref) => Ok(Arc::clone(&archive_ref.parent_archive)),
             FileType::Loose(_) => Err(Error::new(
                 ErrorKind::InvalidData,
                 "Loose files may not return an archive reference!",
             )),
+            FileType::Archive(archive_ref) => Ok(Arc::clone(&archive_ref.parent_archive)),
         }
     }
 
@@ -280,6 +307,8 @@ impl VfsFile {
                 let file = StdFile::open(&path)?;
                 Ok(Box::new(file))
             }
+
+            #[cfg(feature = "bsa")]
             FileType::Archive(archive_ref) => {
                 let parent = archive_ref.parent_archive.handle();
                 let path_string = archive_ref.path.to_string_lossy().to_string();
@@ -295,9 +324,10 @@ impl VfsFile {
 
                         let file: &Tes4File = archive
                             .get(&dir_key)
-                            .and_then(|dir| dir.get(&file_key)).unwrap();
+                            .and_then(|dir| dir.get(&file_key))
+                            .unwrap();
 
-                        return Ok(Box::new(TES4FileReader::new(file)?));     
+                        return Ok(Box::new(TES4FileReader::new(file)?));
                     }
 
                     TypedArchive::Fo4(archive) => {
@@ -337,10 +367,11 @@ impl VfsFile {
     /// ```
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
+            FileType::Loose(path) => path.file_name(),
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
+            #[cfg(feature = "bsa")]
             FileType::Archive(archive_ref) => archive_ref.path.file_name(),
-            FileType::Loose(path) => path.file_name(),
         }
     }
 
@@ -369,10 +400,11 @@ impl VfsFile {
     /// ```
     pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
+            FileType::Loose(path) => path.file_stem(),
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
+            #[cfg(feature = "bsa")]
             FileType::Archive(archive_ref) => archive_ref.path.file_stem(),
-            FileType::Loose(path) => path.file_stem(),
         }
     }
 
@@ -396,6 +428,8 @@ impl VfsFile {
     pub fn path(&self) -> &Path {
         match &self.file {
             FileType::Loose(path) => path.as_path(),
+
+            #[cfg(feature = "bsa")]
             FileType::Archive(archive_ref) => &archive_ref.path,
         }
     }

@@ -6,7 +6,10 @@ use crate::SerializeType;
 #[cfg(feature = "serialize")]
 use std::io::Result;
 
-use crate::{DirectoryNode, DisplayTree, VfsFile, archives, normalize_path};
+#[cfg(feature = "bsa")]
+use crate::archives;
+
+use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -132,6 +135,7 @@ impl VFS {
             })
     }
 
+    #[allow(unused_variables)]
     pub fn from_directories(
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
         archive_list: Option<Vec<&str>>,
@@ -143,6 +147,7 @@ impl VFS {
             .flat_map(Self::directory_contents_to_file_map)
             .collect();
 
+        #[cfg(feature = "bsa")]
         if let Some(list) = archive_list {
             let archive_handles = archives::from_set(&map, list);
 
@@ -206,9 +211,14 @@ impl VFS {
 
             let new_file = match entry.is_archive() {
                 false => VfsFile::from(entry.path()),
+                #[cfg(feature = "bsa")]
                 true => VfsFile::from_archive(
                     path.to_string_lossy(),
                     entry.parent_archive_handle().unwrap(),
+                ),
+                #[cfg(not(feature = "bsa"))]
+                true => unimplemented!(
+                    "BSA archives are not supported in this build. Enable the 'bsa' feature of vfstool_lib to use them."
                 ),
             };
 
