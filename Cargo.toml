@@ -5,8 +5,8 @@ edition = "2024"
 description = "A command-line tool for constructing, manipulating, and introspecting virtual file systems in Rust, based on OpenMW's VFS implementation."
 license = "GPL-3.0-or-later"
 readme = "README.md"
-homepage = "https://github.com/magicaldave/vfstool"
-repository = "https://github.com/magicaldave/vfstool"
+homepage = "https://github.com/DreamWeave-MP/vfstool"
+repository = "https://github.com/DreamWeave-MP/vfstool"
 keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda", ]
 
 [dependencies]
