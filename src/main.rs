@@ -115,8 +115,7 @@ enum Commands {
     },
     /// Given some query term, locate all matches in the vfs.
     Find {
-        /// VFS Path to query. What exactly the input should be depends on the `--filter` argument.
-        #[arg(short, long)]
+        /// VFS Path to query. Supports regular expressions!
         path: PathBuf,
 
         /// Output format when serializing as text.
@@ -128,30 +127,6 @@ enum Commands {
         /// If omitted, the result is printed directly to stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
-
-        /// Type of filter to use when searching.
-        ///
-        /// For an `exact` filter, to find `meshes/xbase_anim.nif`, you must use
-        /// `meshes/xbase_anim.nif`
-        ///
-        /// For a `name` filter, you can simply use `xbase_anim.nif`, etc.
-        ///
-        /// Only the `exact` filter is guaranteed to return a single result, if it does.
-        ///
-        /// `folder` filters will match any parent directories of the file, eg `meshes/` would
-        /// locate all files under the `meshes/` directory and not deeper subdirectories.
-        ///
-        /// `prefix` filters will match any prefix on the *normalized* path of the file.
-        ///
-        /// `extension` filters will match only the file extension.
-        ///
-        /// `name` and `name-exact` filters will match either on strings which the
-        /// filename contains or the exact file name.
-        ///
-        /// `stem` and `stem-exact` work in the same manner, but the file extension is not
-        /// included in matching.
-        #[arg(short, long, default_value = "name")]
-        r#type: FindType,
     },
     /// Given an absolute path, return a filtered version of the VFS containing either things
     /// replacing it, or files from this directory which are not being replaced
@@ -481,49 +456,19 @@ fn main() -> Result<()> {
             path,
             format,
             output,
-            r#type,
         } => {
             let path_string = path.to_string_lossy().to_ascii_lowercase();
-            let filter_closure = |vfs_file: &VfsFile| match r#type {
-                FindType::Extension => vfs_file.path().extension().unwrap_or_default() == &path,
-                FindType::NameExact => vfs_file
-                    .file_name()
-                    .unwrap_or_default()
-                    .eq_ignore_ascii_case(path.as_os_str()),
-                FindType::Name => vfs_file
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .contains(&path_string),
-                FindType::Folder => normalize_path(vfs_file.path().parent().unwrap())
-                    .to_string_lossy()
-                    .contains(&path_string),
-                FindType::Prefix => normalize_path(vfs_file.path()).starts_with(&path_string),
-                FindType::Stem => vfs_file
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .contains(&path_string),
-                FindType::StemExact => vfs_file
-                    .file_stem()
-                    .unwrap_or_default()
-                    .eq_ignore_ascii_case(&path_string),
-                FindType::Contains => {
-                    let vfs_normalized = normalize_path(vfs_file.path());
-                    let query_normalized = normalize_path(&path);
-
-                    let vfs_path = vfs_normalized.as_os_str().as_encoded_bytes();
-                    let query = query_normalized.as_os_str().as_encoded_bytes();
-
-                    vfs_path
-                        .windows(query.len())
-                        .any(|window| window.eq_ignore_ascii_case(query))
+            let path_regex: regex::bytes::Regex = match regex::bytes::Regex::new(&path_string) {
+                Ok(regex) => regex,
+                Err(error) => {
+                    eprintln!("{error}");
+                    std::process::exit(256);
                 }
             };
 
-            let tree = vfs.tree_filtered(args.use_relative, filter_closure);
+            let tree = vfs.tree_filtered(args.use_relative, |file| {
+                path_regex.is_match(&file.path().as_os_str().as_encoded_bytes())
+            });
 
             write_serialized_vfs(output, format, &tree)?;
         }
