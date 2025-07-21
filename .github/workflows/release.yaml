@@ -62,6 +62,7 @@ jobs:
         with:
           tag_name: ${{ env.release_name }}
           prerelease: ${{ env.tagged == 'false' }}
+          make_latest: true
           generate_release_notes: true
           files: |
             ${{ matrix.archive }}
