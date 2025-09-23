@@ -457,8 +457,14 @@ fn main() -> Result<()> {
             format,
             output,
         } => {
-            let path_string = path.to_string_lossy().to_ascii_lowercase();
-            let path_regex: regex::bytes::Regex = match regex::bytes::Regex::new(&path_string) {
+            // Lossy compare could produce false positives, but only if there are non-unicode
+            // characters at the same position in both the path and string being matched and the
+            // rest of the string is the same
+            let path_string = path.to_string_lossy();
+            let path_regex: regex::Regex = match regex::RegexBuilder::new(&path_string)
+                .case_insensitive(true)
+                .build()
+            {
                 Ok(regex) => regex,
                 Err(error) => {
                     eprintln!("{error}");
@@ -467,7 +473,7 @@ fn main() -> Result<()> {
             };
 
             let tree = vfs.tree_filtered(args.use_relative, |file| {
-                path_regex.is_match(&file.path().as_os_str().as_encoded_bytes())
+                path_regex.is_match(&file.path().to_string_lossy())
             });
 
             write_serialized_vfs(output, format, &tree)?;
