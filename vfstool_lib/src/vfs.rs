@@ -124,6 +124,7 @@ impl VFS {
         let dir = dir.as_ref().to_path_buf();
 
         WalkDir::new(&dir)
+            .follow_links(true)
             .into_iter()
             .filter_map(|entry| entry.ok().filter(|e| e.file_type().is_file()))
             .par_bridge()
