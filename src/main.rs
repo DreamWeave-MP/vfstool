@@ -1,11 +1,10 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use rayon::prelude::*;
 use std::{
     fs::{self, hard_link, metadata},
     io::{self, Result, Write},
     path::PathBuf,
 };
-use vfstool_lib::{SerializeType, VfsFile, normalize_path, vfs::VFS};
+use vfstool_lib::{SerializeType, normalize_path, vfs::VFS};
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink as soft_link;
@@ -279,7 +278,7 @@ fn main() -> Result<()> {
                 fs::create_dir_all(&collapse_into)?;
             };
 
-            vfs.par_iter().for_each(|(relative_path, file)| {
+            vfs.iter().for_each(|(relative_path, file)| {
                 let merged_path = collapse_into.join(relative_path);
                 let merged_dir = merged_path.parent().unwrap();
 
