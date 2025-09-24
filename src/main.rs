@@ -512,14 +512,13 @@ fn main() -> Result<()> {
             format,
             output,
         } => {
-            let config =
-                match openmw_config::OpenMWConfiguration::new(Some(resolved_config_dir.clone())) {
-                    Err(config_err) => {
-                        eprintln!("Failed to load openmw.cfg for comparison: {config_err}");
-                        std::process::exit(256);
-                    }
-                    Ok(config) => config,
-                };
+            let config = match openmw_config::OpenMWConfiguration::new(Some(resolved_config_dir)) {
+                Err(config_err) => {
+                    eprintln!("Failed to load openmw.cfg for comparison: {config_err}");
+                    std::process::exit(256);
+                }
+                Ok(config) => config,
+            };
 
             let mut paths = config
                 .data_directories_iter()
