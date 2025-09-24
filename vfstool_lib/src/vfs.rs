@@ -129,7 +129,9 @@ impl VFS {
             .par_bridge()
             .map(move |entry| {
                 let path = entry.path();
-                let target_path = &path.strip_prefix(&dir).unwrap_or(&path);
+                let target_path = path
+                    .strip_prefix(&dir)
+                    .expect("Entry path should always be prefixed by scan directory!");
 
                 let normalized_path = normalize_path(target_path);
 
