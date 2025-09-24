@@ -125,7 +125,7 @@ pub struct ArchiveReference {
 
 #[cfg(feature = "bsa")]
 impl ArchiveReference {
-    pub fn tes4_keys(path: &PathBuf) -> io::Result<(Tes4ArchiveKey, Tes4DirKey)> {
+    pub fn tes4_keys(path: &PathBuf) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
         let dir_key: Tes4ArchiveKey = path
             .parent()
             .map(|p| p.to_string_lossy().into_owned().into())
