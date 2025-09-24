@@ -459,7 +459,7 @@ fn main() -> Result<()> {
             // Lossy compare could produce false positives, but only if there are non-unicode
             // characters at the same position in both the path and string being matched and the
             // rest of the string is the same
-            let path_string = path.to_string_lossy();
+            let path_string = normalize_path(path).to_string_lossy().to_string();
             let path_regex: regex::Regex = match regex::RegexBuilder::new(&path_string)
                 .case_insensitive(true)
                 .build()
@@ -472,7 +472,8 @@ fn main() -> Result<()> {
             };
 
             let tree = vfs.tree_filtered(args.use_relative, |file| {
-                path_regex.is_match(&file.path().to_string_lossy())
+                let normalized = normalize_path(file.path());
+                path_regex.is_match(&normalized.to_string_lossy())
             });
 
             write_serialized_vfs(output, format, &tree)?;
