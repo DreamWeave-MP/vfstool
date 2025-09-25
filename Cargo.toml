@@ -1,6 +1,6 @@
 [package]
 name = "vfstool"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "A command-line tool for constructing, manipulating, and introspecting virtual file systems in Rust, based on OpenMW's VFS implementation."
 license = "GPL-3.0-or-later"
@@ -11,7 +11,7 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 
 [dependencies]
 clap = { version = "4.5.48", features = ["derive"] }
-vfstool_lib = { path = "vfstool_lib", version = "0.2.0", features = [
+vfstool_lib = { path = "vfstool_lib", version = "0.2.1", features = [
     "serialize",
     "bsa",
 ] }
