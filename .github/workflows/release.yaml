@@ -1,76 +1,29 @@
-name: release
+name: Corprus Crucible Manufacturing
+
 on:
   push:
+    branches: main
+    tags: ['*']
 
 jobs:
-  build:
+  release:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-        include:
-          - os: macos-latest
-            binary: vfstool
-            archive: macos-latest.zip
-          - os: ubuntu-latest
-            binary: vfstool
-            archive: ubuntu-latest.zip
-          - os: windows-latest
-            binary: vfstool.exe
-            archive: windows-latest.zip
+        os: [macos-latest, macos-15-intel, ubuntu-latest, windows-latest]
+    
     runs-on: ${{ matrix.os }}
-    permissions: write-all
+    
+    permissions:
+      contents: write
+      id-token: write
+    
     steps:
       - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@nightly
-
-      - name: ⚡ Cache
-        uses: actions/cache@v4
+      
+      - name: Run Corprus Crucible
+        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: build
-        run: cargo build --release
-
-      - uses: sigstore/cosign-installer@main
-      - name: sign
-        run: cosign sign-blob -y ./target/release/${{ matrix.binary }} --bundle vfstool-${{ matrix.os }}.bundle
-
-      - name: compress
-        run: 7z a -tzip ${{matrix.archive}} vfstool-${{ matrix.os }}.bundle ./target/release/${{matrix.binary}} README.md
-
-      - name: Determine Release Type
-        id: release_type
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tagged=true" >> $GITHUB_ENV
-            echo "release_name=${{ github.ref_name }}" >> $GITHUB_ENV
-          else
-            echo "tagged=false" >> $GITHUB_ENV
-            echo "release_name=development" >> $GITHUB_ENV
-          fi
-        shell: bash
-
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.release_name }}
-          prerelease: ${{ env.tagged == 'false' }}
-          make_latest: true
-          generate_release_notes: true
-          files: |
-            ${{ matrix.archive }}
-
-      - name: VirusTotal Scan
-        uses: crazy-max/ghaction-virustotal@v4
-        with:
-          update_release_body: true
+          binary_name: 'vfstool'
           vt_api_key: ${{ secrets.VT_API_KEY }}
-          files: |
-            ./target/release/${{ matrix.binary }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+    
