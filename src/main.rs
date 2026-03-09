@@ -500,11 +500,15 @@ fn main() -> Result<()> {
                     )
                 }
             } else {
-                eprintln!(
-                    "{}Failed to locate {} in the provided VFS.",
-                    print::err_prefix(),
-                    print::blue(path.display()),
-                )
+                if !simple {
+                    eprintln!(
+                        "{}Failed to locate {} in the provided VFS.",
+                        print::err_prefix(),
+                        print::blue(path.display()),
+                    )
+                }
+                // Ugly, make a dedicated enum for exit values later
+                std::process::exit(1);
             }
         }
         Commands::Remaining {
