@@ -12,6 +12,24 @@ use std::os::unix::fs::symlink as soft_link;
 #[cfg(windows)]
 use std::os::windows::fs::symlink_file as soft_link;
 
+pub enum VFSToolExitCode {
+    FindFailed = 1,
+    FileNotInLooseDirectories = 2,
+    BadRegex = 254,
+    FailedToLoadOpenMWConfig = 255,
+}
+
+impl From<VFSToolExitCode> for i32 {
+    fn from(value: VFSToolExitCode) -> Self {
+        match value {
+            VFSToolExitCode::FindFailed => 1,
+            VFSToolExitCode::FileNotInLooseDirectories => 2,
+            VFSToolExitCode::BadRegex => 254,
+            VFSToolExitCode::FailedToLoadOpenMWConfig => 255,
+        }
+    }
+}
+
 mod print {
     pub const RED: &str = "\x1b[31m";
     pub const GREEN: &str = "\x1b[32m";
@@ -107,6 +125,10 @@ enum Commands {
         ///
         /// C:\Games\Morrowind\Data Files\Meshes\XBase_Anim.nif
         path: PathBuf,
+
+        /// If true, only searches for files which are NOT present inside of archives/BSA files.
+        #[arg(short = 'p', long = "only_physical")]
+        only_physical: Option<bool>,
 
         /// Simple output, no coloration or formatting. Useful for pipes
         #[arg(short, long)]
@@ -222,7 +244,7 @@ fn construct_vfs(config_path: PathBuf) -> VFS {
     let config = match openmw_config::OpenMWConfiguration::new(Some(config_path)) {
         Err(config_err) => {
             eprintln!("Failed to load configuration file: {config_err}");
-            std::process::exit(255);
+            std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
         }
         Ok(config) => config,
     };
@@ -467,7 +489,7 @@ fn main() -> Result<()> {
                 Ok(regex) => regex,
                 Err(error) => {
                     eprintln!("{error}");
-                    std::process::exit(256);
+                    std::process::exit(VFSToolExitCode::BadRegex.into());
                 }
             };
 
@@ -478,37 +500,57 @@ fn main() -> Result<()> {
 
             write_serialized_vfs(output, format, &tree)?;
         }
-        Commands::FindFile { path, simple } => {
-            let file = vfs.get_file(&path);
-            if let Some(found_file) = file {
-                let path_display = match found_file.is_archive() {
-                    true => PathBuf::from(found_file.parent_archive_path().unwrap())
+        Commands::FindFile {
+            path,
+            simple,
+            only_physical,
+        } => {
+            let file = match vfs.get_file(&path) {
+                Some(found_file) => found_file,
+                None => {
+                    if !simple {
+                        eprintln!(
+                            "{}Failed to locate {} in the provided VFS.",
+                            print::err_prefix(),
+                            print::blue(path.display()),
+                        )
+                    }
+
+                    // Ugly, make a dedicated enum for exit values later
+                    std::process::exit(VFSToolExitCode::FindFailed.into());
+                }
+            };
+
+            let path_display = match file.is_archive() {
+                true => match only_physical {
+                    Some(true) => {
+                        if !simple {
+                            eprintln!(
+                                "{}Failed to locate {} in loose files of the provided VFS.",
+                                print::err_prefix(),
+                                print::blue(path.display()),
+                            )
+                        }
+
+                        std::process::exit(VFSToolExitCode::FileNotInLooseDirectories.into());
+                    }
+                    _ => PathBuf::from(file.parent_archive_path().unwrap())
                         .join(&path)
                         .to_string_lossy()
                         .to_string(),
-                    false => found_file.path().to_string_lossy().to_string(),
-                };
+                },
+                false => file.path().to_string_lossy().to_string(),
+            };
 
-                if simple {
-                    println!("{}", path_display);
-                } else {
-                    println!(
-                        "{}Successfully found VFS File {} at path {}",
-                        print::success_prefix(),
-                        print::blue(&path.display()),
-                        print::green(&path_display),
-                    )
-                }
+            if simple {
+                println!("{}", path_display);
             } else {
-                if !simple {
-                    eprintln!(
-                        "{}Failed to locate {} in the provided VFS.",
-                        print::err_prefix(),
-                        print::blue(path.display()),
-                    )
-                }
-                // Ugly, make a dedicated enum for exit values later
-                std::process::exit(1);
+                println!(
+                    "{}Successfully found VFS File {} at path {}",
+                    print::success_prefix(),
+                    print::blue(&path.display()),
+                    print::green(&path_display),
+                )
             }
         }
         Commands::Remaining {
@@ -520,7 +562,7 @@ fn main() -> Result<()> {
             let config = match openmw_config::OpenMWConfiguration::new(Some(resolved_config_dir)) {
                 Err(config_err) => {
                     eprintln!("Failed to load openmw.cfg for comparison: {config_err}");
-                    std::process::exit(256);
+                    std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
                 }
                 Ok(config) => config,
             };
