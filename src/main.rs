@@ -543,7 +543,7 @@ fn main() -> Result<()> {
             };
 
             if simple {
-                println!("{}", path_display);
+                print!("{}", path_display);
             } else {
                 println!(
                     "{}Successfully found VFS File {} at path {}",
