@@ -320,7 +320,7 @@ impl VFS {
         }
 
         let serialized_content = match write_type {
-            SerializeType::Json => serde_json::to_string_pretty(&tree).map_err(to_io_error)?,
+            SerializeType::Json => serde_json::to_string(&tree).map_err(to_io_error)?,
             SerializeType::Yaml => serde_yaml::to_string(&tree).map_err(to_io_error)?,
             SerializeType::Toml => toml::to_string_pretty(&tree).map_err(to_io_error)?,
         };
