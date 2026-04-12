@@ -126,9 +126,10 @@ enum Commands {
         /// C:\Games\Morrowind\Data Files\Meshes\XBase_Anim.nif
         path: PathBuf,
 
-        /// If true, only searches for files which are NOT present inside of archives/BSA files.
+        /// If set, only matches files which are NOT inside an archive (BSA/BA2).
+        /// Exits with code 2 if the file exists but is archived.
         #[arg(short = 'p', long = "only_physical")]
-        only_physical: Option<bool>,
+        only_physical: bool,
 
         /// Simple output, no coloration or formatting. Useful for pipes
         #[arg(short, long)]
@@ -192,38 +193,35 @@ enum FindType {
 }
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
-    let dir_metadata = metadata(&dir);
-    let default_location = openmw_config::default_config_path();
+    let dir_metadata = metadata(dir);
 
-    let config_arg_fail = match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
-        false => Some(format!(
-            "[ WARNING ]: The requested openmw.cfg dir {} is not a directory! Using the system default location of {} instead.",
-            dir.display(),
-            &default_location.display()
-        )),
+    match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
+        false => {
+            eprintln!(
+                "[ ERROR ]: The requested openmw.cfg directory '{}' does not exist or is not a directory.",
+                dir.display()
+            );
+        }
         true => {
-            match fs::read_dir(&dir)?
+            match fs::read_dir(dir)?
                 .filter_map(|entry| entry.ok())
                 .find(|entry| entry.file_name().eq_ignore_ascii_case("openmw.cfg"))
                 .map(|entry| entry.path())
             {
-                None => Some(format!(
-                    "[ WARNING ]: An openmw.cfg could not be located in {}! Using the system default location of {} instead.",
-                    dir.display(),
-                    &default_location.display()
-                )),
-                Some(dir) => return Ok(dir),
+                Some(cfg) => return Ok(cfg),
+                None => {
+                    eprintln!(
+                        "[ ERROR ]: No openmw.cfg found in '{}'.",
+                        dir.display()
+                    );
+                }
             }
         }
-    };
-
-    if let Some(fail_message) = config_arg_fail {
-        eprintln!("{}", fail_message);
-    };
+    }
 
     Err(std::io::Error::new(
         io::ErrorKind::NotFound,
-        "Unable to resolve configuration directory!",
+        "Unable to resolve openmw.cfg path.",
     ))
 }
 
@@ -309,10 +307,23 @@ fn main() -> Result<()> {
                 };
 
                 if file.is_loose() {
-                    assert!(file.path().exists());
+                    if !file.path().exists() {
+                        eprintln!(
+                            "Skipping {}: source file no longer exists at {}",
+                            relative_path.display(),
+                            file.path().display()
+                        );
+                        return;
+                    }
 
-                    if metadata(&merged_path).is_ok() {
-                        fs::remove_file(&merged_path).unwrap();
+                    if let Err(e) = fs::remove_file(&merged_path) {
+                        if e.kind() != io::ErrorKind::NotFound {
+                            eprintln!(
+                                "Failed to remove existing file at {}: {}",
+                                merged_path.display(), e
+                            );
+                            return;
+                        }
                     }
 
                     // Since we extract files *out of* BSA archives
@@ -351,9 +362,6 @@ fn main() -> Result<()> {
                             }
                         }
                     } else {
-                        let new_metadata = metadata(&merged_path).unwrap();
-                        let old_metadata = metadata(file.path()).unwrap();
-                        assert_eq!(new_metadata.len(), old_metadata.len());
                         println!("Successfully wrote {} to {}", file.path().display(), merged_path.display());
                     };
                 } else {
@@ -367,19 +375,26 @@ fn main() -> Result<()> {
                         match file.open() {
                             Ok(mut data) => {
                                 let mut buf: Vec<u8> = Vec::new();
-                                if let Ok(_) = data.read_to_end(&mut buf) {
-                                    if let Err(error) = fs::write(&merged_path, buf) {
-                                        eprintln!(
-                                            "Extracting archived file {} to {} failed due to {}!",
-                                            relative_path.display(),
-                                            merged_path.display(),
-                                            error.to_string()
-                                        );
-                                    };
-                                };
+                                match data.read_to_end(&mut buf) {
+                                    Err(error) => eprintln!(
+                                        "Failed to read archived file {}: {}",
+                                        relative_path.display(),
+                                        error
+                                    ),
+                                    Ok(_) => {
+                                        if let Err(error) = fs::write(&merged_path, buf) {
+                                            eprintln!(
+                                                "Extracting archived file {} to {} failed: {}",
+                                                relative_path.display(),
+                                                merged_path.display(),
+                                                error
+                                            );
+                                        }
+                                    }
+                                }
                             }
                             Err(error) => {
-                                eprintln!("Failed to open archived file: {}", error.to_string())
+                                eprintln!("Failed to open archived file {}: {}", relative_path.display(), error)
                             }
                         };
                     }
@@ -424,30 +439,39 @@ fn main() -> Result<()> {
                                 match file.open() {
                                     Ok(mut data) => {
                                         let mut buf: Vec<u8> = Vec::new();
-                                        if let Ok(_) = data.read_to_end(&mut buf) {
-                                            if let Err(error) = fs::write(&target_path, buf) {
-                                                eprintln!(
-                                                    "{}Extracting archived file {} to {} failed due to {}!",
-                                                    print::err_prefix(),
-                                                    print::green(source_file.display()),
-                                                    print::blue(target_path.display()),
-                                                    print::red(error.to_string()),
-                                                );
-                                            } else {
-                                                println!(
-                                                    "{}Successfully extracted {} to {}",
-                                                    print::success_prefix(),
-                                                    print::green(file.path().display()),
-                                                    print::blue(target_dir.display()),
-                                                );
-                                            };
-                                        };
+                                        match data.read_to_end(&mut buf) {
+                                            Err(error) => eprintln!(
+                                                "{}Failed to read archived file {}: {}",
+                                                print::err_prefix(),
+                                                print::green(source_file.display()),
+                                                print::red(error.to_string()),
+                                            ),
+                                            Ok(_) => {
+                                                if let Err(error) = fs::write(&target_path, buf) {
+                                                    eprintln!(
+                                                        "{}Extracting archived file {} to {} failed: {}",
+                                                        print::err_prefix(),
+                                                        print::green(source_file.display()),
+                                                        print::blue(target_path.display()),
+                                                        print::red(error.to_string()),
+                                                    );
+                                                } else {
+                                                    println!(
+                                                        "{}Successfully extracted {} to {}",
+                                                        print::success_prefix(),
+                                                        print::green(file.path().display()),
+                                                        print::blue(target_dir.display()),
+                                                    );
+                                                }
+                                            }
+                                        }
                                     }
                                     Err(error) => {
                                         eprintln!(
-                                            "{}Failed to open archived file: {}",
+                                            "{}Failed to open archived file {}: {}",
                                             print::err_prefix(),
-                                            print::green(error.to_string())
+                                            print::green(source_file.display()),
+                                            print::red(error.to_string()),
                                         )
                                     }
                                 }
@@ -522,8 +546,8 @@ fn main() -> Result<()> {
             };
 
             let path_display = match file.is_archive() {
-                true => match only_physical {
-                    Some(true) => {
+                true => {
+                    if only_physical {
                         if !simple {
                             eprintln!(
                                 "{}Failed to locate {} in loose files of the provided VFS.",
@@ -531,14 +555,13 @@ fn main() -> Result<()> {
                                 print::blue(path.display()),
                             )
                         }
-
                         std::process::exit(VFSToolExitCode::FileNotInLooseDirectories.into());
                     }
-                    _ => PathBuf::from(file.parent_archive_path().unwrap())
+                    PathBuf::from(file.parent_archive_path().unwrap())
                         .join(&path)
                         .to_string_lossy()
-                        .to_string(),
-                },
+                        .to_string()
+                }
                 false => file.path().to_string_lossy().to_string(),
             };
 
