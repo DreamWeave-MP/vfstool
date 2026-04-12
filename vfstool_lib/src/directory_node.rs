@@ -114,7 +114,7 @@ impl Serialize for DirectoryNode {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "serialize"))]
 mod tests {
     use super::*;
     use serde_json;
