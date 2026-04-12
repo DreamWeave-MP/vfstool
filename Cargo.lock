@@ -758,6 +758,7 @@ dependencies = [
  "openmw-config",
  "rayon",
  "regex",
+ "serde",
  "vfstool_lib",
 ]
 

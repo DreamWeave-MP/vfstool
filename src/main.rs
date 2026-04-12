@@ -1,10 +1,11 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
+    collections::HashMap,
     fs::{self, hard_link, metadata},
     io::{self, Result, Write},
     path::PathBuf,
 };
-use vfstool_lib::{SerializeType, normalize_path, vfs::VFS};
+use vfstool_lib::{ConflictIndex, SerializeType, normalize_path, serialize_value, vfs::VFS};
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink as soft_link;
@@ -169,6 +170,38 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Analyse conflict relationships across all sources in the load order
+    Conflicts {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Show files that are overridden by higher-priority sources
+    Shadowed {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Given a VFS path, show which source wins and which others also have it
+    Which {
+        /// Relative VFS path to query, e.g. textures/tx_bc_mudcrab.dds
+        path: PathBuf,
+    },
+    /// Per-source statistics: wins, overrides, overridden file counts
+    Stats,
+    /// Compare files between two specific data directories
+    Diff {
+        /// First directory (absolute path matching a data= entry)
+        source_a: PathBuf,
+        /// Second directory (absolute path matching a data= entry)
+        source_b: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Supported output formats
@@ -190,6 +223,81 @@ enum FindType {
     StemExact,
     Name,
     NameExact,
+}
+
+// --- Serialization structs for new commands ---
+
+#[derive(serde::Serialize)]
+struct ConflictsReport {
+    sources: Vec<ConflictSourceEntry>,
+}
+
+#[derive(serde::Serialize)]
+struct ConflictSourceEntry {
+    path: PathBuf,
+    overrides: Vec<PathBuf>,
+    overridden_by: Vec<PathBuf>,
+}
+
+#[derive(serde::Serialize)]
+struct ShadowedReport {
+    sources: Vec<ShadowedSource>,
+}
+
+#[derive(serde::Serialize)]
+struct ShadowedSource {
+    path: PathBuf,
+    shadowed_files: Vec<PathBuf>,
+}
+
+#[derive(serde::Serialize)]
+struct DiffReport {
+    source_a: PathBuf,
+    source_b: PathBuf,
+    higher_priority: PathBuf,
+    shared: Vec<PathBuf>,
+    only_in_a: Vec<PathBuf>,
+    only_in_b: Vec<PathBuf>,
+}
+
+// --- Helpers ---
+
+fn load_openmw_config(config_path: PathBuf) -> openmw_config::OpenMWConfiguration {
+    match openmw_config::OpenMWConfiguration::new(Some(config_path)) {
+        Err(e) => {
+            eprintln!("Failed to load configuration file: {e}");
+            std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
+        }
+        Ok(cfg) => cfg,
+    }
+}
+
+fn write_serialized<T: serde::Serialize>(
+    path: Option<PathBuf>,
+    format: OutputFormat,
+    value: &T,
+) -> io::Result<()> {
+    let serialized = serialize_value(value, output_to_serialize_type(format))?;
+    match path {
+        None => println!("{serialized}"),
+        Some(p) => {
+            if let Some(parent) = p.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            write!(fs::File::create(&p)?, "{serialized}")?;
+        }
+    }
+    Ok(())
+}
+
+fn build_conflict_index(config_path: PathBuf) -> (VFS, ConflictIndex) {
+    let cfg = load_openmw_config(config_path);
+    let data_paths = cfg.data_directories();
+    let archives: Vec<&str> = cfg
+        .fallback_archives_iter()
+        .map(|a| a.value().as_str())
+        .collect();
+    VFS::from_directories_with_conflict_index(data_paths, Some(archives))
 }
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
@@ -613,6 +721,173 @@ fn main() -> Result<()> {
             });
 
             write_serialized_vfs(output, format, &files_remaining)?;
+        }
+        Commands::Conflicts { format, output } => {
+            let (_, ci) = build_conflict_index(resolved_config_dir);
+
+            let report = ConflictsReport {
+                sources: ci.sources.iter().enumerate().map(|(i, src)| {
+                    let resolve = |p: &PathBuf| -> PathBuf {
+                        if args.use_relative { p.clone() } else { src.join(p) }
+                    };
+                    let mut overrides: Vec<PathBuf> =
+                        ci.conflicts[i].overrides.iter().map(resolve).collect();
+                    let mut overridden_by: Vec<PathBuf> =
+                        ci.conflicts[i].overridden_by.iter().map(resolve).collect();
+                    overrides.sort();
+                    overridden_by.sort();
+                    ConflictSourceEntry { path: src.clone(), overrides, overridden_by }
+                }).collect(),
+            };
+
+            write_serialized(output, format, &report)?;
+        }
+        Commands::Shadowed { format, output } => {
+            let (_, ci) = build_conflict_index(resolved_config_dir);
+
+            let sources: Vec<ShadowedSource> = ci
+                .sources
+                .iter()
+                .enumerate()
+                .filter_map(|(i, src)| {
+                    if !ci.conflicts[i].is_overridden() {
+                        return None;
+                    }
+                    let mut shadowed_files: Vec<PathBuf> =
+                        ci.conflicts[i].overridden_by.iter().cloned().collect();
+                    shadowed_files.sort();
+                    Some(ShadowedSource { path: src.clone(), shadowed_files })
+                })
+                .collect();
+
+            let total = sources.len();
+            eprintln!("{total} sources have fully shadowed files");
+
+            write_serialized(output, format, &ShadowedReport { sources })?;
+        }
+        Commands::Which { path } => {
+            let (vfs, ci) = build_conflict_index(resolved_config_dir);
+            let normalized = normalize_path(&path).into_owned();
+
+            let winner = match vfs.get_file(&normalized) {
+                Some(f) => f,
+                None => {
+                    eprintln!(
+                        "{}VFS path '{}' not found.",
+                        print::err_prefix(),
+                        path.display()
+                    );
+                    std::process::exit(VFSToolExitCode::FindFailed.into());
+                }
+            };
+
+            println!("VFS path: {}\n", normalized.display());
+
+            let winner_display = if winner.is_loose() {
+                winner.path().display().to_string()
+            } else {
+                winner.parent_archive_path().unwrap_or_default()
+            };
+
+            let source_indices = ci.sources_containing(&normalized);
+
+            if source_indices.is_empty() {
+                println!("  {}  {} (no conflicts — only source)", print::green("WINNER"), winner_display);
+            } else {
+                println!("  {}  {}", print::green("WINNER"), winner_display);
+
+                // Find which source the winner belongs to so we can skip it in "also in"
+                let winner_src_idx = if winner.is_loose() {
+                    ci.sources.iter().position(|src| winner.path().starts_with(src))
+                } else {
+                    winner.parent_archive_path().and_then(|ap| {
+                        ci.sources.iter().position(|src| src == &PathBuf::from(&ap))
+                    })
+                };
+
+                for &idx in source_indices {
+                    if Some(idx) == winner_src_idx {
+                        continue;
+                    }
+                    println!("  also in {} (overridden)", ci.sources[idx].display());
+                }
+            }
+        }
+        Commands::Stats => {
+            let (vfs, ci) = build_conflict_index(resolved_config_dir);
+
+            let mut wins: HashMap<usize, usize> = HashMap::new();
+            for (_, file) in vfs.iter() {
+                let source_idx = if file.is_loose() {
+                    ci.sources.iter().position(|src| file.path().starts_with(src))
+                } else {
+                    file.parent_archive_path().and_then(|ap| {
+                        ci.sources
+                            .iter()
+                            .position(|src| src.to_string_lossy() == ap.as_str())
+                    })
+                };
+                if let Some(idx) = source_idx {
+                    *wins.entry(idx).or_insert(0) += 1;
+                }
+            }
+
+            // Compute column widths
+            let path_width = ci
+                .sources
+                .iter()
+                .map(|s| s.display().to_string().len())
+                .max()
+                .unwrap_or(6)
+                .max(6);
+
+            println!(
+                "{:<path_width$}  {:>6}  {:>9}  {:>10}",
+                "Source", "Wins", "Overrides", "Overridden"
+            );
+            for (i, src) in ci.sources.iter().enumerate() {
+                let w = wins.get(&i).copied().unwrap_or(0);
+                let overrides = ci.conflicts[i].overrides.len();
+                let overridden = ci.conflicts[i].overridden_by.len();
+                println!(
+                    "{:<path_width$}  {:>6}  {:>9}  {:>10}",
+                    src.display(),
+                    w,
+                    overrides,
+                    overridden,
+                );
+            }
+        }
+        Commands::Diff { source_a, source_b, format, output } => {
+            let vfs_a = VFS::from_directories([&source_a], None);
+            let vfs_b = VFS::from_directories([&source_b], None);
+
+            let keys_a: std::collections::HashSet<PathBuf> =
+                vfs_a.iter().map(|(k, _)| k.clone()).collect();
+            let keys_b: std::collections::HashSet<PathBuf> =
+                vfs_b.iter().map(|(k, _)| k.clone()).collect();
+
+            let mut shared: Vec<PathBuf> = keys_a.intersection(&keys_b).cloned().collect();
+            let mut only_in_a: Vec<PathBuf> = keys_a.difference(&keys_b).cloned().collect();
+            let mut only_in_b: Vec<PathBuf> = keys_b.difference(&keys_a).cloned().collect();
+            shared.sort();
+            only_in_a.sort();
+            only_in_b.sort();
+
+            // Determine load-order priority from the full ConflictIndex
+            let (_, ci) = build_conflict_index(resolved_config_dir);
+            let idx_a = ci.sources.iter().position(|s| s == &source_a);
+            let idx_b = ci.sources.iter().position(|s| s == &source_b);
+            let higher_priority = match (idx_a, idx_b) {
+                (Some(a), Some(b)) => {
+                    if a > b { source_a.clone() } else { source_b.clone() }
+                }
+                // If either path isn't in the index just fall back to source_b
+                _ => source_b.clone(),
+            };
+
+            let report = DiffReport { source_a, source_b, higher_priority, shared, only_in_a, only_in_b };
+            write_serialized(output, format, &report)?;
         }
     }
 

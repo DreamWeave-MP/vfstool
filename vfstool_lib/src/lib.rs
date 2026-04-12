@@ -24,6 +24,22 @@ pub enum SerializeType {
     Toml,
 }
 
+/// Serialize any `serde::Serialize` value to JSON, YAML, or TOML.
+#[cfg(feature = "serialize")]
+pub fn serialize_value<T: serde::Serialize>(
+    value: &T,
+    write_type: SerializeType,
+) -> std::io::Result<String> {
+    fn to_io_error<E: std::fmt::Display>(err: E) -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string())
+    }
+    match write_type {
+        SerializeType::Json => serde_json::to_string(value).map_err(to_io_error),
+        SerializeType::Yaml => serde_yaml::to_string(value).map_err(to_io_error),
+        SerializeType::Toml => toml::to_string_pretty(value).map_err(to_io_error),
+    }
+}
+
 pub fn normalize_path<P: AsRef<Path> + ?Sized>(path: &P) -> Cow<'_, Path> {
     let p = path.as_ref();
     let bytes = p.as_os_str().as_encoded_bytes();
