@@ -82,7 +82,6 @@ pub mod archives {
         Fo4(ba2::fo4::Archive<'static>),
     }
 
-    /// Privatize the shit out of this
     #[derive(Debug)]
     pub struct StoredArchive {
         // Not actually used, but necessary to keep the `archive` alive
@@ -110,51 +109,72 @@ pub mod archives {
             .copied()
             .filter_map(|archive| {
                 let archive_path = PathBuf::from(archive.to_ascii_lowercase());
-                // Try to get the archive from the file map
-                file_map.get(&archive_path).and_then(|valid_archive| {
-                    let path = valid_archive.path();
-                    // Attempt to open the archive file
-                    File::open(&path).ok().and_then(|mut file_handle| {
-                        // Attempt to read the archive
-                        match ba2::guess_format(&mut file_handle) {
-                            None => None,
-                            Some(format) => match format {
-                                ba2::FileFormat::TES3 => {
-                                    TES3Archive::read(&file_handle).ok().map(|archive| {
-                                        Arc::new(StoredArchive {
-                                            file_handle,
-                                            archive: TypedArchive::Tes3(archive),
-                                            path: path.to_path_buf(),
-                                        })
-                                    })
-                                }
-                                ba2::FileFormat::TES4 => ba2::tes4::Archive::read(&file_handle)
-                                    .ok()
-                                    .map(|(archive, _meta)| {
-                                        Arc::new(StoredArchive {
-                                            file_handle,
-                                            archive: TypedArchive::Tes4(archive),
-                                            path: path.to_path_buf(),
-                                        })
-                                    }),
-                                ba2::FileFormat::FO4 => ba2::fo4::Archive::read(&file_handle)
-                                    .ok()
-                                    .map(|(archive, _meta)| {
-                                        Arc::new(StoredArchive {
-                                            file_handle,
-                                            archive: TypedArchive::Fo4(archive),
-                                            path: path.to_path_buf(),
-                                        })
-                                    }),
-                            },
+
+                let valid_archive = match file_map.get(&archive_path) {
+                    Some(f) => f,
+                    None => {
+                        eprintln!("vfstool: warning: archive '{archive}' not found in any data directory, skipping");
+                        return None;
+                    }
+                };
+
+                let path = valid_archive.path();
+
+                let mut file_handle = match File::open(path) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("vfstool: warning: failed to open archive '{}': {e}", path.display());
+                        return None;
+                    }
+                };
+
+                let format = match ba2::guess_format(&mut file_handle) {
+                    Some(f) => f,
+                    None => {
+                        eprintln!("vfstool: warning: could not determine format of archive '{}', skipping", path.display());
+                        return None;
+                    }
+                };
+
+                match format {
+                    ba2::FileFormat::TES3 => match TES3Archive::read(&file_handle) {
+                        Ok(archive) => Some(Arc::new(StoredArchive {
+                            file_handle,
+                            archive: TypedArchive::Tes3(archive),
+                            path: path.to_path_buf(),
+                        })),
+                        Err(e) => {
+                            eprintln!("vfstool: warning: failed to read TES3 archive '{}': {e}", path.display());
+                            None
                         }
-                    })
-                })
+                    },
+                    ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file_handle) {
+                        Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
+                            file_handle,
+                            archive: TypedArchive::Tes4(archive),
+                            path: path.to_path_buf(),
+                        })),
+                        Err(e) => {
+                            eprintln!("vfstool: warning: failed to read TES4 archive '{}': {e}", path.display());
+                            None
+                        }
+                    },
+                    ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file_handle) {
+                        Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
+                            file_handle,
+                            archive: TypedArchive::Fo4(archive),
+                            path: path.to_path_buf(),
+                        })),
+                        Err(e) => {
+                            eprintln!("vfstool: warning: failed to read FO4 archive '{}': {e}", path.display());
+                            None
+                        }
+                    },
+                }
             })
             .collect()
     }
 
-    #[cfg(feature = "bsa")]
     pub fn file_map(archives: ArchiveList) -> HashMap<PathBuf, VfsFile> {
         archives
             .iter()
