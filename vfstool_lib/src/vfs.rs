@@ -222,9 +222,18 @@ impl VFS {
         DirectoryDiff { conflicts, additions }
     }
 
+    /// Returns `true` if the VFS contains a file at `key`.
+    ///
+    /// `key` is a normalized relative VFS path (e.g. `"textures/foo.dds"`).
+    /// The path is normalized before lookup, so case and separator variants
+    /// are accepted.
+    pub fn contains(&self, key: &Path) -> bool {
+        self.file_map.contains_key(&normalize_path(key))
+    }
+
     /// Returns a sorted version of the VFS contents as a binary tree.
     pub fn tree(&self, relative: bool) -> DisplayTree {
-        self.build_tree(relative, None::<fn(&VfsFile) -> bool>)
+        self.build_tree(relative, None::<fn(&Path, &VfsFile) -> bool>)
     }
 
     /// Returns a sorted tree containing only files accepted by `file_filter`.
@@ -233,15 +242,20 @@ impl VFS {
     /// this filters during construction: directory nodes are only created for
     /// paths that contain at least one accepted file, so no separate prune pass
     /// is required.
+    ///
+    /// The predicate receives the normalized relative VFS key (`&Path`) and the
+    /// `&VfsFile`. Having the key available allows O(1) cross-VFS lookups inside
+    /// the predicate without needing to re-derive the relative path from the
+    /// absolute physical path.
     pub fn tree_filtered(
         &self,
         relative: bool,
-        file_filter: impl Fn(&VfsFile) -> bool,
+        file_filter: impl Fn(&Path, &VfsFile) -> bool,
     ) -> DisplayTree {
         self.build_tree(relative, Some(file_filter))
     }
 
-    fn build_tree<F: Fn(&VfsFile) -> bool>(
+    fn build_tree<F: Fn(&Path, &VfsFile) -> bool>(
         &self,
         relative: bool,
         file_filter: Option<F>,
@@ -285,7 +299,7 @@ impl VFS {
 
             // Filter before touching the tree so we never create directory
             // nodes for paths whose files are all excluded.
-            if file_filter.as_ref().is_some_and(|f| !f(&new_file)) {
+            if file_filter.as_ref().is_some_and(|f| !f(key, &new_file)) {
                 continue;
             }
 
@@ -335,51 +349,11 @@ impl VFS {
         format!("{}{}/\n", Self::DIR_PREFIX, dir,)
     }
 
-    /// Return whether any relative path in the vfs corresponds to the absolute path given
-    /// Note that the path is normalized by this function, so it's not necessary to do so
-    /// beforehand
-    pub fn has_normalized_file(&self, target: &Path) -> bool {
-        let normalized = normalize_path(target);
-        self.file_map
-            .keys()
-            .any(|relative_path| normalized.ends_with(&relative_path))
-    }
-
-    /// Return whether or not a file exists in the VFS at the given absolute path
-    /// Note that the path is normalized by this function, so it's not necessary to do so
-    /// beforehand
-    pub fn has_file(&self, target: &Path) -> bool {
-        let normalized = normalize_path(target);
-        let norm_bytes = normalized.as_os_str().as_encoded_bytes();
-        self.file_map.values().any(|file| {
-            let file_bytes = file.path().as_os_str().as_encoded_bytes();
-            file_bytes.len() == norm_bytes.len()
-                && file_bytes.iter().zip(norm_bytes.iter()).all(|(&fb, &nb)| {
-                    let nfb = match fb {
-                        b'\\' => b'/',
-                        b'A'..=b'Z' => fb + 32,
-                        _ => fb,
-                    };
-                    nfb == nb
-                })
-        })
-    }
-
-    /// Takes a filesystem path as input and checks if it exists in this VFS
-    /// WARNING: This is a real, non-normalized path from the filesystem
-    /// Preferably returned by `VfsFile.path()`
-    pub fn has_normalized_not_exact(&self, target: &Path) -> bool {
-        let normalized = normalize_path(target);
-        self.file_map.iter().any(|(relative_path, vfs_file)| {
-            vfs_file.path().ne(target) && normalized.ends_with(&relative_path)
-        })
-    }
-
     /// Returns the formatted file tree for a filtered subset
     pub fn display_filtered(
         &self,
         relative: bool,
-        file_filter: impl Fn(&VfsFile) -> bool,
+        file_filter: impl Fn(&Path, &VfsFile) -> bool,
     ) -> String {
         let tree = self.tree_filtered(relative, file_filter);
         let mut output = String::new();
@@ -741,56 +715,30 @@ mod loose_tests {
         assert_eq!(vfs.paths_with("sounds").count(), 0);
     }
 
-    // ---- has_normalized_file / has_normalized_not_exact ----
+    // ---- contains ----
 
     #[test]
-    fn has_normalized_file_true_for_absolute_path_in_vfs() {
-        let dir = TempDir::new("vfsloose_hasnorm_true");
+    fn contains_true_for_present_relative_key() {
+        let dir = TempDir::new("vfsloose_contains_true");
         dir.write("textures/foo.dds", b"");
         let vfs = VFS::from_directories(vec![dir.path()], None);
-        let abs = dir.path().join("textures/foo.dds");
-        assert!(vfs.has_normalized_file(&abs));
+        assert!(vfs.contains(Path::new("textures/foo.dds")));
     }
 
     #[test]
-    fn has_normalized_file_false_for_unknown_path() {
-        let dir = TempDir::new("vfsloose_hasnorm_false");
+    fn contains_normalizes_before_lookup() {
+        let dir = TempDir::new("vfsloose_contains_norm");
+        dir.write("textures/foo.dds", b"");
         let vfs = VFS::from_directories(vec![dir.path()], None);
-        assert!(!vfs.has_normalized_file(Path::new("/nonexistent/path/foo.dds")));
+        assert!(vfs.contains(Path::new("Textures\\FOO.DDS")));
     }
 
     #[test]
-    fn has_normalized_not_exact_true_when_path_exists_under_different_source() {
-        // filtered_vfs has dir1/foo.txt at key "foo.txt"
-        // has_normalized_not_exact(dir2/foo.txt) should be true:
-        // dir2/foo.txt != dir1/foo.txt, but normalized dir2/foo.txt ends with "foo.txt"
-        let dir1 = TempDir::new("vfsloose_notexact_dir1");
-        let dir2 = TempDir::new("vfsloose_notexact_dir2");
-        dir1.write("foo.txt", b"original");
-        dir2.write("foo.txt", b"replacement");
-
-        let filtered_vfs = VFS::from_directories(vec![dir1.path()], None);
-        let path_from_dir2 = dir2.path().join("foo.txt");
-
-        assert!(filtered_vfs.has_normalized_not_exact(&path_from_dir2));
-    }
-
-    #[test]
-    fn has_normalized_not_exact_false_when_path_is_its_own_source() {
-        let dir = TempDir::new("vfsloose_notexact_self");
-        dir.write("foo.txt", b"");
+    fn contains_false_for_absent_key() {
+        let dir = TempDir::new("vfsloose_contains_false");
+        dir.write("textures/foo.dds", b"");
         let vfs = VFS::from_directories(vec![dir.path()], None);
-        let path = dir.path().join("foo.txt");
-        // The only entry for "foo.txt" IS this file — not "not exact", so false
-        assert!(!vfs.has_normalized_not_exact(&path));
-    }
-
-    #[test]
-    fn has_normalized_not_exact_false_for_completely_absent_path() {
-        let dir = TempDir::new("vfsloose_notexact_absent");
-        dir.write("foo.txt", b"");
-        let vfs = VFS::from_directories(vec![dir.path()], None);
-        assert!(!vfs.has_normalized_not_exact(Path::new("/some/other/dir/bar.txt")));
+        assert!(!vfs.contains(Path::new("textures/bar.dds")));
     }
 
     // ---- diff_directory ----
@@ -1008,7 +956,7 @@ mod loose_tests {
         dir.write("meshes/bar.nif", b"");
         let vfs = VFS::from_directories(vec![dir.path()], None);
 
-        let tree = vfs.tree_filtered(true, |file| {
+        let tree = vfs.tree_filtered(true, |_key, file| {
             file.path().extension().is_some_and(|e| e == "dds")
         });
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
@@ -1026,7 +974,7 @@ mod loose_tests {
         let vfs = VFS::from_directories(vec![dir.path()], None);
 
         // Keep only .dds — the entire meshes/ subtree should disappear
-        let tree = vfs.tree_filtered(true, |file| {
+        let tree = vfs.tree_filtered(true, |_key, file| {
             file.path().extension().is_some_and(|e| e == "dds")
         });
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
@@ -1043,7 +991,7 @@ mod loose_tests {
         let dir = TempDir::new("vfsloose_filtered_all_gone");
         dir.write("foo.txt", b"");
         let vfs = VFS::from_directories(vec![dir.path()], None);
-        let tree = vfs.tree_filtered(true, |_| false);
+        let tree = vfs.tree_filtered(true, |_, _| false);
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
         assert!(root.files.is_empty());
         assert!(root.subdirs.is_empty());
@@ -1057,7 +1005,7 @@ mod loose_tests {
         let vfs = VFS::from_directories(vec![dir.path()], None);
 
         let full = vfs.tree(true);
-        let filtered = vfs.tree_filtered(true, |_| true);
+        let filtered = vfs.tree_filtered(true, |_, _| true);
 
         let full_root = full.get(&PathBuf::from("Data Files")).unwrap();
         let filt_root = filtered.get(&PathBuf::from("Data Files")).unwrap();

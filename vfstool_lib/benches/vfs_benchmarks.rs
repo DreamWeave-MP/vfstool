@@ -292,23 +292,23 @@ fn bench_tree(c: &mut Criterion) {
         b.iter(|| vfs.tree(black_box(false)))
     });
 
-    // tree_filtered: the two-pass case (full tree then prune)
+    // tree_filtered: filter by extension — exercises the key+file predicate
     g.bench_function("tree_filtered_extension_match", |b| {
         b.iter(|| {
-            vfs.tree_filtered(true, |file| {
+            vfs.tree_filtered(true, |_key, file| {
                 file.path().extension().is_some_and(|e| e == "dat")
             })
         })
     });
 
-    // tree_filtered: degenerate case — nothing matches, still builds full tree first
+    // tree_filtered: degenerate case — nothing matches
     g.bench_function("tree_filtered_none_match", |b| {
-        b.iter(|| vfs.tree_filtered(true, |_| black_box(false)))
+        b.iter(|| vfs.tree_filtered(true, |_, _| black_box(false)))
     });
 
     // tree_filtered: degenerate case — everything matches (equivalent to tree())
     g.bench_function("tree_filtered_all_match", |b| {
-        b.iter(|| vfs.tree_filtered(true, |_| black_box(true)))
+        b.iter(|| vfs.tree_filtered(true, |_, _| black_box(true)))
     });
 
     g.finish();
