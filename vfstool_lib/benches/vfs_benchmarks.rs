@@ -1,4 +1,4 @@
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -92,35 +92,88 @@ fn bench_normalize(c: &mut Criterion) {
 fn bench_normalize_in_place(c: &mut Criterion) {
     let mut g = c.benchmark_group("normalize_path_in_place");
 
+    // Fast path: the function is a pure no-op on already-normalized input.
+    // We can hold a single PathBuf across all iterations — it is never
+    // modified, so no per-iteration setup is needed and there is zero
+    // allocation overhead inflating the measurement.
     g.bench_function("already_normalized", |b| {
-        b.iter_with_setup(
-            || PathBuf::from("textures/landscape/foo.dds"),
-            |mut p| {
-                normalize_path_in_place(black_box(&mut p));
-                p
-            },
-        )
+        let mut p = PathBuf::from("textures/landscape/foo.dds");
+        b.iter(|| normalize_path_in_place(black_box(&mut p)))
     });
 
+    // Slow paths: the PathBuf is modified in place, so each iteration must
+    // start from a fresh copy.  iter_batched with SmallInput amortises the
+    // setup-closure overhead across a batch, keeping it out of the hot loop.
     g.bench_function("combined_case_and_backslash", |b| {
-        b.iter_with_setup(
+        b.iter_batched(
             || PathBuf::from("Meshes\\Actors\\XBase_Anim.NIF"),
             |mut p| {
                 normalize_path_in_place(black_box(&mut p));
                 p
             },
+            BatchSize::SmallInput,
         )
     });
 
     g.bench_function("long_path_combined", |b| {
-        b.iter_with_setup(
+        b.iter_batched(
             || PathBuf::from("Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS"),
             |mut p| {
                 normalize_path_in_place(black_box(&mut p));
                 p
             },
+            BatchSize::SmallInput,
         )
     });
+
+    g.finish();
+}
+
+// ---------------------------------------------------------------------------
+// Direct comparison: same owned PathBuf input, both functions
+//
+// This isolates just the normalization work by giving both functions
+// identical starting state — an already-heap-allocated PathBuf — and
+// measuring only what happens after that point.
+//
+// normalize_path(&p)          → scans, may allocate a new PathBuf
+// normalize_path_in_place(&mut p) → scans, may transform in place
+//
+// Both use iter_batched so setup (PathBuf::from) is excluded.
+// ---------------------------------------------------------------------------
+
+fn bench_normalize_comparison(c: &mut Criterion) {
+    // Inputs chosen to cover the three normalization scenarios.
+    let cases: &[(&str, &str)] = &[
+        ("already_normalized",         "textures/landscape/foo.dds"),
+        ("combined_case_and_backslash", "Meshes\\Actors\\XBase_Anim.NIF"),
+        ("long_path_combined",          "Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS"),
+    ];
+
+    let mut g = c.benchmark_group("normalize_comparison");
+
+    for &(name, input) in cases {
+        // allocating version — returns a new PathBuf
+        g.bench_function(format!("allocating/{name}"), |b| {
+            b.iter_batched(
+                || PathBuf::from(input),
+                |p| normalize_path(black_box(p.as_path())),
+                BatchSize::SmallInput,
+            )
+        });
+
+        // in-place version — modifies the PathBuf, returns it to prevent DCE
+        g.bench_function(format!("in_place/{name}"), |b| {
+            b.iter_batched(
+                || PathBuf::from(input),
+                |mut p| {
+                    normalize_path_in_place(black_box(&mut p));
+                    p
+                },
+                BatchSize::SmallInput,
+            )
+        });
+    }
 
     g.finish();
 }
@@ -300,6 +353,7 @@ criterion_group!(
     benches,
     bench_normalize,
     bench_normalize_in_place,
+    bench_normalize_comparison,
     bench_construction,
     bench_lookup,
     bench_search,
@@ -312,6 +366,7 @@ criterion_group!(
     benches,
     bench_normalize,
     bench_normalize_in_place,
+    bench_normalize_comparison,
     bench_construction,
     bench_lookup,
     bench_search,
