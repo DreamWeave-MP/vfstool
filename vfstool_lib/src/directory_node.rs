@@ -14,7 +14,7 @@ use serde::{Serialize, Serializer, ser::SerializeMap};
 ///
 /// ```
 /// use std::collections::BTreeMap;
-/// use dw_vfs_lib::{directory_node::DirectoryNode, VfsFile};
+/// use vfstool_lib::{directory_node::DirectoryNode, VfsFile};
 ///
 /// let mut node = DirectoryNode::new();
 ///
@@ -65,14 +65,14 @@ impl DirectoryNode {
     ///
     /// ```
     /// # use std::ffi::OsStr;
-    /// use dw_vfs_lib::{directory_node::DirectoryNode, VfsFile};
+    /// use vfstool_lib::{directory_node::DirectoryNode, VfsFile};
     ///
     /// let mut node = DirectoryNode::new();
     ///
     /// node.files.push(VfsFile::from("keep.txt"));
     /// node.files.push(VfsFile::from("remove.txt"));
     ///
-    /// node.filter(&|file| file.file_name() == Some("keep.txt"));
+    /// node.filter(&|file: &VfsFile| file.file_name().is_some_and(|n| n == "keep.txt"));
     ///
     /// assert_eq!(node.files.len(), 1);
     /// ```
@@ -124,7 +124,7 @@ impl Serialize for DirectoryNode {
 mod tests {
     use super::*;
     use serde_json;
-    use serde_yaml_with_quirks;
+    use serde_yaml;
     use std::path::PathBuf;
     use toml;
 
@@ -270,42 +270,11 @@ mod tests {
     fn serialize_to_yaml() {
         let node = sample_directory_node();
         let yaml_output =
-            serde_yaml_with_quirks::to_string(&node).expect("YAML serialization failed");
+            serde_yaml::to_string(&node).expect("YAML serialization failed");
 
         println!("{}", &yaml_output);
 
-        let expected = r#"---
-subdir1:
-  ".":
-    - file1_1.txt
-    - file1_2.txt
-    - file1_3.txt
-  child_subdir1:
-    ".":
-      - nested_file1_1.txt
-      - nested_file1_2.txt
-      - nested_file1_3.txt
-subdir2:
-  ".":
-    - file2_1.txt
-    - file2_2.txt
-    - file2_3.txt
-  child_subdir2:
-    ".":
-      - nested_file2_1.txt
-      - nested_file2_2.txt
-      - nested_file2_3.txt
-subdir3:
-  ".":
-    - file3_1.txt
-    - file3_2.txt
-    - file3_3.txt
-  child_subdir3:
-    ".":
-      - nested_file3_1.txt
-      - nested_file3_2.txt
-      - nested_file3_3.txt
-"#;
+        let expected = "subdir1:\n  .:\n  - file1_1.txt\n  - file1_2.txt\n  - file1_3.txt\n  child_subdir1:\n    .:\n    - nested_file1_1.txt\n    - nested_file1_2.txt\n    - nested_file1_3.txt\nsubdir2:\n  .:\n  - file2_1.txt\n  - file2_2.txt\n  - file2_3.txt\n  child_subdir2:\n    .:\n    - nested_file2_1.txt\n    - nested_file2_2.txt\n    - nested_file2_3.txt\nsubdir3:\n  .:\n  - file3_1.txt\n  - file3_2.txt\n  - file3_3.txt\n  child_subdir3:\n    .:\n    - nested_file3_1.txt\n    - nested_file3_2.txt\n    - nested_file3_3.txt\n";
 
         assert_eq!(yaml_output, expected);
     }
@@ -314,7 +283,7 @@ subdir3:
     fn test_directory_node_filter() {
         let mut root = sample_directory_node();
 
-        root.filter(&|file| file.file_name().map_or(false, |name| name.contains('2')));
+        root.filter(&|file| file.file_name().map_or(false, |name| name.to_string_lossy().contains('2')));
 
         assert_eq!(
             root.subdirs.len(),
@@ -392,5 +361,133 @@ subdir3:
             1,
             "child_subdir3 should have exactly one file."
         );
+    }
+
+    // ---- DirectoryNode::new / Default ----
+
+    #[test]
+    fn new_produces_empty_node() {
+        let node = DirectoryNode::new();
+        assert!(node.files.is_empty());
+        assert!(node.subdirs.is_empty());
+    }
+
+    // ---- DirectoryNode::sort ----
+
+    #[test]
+    fn sort_alphabetizes_files_in_node() {
+        let mut node = DirectoryNode::new();
+        for name in ["zoo.txt", "alpha.txt", "middle.txt"] {
+            node.files.push(VfsFile::from(name));
+        }
+        node.sort();
+        let names: Vec<_> = node
+            .files
+            .iter()
+            .filter_map(|f| f.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["alpha.txt", "middle.txt", "zoo.txt"]);
+    }
+
+    #[test]
+    fn sort_is_recursive_into_subdirs() {
+        let mut root = DirectoryNode::new();
+        let mut sub = DirectoryNode::new();
+        for name in ["z.txt", "a.txt", "m.txt"] {
+            sub.files.push(VfsFile::from(name));
+        }
+        root.subdirs.insert("sub".into(), sub);
+        root.sort();
+
+        let sub = root.subdirs.get(&PathBuf::from("sub")).unwrap();
+        let names: Vec<_> = sub
+            .files
+            .iter()
+            .filter_map(|f| f.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["a.txt", "m.txt", "z.txt"]);
+    }
+
+    #[test]
+    fn sort_empty_node_does_not_panic() {
+        let mut node = DirectoryNode::new();
+        node.sort(); // should not panic
+    }
+
+    // ---- DirectoryNode::filter ----
+
+    #[test]
+    fn filter_keeps_files_matching_predicate() {
+        let mut node = DirectoryNode::new();
+        node.files.push(VfsFile::from("keep.txt"));
+        node.files.push(VfsFile::from("drop.nif"));
+        node.filter(&|f| f.path().extension().is_some_and(|e| e == "txt"));
+        assert_eq!(node.files.len(), 1);
+        assert_eq!(node.files[0].file_name().unwrap(), "keep.txt");
+    }
+
+    #[test]
+    fn filter_removes_all_when_predicate_always_false() {
+        let mut node = DirectoryNode::new();
+        node.files.push(VfsFile::from("a.txt"));
+        node.files.push(VfsFile::from("b.txt"));
+        node.filter(&|_| false);
+        assert!(node.files.is_empty());
+    }
+
+    #[test]
+    fn filter_keeps_all_when_predicate_always_true() {
+        let mut node = DirectoryNode::new();
+        node.files.push(VfsFile::from("a.txt"));
+        node.files.push(VfsFile::from("b.txt"));
+        node.filter(&|_| true);
+        assert_eq!(node.files.len(), 2);
+    }
+
+    #[test]
+    fn filter_prunes_subdir_that_becomes_empty() {
+        let mut root = DirectoryNode::new();
+        let mut sub = DirectoryNode::new();
+        sub.files.push(VfsFile::from("dropped.nif"));
+        root.subdirs.insert("meshes".into(), sub);
+
+        root.filter(&|f| f.path().extension().is_some_and(|e| e == "dds"));
+
+        assert!(
+            root.subdirs.is_empty(),
+            "a subdir with no surviving files should be pruned"
+        );
+    }
+
+    #[test]
+    fn filter_keeps_subdir_that_still_has_files() {
+        let mut root = DirectoryNode::new();
+        let mut sub = DirectoryNode::new();
+        sub.files.push(VfsFile::from("kept.dds"));
+        sub.files.push(VfsFile::from("dropped.nif"));
+        root.subdirs.insert("textures".into(), sub);
+
+        root.filter(&|f| f.path().extension().is_some_and(|e| e == "dds"));
+
+        assert_eq!(root.subdirs.len(), 1, "non-empty subdir should survive");
+        let textures = root.subdirs.get(&PathBuf::from("textures")).unwrap();
+        assert_eq!(textures.files.len(), 1);
+    }
+
+    #[test]
+    fn filter_is_recursive_through_nested_subdirs() {
+        let mut root = DirectoryNode::new();
+        let mut outer = DirectoryNode::new();
+        let mut inner = DirectoryNode::new();
+        inner.files.push(VfsFile::from("deep.nif"));
+        outer.subdirs.insert("inner".into(), inner);
+        root.subdirs.insert("outer".into(), outer);
+
+        root.filter(&|f| f.path().extension().is_some_and(|e| e == "dds"));
+
+        // outer had only inner, inner had only a .nif — both should be pruned
+        assert!(root.subdirs.is_empty(), "deeply nested empty subtrees should be pruned");
     }
 }

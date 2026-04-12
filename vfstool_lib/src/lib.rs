@@ -8,6 +8,8 @@ pub use vfs_file::VfsFile;
 
 use std::{
     collections::BTreeMap,
+    ffi::OsString,
+    mem,
     path::{Path, PathBuf},
 };
 
@@ -20,19 +22,45 @@ pub enum SerializeType {
 }
 
 pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
-    let normalized = path
-        .as_ref()
-        .as_os_str()
-        .as_encoded_bytes()
+    let bytes = path.as_ref().as_os_str().as_encoded_bytes();
+    if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
+        return path.as_ref().to_path_buf();
+    }
+    let normalized: Vec<u8> = bytes
         .iter()
         .map(|&byte| match byte {
-            b'\\' => '/' as u8,
+            b'\\' => b'/',
             b'A'..=b'Z' => byte + 32,
             _ => byte,
         })
-        .collect::<Vec<_>>();
+        .collect();
+    PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(normalized) })
+}
 
-    PathBuf::from(unsafe { std::ffi::OsString::from_encoded_bytes_unchecked(normalized) })
+/// Normalizes a [`PathBuf`] in-place, reusing its heap allocation.
+///
+/// Converts backslashes to forward slashes and lowercases ASCII letters.
+/// No-op if the path requires no changes.
+pub fn normalize_path_in_place(path: &mut PathBuf) {
+    if !path
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .any(|&b| b == b'\\' || b.is_ascii_uppercase())
+    {
+        return;
+    }
+    let mut bytes = mem::take(path).into_os_string().into_encoded_bytes();
+    for byte in bytes.iter_mut() {
+        match *byte {
+            b'\\' => *byte = b'/',
+            b'A'..=b'Z' => *byte += 32,
+            _ => {}
+        }
+    }
+    // SAFETY: We only modified ASCII bytes (\ → / and A–Z → a–z), which
+    // preserves the encoding invariant on all platforms.
+    *path = PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(bytes) });
 }
 
 #[cfg(feature = "bsa")]
@@ -76,9 +104,10 @@ pub mod archives {
 
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
-    pub fn from_set(file_map: &HashMap<PathBuf, VfsFile>, archive_list: Vec<&str>) -> ArchiveList {
+    pub fn from_set(file_map: &HashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
         archive_list
-            .into_iter()
+            .iter()
+            .copied()
             .filter_map(|archive| {
                 let archive_path = PathBuf::from(archive.to_ascii_lowercase());
                 // Try to get the archive from the file map
@@ -134,7 +163,8 @@ pub mod archives {
                     match &stored_archive.archive {
                         TypedArchive::Tes3(data) => Box::new(data.iter().map(|(key, _value)| {
                             let name_string = key.name().to_string();
-                            let normalized = crate::normalize_path(&name_string);
+                            let mut normalized = PathBuf::from(&name_string);
+                            crate::normalize_path_in_place(&mut normalized);
                             (
                                 normalized,
                                 VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
@@ -145,7 +175,8 @@ pub mod archives {
                                 let dir_string = dir_key.name();
                                 dir.iter().map(move |(key, _value)| {
                                     let archive_path = format!("{}\\{}", dir_string, key.name());
-                                    let normalized = crate::normalize_path(&archive_path);
+                                    let mut normalized = PathBuf::from(&archive_path);
+                                    crate::normalize_path_in_place(&mut normalized);
                                     let vfs_file = VfsFile::from_archive(
                                         &normalized.to_string_lossy(),
                                         Arc::clone(stored_archive),
@@ -156,7 +187,8 @@ pub mod archives {
                         }
                         TypedArchive::Fo4(data) => Box::new(data.iter().map(|(key, _value)| {
                             let name_string = key.name().to_string();
-                            let normalized = crate::normalize_path(&name_string);
+                            let mut normalized = PathBuf::from(&name_string);
+                            crate::normalize_path_in_place(&mut normalized);
                             (
                                 normalized,
                                 VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
@@ -166,5 +198,132 @@ pub mod archives {
                 iter
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    // --- normalize_path ---
+
+    #[test]
+    fn normalize_already_normalized_is_noop() {
+        let p = "textures/landscape/foo.dds";
+        assert_eq!(normalize_path(p), PathBuf::from(p));
+    }
+
+    #[test]
+    fn normalize_backslash_to_forward_slash() {
+        assert_eq!(
+            normalize_path("textures\\landscape\\foo.dds"),
+            PathBuf::from("textures/landscape/foo.dds"),
+        );
+    }
+
+    #[test]
+    fn normalize_uppercase_to_lowercase() {
+        assert_eq!(
+            normalize_path("Meshes/Actors/Foo.NIF"),
+            PathBuf::from("meshes/actors/foo.nif"),
+        );
+    }
+
+    #[test]
+    fn normalize_windows_path_combined() {
+        assert_eq!(
+            normalize_path("Meshes\\Actors\\XBase_Anim.NIF"),
+            PathBuf::from("meshes/actors/xbase_anim.nif"),
+        );
+    }
+
+    #[test]
+    fn normalize_path_with_spaces_preserved() {
+        assert_eq!(
+            normalize_path("Data Files\\Morrowind.esm"),
+            PathBuf::from("data files/morrowind.esm"),
+        );
+    }
+
+    #[test]
+    fn normalize_empty_path() {
+        assert_eq!(normalize_path(""), PathBuf::from(""));
+    }
+
+    #[test]
+    fn normalize_single_component_uppercase() {
+        assert_eq!(normalize_path("Morrowind.ESM"), PathBuf::from("morrowind.esm"));
+    }
+
+    #[test]
+    fn normalize_already_lowercase_forward_slash_fast_path() {
+        // Fast-path kicks in — result equals input, no transform needed
+        let p = "data files/tribunal.esm";
+        assert_eq!(normalize_path(p), PathBuf::from(p));
+    }
+
+    #[test]
+    fn normalize_non_ascii_passthrough() {
+        // Non-ASCII bytes pass through unchanged; only ASCII letters and backslashes transform
+        let input = "Textures/Nordström.dds";
+        let result = normalize_path(input).to_string_lossy().into_owned();
+        assert!(result.starts_with("textures/"), "ASCII prefix should be lowercased");
+        assert!(result.contains("tröm"), "non-ASCII content should be preserved unchanged");
+    }
+
+    // --- normalize_path_in_place ---
+
+    #[test]
+    fn normalize_in_place_noop_when_already_normalized() {
+        let original = PathBuf::from("textures/landscape/foo.dds");
+        let mut path = original.clone();
+        normalize_path_in_place(&mut path);
+        assert_eq!(path, original);
+    }
+
+    #[test]
+    fn normalize_in_place_backslash() {
+        let mut path = PathBuf::from("textures\\landscape\\foo.dds");
+        normalize_path_in_place(&mut path);
+        assert_eq!(path, PathBuf::from("textures/landscape/foo.dds"));
+    }
+
+    #[test]
+    fn normalize_in_place_uppercase() {
+        let mut path = PathBuf::from("Meshes/Actors/Foo.NIF");
+        normalize_path_in_place(&mut path);
+        assert_eq!(path, PathBuf::from("meshes/actors/foo.nif"));
+    }
+
+    #[test]
+    fn normalize_in_place_empty_path() {
+        let mut path = PathBuf::from("");
+        normalize_path_in_place(&mut path);
+        assert_eq!(path, PathBuf::from(""));
+    }
+
+    #[test]
+    fn normalize_in_place_matches_allocating_version() {
+        // Property test: both functions must agree on every input
+        let cases: &[&str] = &[
+            "Meshes\\Actors\\XBase_Anim.NIF",
+            "TEXTURES/LANDSCAPE/foo.dds",
+            "already/normalized/path",
+            "",
+            "Morrowind.ESM",
+            "mixed\\Case/Path\\FILE.ext",
+            "Data Files\\Tribunal.esm",
+            "textures/landscape/foo.dds",
+        ];
+        for &case in cases {
+            let mut in_place = PathBuf::from(case);
+            normalize_path_in_place(&mut in_place);
+            assert_eq!(
+                in_place,
+                normalize_path(case),
+                "in_place and allocating versions disagree for input {case:?}",
+            );
+        }
     }
 }

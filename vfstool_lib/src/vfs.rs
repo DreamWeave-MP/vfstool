@@ -9,7 +9,7 @@ use std::io::Result;
 #[cfg(feature = "bsa")]
 use crate::archives;
 
-use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path};
+use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path, normalize_path_in_place};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -134,16 +134,17 @@ impl VFS {
                     .strip_prefix(&dir)
                     .expect("Entry path should always be prefixed by scan directory!");
 
-                let normalized_path = normalize_path(target_path);
+                let mut normalized_path = target_path.to_path_buf();
+                normalize_path_in_place(&mut normalized_path);
 
                 let vfs_file = VfsFile::from(path);
                 (normalized_path, vfs_file)
             })
     }
 
-    #[allow(unused_variables)]
     pub fn from_directories(
         search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
+        #[cfg_attr(not(feature = "bsa"), allow(unused_variables))]
         archive_list: Option<Vec<&str>>,
     ) -> Self {
         let mut vfs = Self::new();
@@ -155,7 +156,7 @@ impl VFS {
 
         #[cfg(feature = "bsa")]
         if let Some(list) = archive_list {
-            let archive_handles = archives::from_set(&map, list);
+            let archive_handles = archives::from_set(&map, &list);
 
             vfs.file_map.par_extend(archives::file_map(archive_handles));
         }
@@ -281,9 +282,19 @@ impl VFS {
     /// beforehand
     pub fn has_file(&self, target: &Path) -> bool {
         let normalized = normalize_path(target);
-        self.file_map
-            .values()
-            .any(|file| normalize_path(file.path()).eq(&normalized))
+        let norm_bytes = normalized.as_os_str().as_encoded_bytes();
+        self.file_map.values().any(|file| {
+            let file_bytes = file.path().as_os_str().as_encoded_bytes();
+            file_bytes.len() == norm_bytes.len()
+                && file_bytes.iter().zip(norm_bytes.iter()).all(|(&fb, &nb)| {
+                    let nfb = match fb {
+                        b'\\' => b'/',
+                        b'A'..=b'Z' => fb + 32,
+                        _ => fb,
+                    };
+                    nfb == nb
+                })
+        })
     }
 
     /// Takes a filesystem path as input and checks if it exists in this VFS
@@ -441,6 +452,412 @@ impl Index<&str> for VFS {
 }
 
 #[cfg(test)]
+mod loose_tests {
+    use super::*;
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
+
+    /// RAII temp directory scoped to a named subdirectory of cwd.
+    /// Cleaned up on drop so panics in tests don't leave debris.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::current_dir().unwrap().join(name);
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+
+        /// Write `data` to `rel` (relative to this dir), creating intermediate dirs.
+        fn write(&self, rel: &str, data: &[u8]) -> PathBuf {
+            let target = self.0.join(rel);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(&target, data).unwrap();
+            target
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Recursively collect all file names from a DirectoryNode tree.
+    fn collect_all_filenames(node: &DirectoryNode) -> Vec<String> {
+        let mut names: Vec<String> = node
+            .files
+            .iter()
+            .filter_map(|f| f.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        for sub in node.subdirs.values() {
+            names.extend(collect_all_filenames(sub));
+        }
+        names
+    }
+
+    // ---- Construction ----
+
+    #[test]
+    fn from_empty_directory_yields_empty_vfs() {
+        let dir = TempDir::new("vfsloose_empty");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert_eq!(vfs.iter().count(), 0);
+    }
+
+    #[test]
+    fn from_single_directory_all_files_present() {
+        let dir = TempDir::new("vfsloose_single");
+        dir.write("foo.txt", b"a");
+        dir.write("bar.txt", b"b");
+        dir.write("sub/baz.txt", b"c");
+
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        assert!(vfs.get_file("foo.txt").is_some());
+        assert!(vfs.get_file("bar.txt").is_some());
+        assert!(vfs.get_file("sub/baz.txt").is_some());
+        assert_eq!(vfs.iter().count(), 3);
+    }
+
+    #[test]
+    fn from_multiple_directories_unique_files_all_present() {
+        let dir1 = TempDir::new("vfsloose_multi1");
+        let dir2 = TempDir::new("vfsloose_multi2");
+        dir1.write("only_in_1.txt", b"1");
+        dir2.write("only_in_2.txt", b"2");
+
+        let vfs = VFS::from_directories(vec![dir1.path(), dir2.path()], None);
+
+        assert!(vfs.get_file("only_in_1.txt").is_some());
+        assert!(vfs.get_file("only_in_2.txt").is_some());
+    }
+
+    #[test]
+    fn from_directories_recurses_deeply() {
+        let dir = TempDir::new("vfsloose_deep");
+        dir.write("a/b/c/d/deep.txt", b"deep");
+
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(vfs.get_file("a/b/c/d/deep.txt").is_some());
+    }
+
+    // ---- get_file ----
+
+    #[test]
+    fn get_file_exact_lowercase_key() {
+        let dir = TempDir::new("vfsloose_get_exact");
+        dir.write("meshes/foo.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(vfs.get_file("meshes/foo.nif").is_some());
+    }
+
+    #[test]
+    fn get_file_case_insensitive() {
+        let dir = TempDir::new("vfsloose_get_case");
+        dir.write("meshes/foo.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(vfs.get_file("Meshes/Foo.NIF").is_some());
+        assert!(vfs.get_file("MESHES/FOO.NIF").is_some());
+        assert!(vfs.get_file("mEsHeS/fOo.nIf").is_some());
+    }
+
+    #[test]
+    fn get_file_backslash_lookup() {
+        let dir = TempDir::new("vfsloose_get_backslash");
+        dir.write("meshes/foo.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(vfs.get_file("meshes\\foo.nif").is_some());
+        assert!(vfs.get_file("Meshes\\Foo.NIF").is_some());
+    }
+
+    #[test]
+    fn get_file_nonexistent_returns_none() {
+        let dir = TempDir::new("vfsloose_get_none");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(vfs.get_file("does_not_exist.txt").is_none());
+    }
+
+    #[test]
+    fn get_file_path_confirmed_correct() {
+        // get_file must return the actual on-disk path, not the normalized key
+        let dir = TempDir::new("vfsloose_get_path");
+        let written = dir.write("Meshes/XBase_Anim.NIF", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let file = vfs.get_file("meshes/xbase_anim.nif").unwrap();
+        assert_eq!(file.path(), written);
+    }
+
+    // ---- paths_matching ----
+
+    #[test]
+    fn paths_matching_finds_by_substring() {
+        let dir = TempDir::new("vfsloose_matching");
+        dir.write("textures/landscape/foo.dds", b"");
+        dir.write("textures/sky/bar.dds", b"");
+        dir.write("meshes/actors/baz.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert_eq!(vfs.paths_matching("textures").count(), 2);
+        assert_eq!(vfs.paths_matching("meshes").count(), 1);
+    }
+
+    #[test]
+    fn paths_matching_normalizes_query() {
+        let dir = TempDir::new("vfsloose_matching_case");
+        dir.write("textures/foo.dds", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        // Uppercase query normalized before matching
+        assert_eq!(vfs.paths_matching("TEXTURES").count(), 1);
+        assert_eq!(vfs.paths_matching("Textures").count(), 1);
+    }
+
+    #[test]
+    fn paths_matching_no_match_returns_empty() {
+        let dir = TempDir::new("vfsloose_matching_empty");
+        dir.write("meshes/foo.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert_eq!(vfs.paths_matching("textures").count(), 0);
+    }
+
+    // ---- paths_with ----
+
+    #[test]
+    fn paths_with_finds_all_under_prefix() {
+        let dir = TempDir::new("vfsloose_with");
+        dir.write("textures/landscape/a.dds", b"");
+        dir.write("textures/landscape/b.dds", b"");
+        dir.write("textures/sky/c.dds", b"");
+        dir.write("meshes/foo.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        assert_eq!(vfs.paths_with("textures").count(), 3);
+        assert_eq!(vfs.paths_with("textures/landscape").count(), 2);
+        assert_eq!(vfs.paths_with("meshes").count(), 1);
+    }
+
+    #[test]
+    fn paths_with_returns_empty_for_nonexistent_prefix() {
+        let dir = TempDir::new("vfsloose_with_none");
+        dir.write("textures/foo.dds", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert_eq!(vfs.paths_with("sounds").count(), 0);
+    }
+
+    // ---- has_normalized_file / has_normalized_not_exact ----
+
+    #[test]
+    fn has_normalized_file_true_for_absolute_path_in_vfs() {
+        let dir = TempDir::new("vfsloose_hasnorm_true");
+        dir.write("textures/foo.dds", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let abs = dir.path().join("textures/foo.dds");
+        assert!(vfs.has_normalized_file(&abs));
+    }
+
+    #[test]
+    fn has_normalized_file_false_for_unknown_path() {
+        let dir = TempDir::new("vfsloose_hasnorm_false");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(!vfs.has_normalized_file(Path::new("/nonexistent/path/foo.dds")));
+    }
+
+    #[test]
+    fn has_normalized_not_exact_true_when_path_exists_under_different_source() {
+        // filtered_vfs has dir1/foo.txt at key "foo.txt"
+        // has_normalized_not_exact(dir2/foo.txt) should be true:
+        // dir2/foo.txt != dir1/foo.txt, but normalized dir2/foo.txt ends with "foo.txt"
+        let dir1 = TempDir::new("vfsloose_notexact_dir1");
+        let dir2 = TempDir::new("vfsloose_notexact_dir2");
+        dir1.write("foo.txt", b"original");
+        dir2.write("foo.txt", b"replacement");
+
+        let filtered_vfs = VFS::from_directories(vec![dir1.path()], None);
+        let path_from_dir2 = dir2.path().join("foo.txt");
+
+        assert!(filtered_vfs.has_normalized_not_exact(&path_from_dir2));
+    }
+
+    #[test]
+    fn has_normalized_not_exact_false_when_path_is_its_own_source() {
+        let dir = TempDir::new("vfsloose_notexact_self");
+        dir.write("foo.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let path = dir.path().join("foo.txt");
+        // The only entry for "foo.txt" IS this file — not "not exact", so false
+        assert!(!vfs.has_normalized_not_exact(&path));
+    }
+
+    #[test]
+    fn has_normalized_not_exact_false_for_completely_absent_path() {
+        let dir = TempDir::new("vfsloose_notexact_absent");
+        dir.write("foo.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(!vfs.has_normalized_not_exact(Path::new("/some/other/dir/bar.txt")));
+    }
+
+    // ---- tree structure ----
+
+    #[test]
+    fn tree_relative_root_key_is_data_files() {
+        let dir = TempDir::new("vfsloose_tree_relroot");
+        dir.write("foo.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree(true);
+        assert!(tree.contains_key(&PathBuf::from("Data Files")));
+    }
+
+    #[test]
+    fn tree_absolute_root_key_is_slash() {
+        let dir = TempDir::new("vfsloose_tree_absroot");
+        dir.write("foo.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree(false);
+        assert!(tree.contains_key(&PathBuf::from("/")));
+    }
+
+    #[test]
+    fn tree_root_level_file_appears_in_root_node() {
+        let dir = TempDir::new("vfsloose_tree_rootfile");
+        dir.write("morrowind.esm", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree(true);
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+        assert_eq!(root.files.len(), 1);
+        assert_eq!(root.files[0].file_name().unwrap(), "morrowind.esm");
+    }
+
+    #[test]
+    fn tree_nested_file_reachable_somewhere_in_tree() {
+        let dir = TempDir::new("vfsloose_tree_nested");
+        dir.write("textures/landscape/foo.dds", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree(true);
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+        let all = collect_all_filenames(root);
+        assert!(all.contains(&"foo.dds".to_string()));
+    }
+
+    #[test]
+    fn tree_files_sorted_within_node() {
+        let dir = TempDir::new("vfsloose_tree_sorted");
+        dir.write("zoo.txt", b"");
+        dir.write("alpha.txt", b"");
+        dir.write("middle.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree(true);
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+        let names: Vec<_> = root
+            .files
+            .iter()
+            .filter_map(|f| f.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(names, sorted, "files within a DirectoryNode should be alphabetically sorted");
+    }
+
+    /// Documents bug #14: subdir keys store full accumulated paths instead of component names.
+    /// The key for "landscape" inside "textures" is currently "textures/landscape", not "landscape".
+    /// This test will pass once the construction loop is fixed.
+    #[test]
+    #[ignore = "known bug: tree() subdir keys accumulate full paths (IMPROVEMENTS.md #14)"]
+    fn tree_subdir_keys_are_component_names_not_full_paths() {
+        let dir = TempDir::new("vfsloose_tree_keys");
+        dir.write("textures/landscape/foo.dds", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree(true);
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+
+        assert!(
+            root.subdirs.contains_key(&PathBuf::from("textures")),
+            "top-level subdir should have key 'textures'"
+        );
+        let textures = root.subdirs.get(&PathBuf::from("textures")).unwrap();
+        assert!(
+            textures.subdirs.contains_key(&PathBuf::from("landscape")),
+            "subdir key should be 'landscape', not 'textures/landscape' — see IMPROVEMENTS.md #14"
+        );
+    }
+
+    // ---- tree_filtered ----
+
+    #[test]
+    fn tree_filtered_keeps_only_matching_files() {
+        let dir = TempDir::new("vfsloose_filtered_keep");
+        dir.write("textures/foo.dds", b"");
+        dir.write("meshes/bar.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        let tree = vfs.tree_filtered(true, |file| {
+            file.path().extension().is_some_and(|e| e == "dds")
+        });
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+        let all = collect_all_filenames(root);
+
+        assert!(all.iter().all(|f| f.ends_with(".dds")), "only .dds files should survive the filter");
+        assert!(!all.is_empty());
+    }
+
+    #[test]
+    fn tree_filtered_prunes_empty_subdirs() {
+        let dir = TempDir::new("vfsloose_filtered_prune");
+        dir.write("textures/foo.dds", b"");
+        dir.write("meshes/bar.nif", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        // Keep only .dds — the entire meshes/ subtree should disappear
+        let tree = vfs.tree_filtered(true, |file| {
+            file.path().extension().is_some_and(|e| e == "dds")
+        });
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+
+        fn contains_nif(node: &DirectoryNode) -> bool {
+            node.files.iter().any(|f| f.path().extension().is_some_and(|e| e == "nif"))
+                || node.subdirs.values().any(contains_nif)
+        }
+        assert!(!contains_nif(root), "empty subdirs should be pruned after filtering");
+    }
+
+    #[test]
+    fn tree_filtered_all_excluded_yields_empty_root() {
+        let dir = TempDir::new("vfsloose_filtered_all_gone");
+        dir.write("foo.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let tree = vfs.tree_filtered(true, |_| false);
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+        assert!(root.files.is_empty());
+        assert!(root.subdirs.is_empty());
+    }
+
+    #[test]
+    fn tree_filtered_all_included_matches_full_tree() {
+        let dir = TempDir::new("vfsloose_filtered_all_in");
+        dir.write("a/foo.txt", b"");
+        dir.write("b/bar.txt", b"");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        let full = vfs.tree(true);
+        let filtered = vfs.tree_filtered(true, |_| true);
+
+        let full_root = full.get(&PathBuf::from("Data Files")).unwrap();
+        let filt_root = filtered.get(&PathBuf::from("Data Files")).unwrap();
+
+        assert_eq!(
+            collect_all_filenames(full_root),
+            collect_all_filenames(filt_root),
+        );
+    }
+}
+
+#[cfg(all(test, feature = "bsa"))]
 mod tests {
     use super::*;
     use ba2::tes3::{Archive, ArchiveKey, File};

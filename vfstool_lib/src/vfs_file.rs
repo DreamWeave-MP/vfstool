@@ -193,7 +193,7 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use dw_vfs_lib::VfsFile;
+    /// use vfstool_lib::VfsFile;
     ///
     /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
     ///
@@ -292,7 +292,7 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use dw_vfs_lib::VfsFile;
+    /// use vfstool_lib::VfsFile;
     ///
     /// let path = "C:\\Some\\Very\\Long\\Path";
     ///
@@ -357,13 +357,13 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use dw_vfs_lib::VfsFile;
+    /// use vfstool_lib::VfsFile;
     ///
     /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
     /// Files").join("Morrowind.esm");
     ///
     /// let file = VfsFile::from(morrowind_esm);
-    /// assert_eq!(file.file_name(), Some("Morrowind.esm"));
+    /// assert_eq!(file.file_name(), Some(std::ffi::OsStr::new("Morrowind.esm")));
     /// ```
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
@@ -390,13 +390,13 @@ impl VfsFile {
     ///
     /// ```
     /// use std::path::PathBuf;
-    /// use dw_vfs_lib::VfsFile;
+    /// use vfstool_lib::VfsFile;
     ///
     /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
     /// Files").join("Morrowind.esm");
     ///
     /// let file = VfsFile::from(morrowind_esm);
-    /// assert_eq!(file.file_stem(), Some("Morrowind"));
+    /// assert_eq!(file.file_stem(), Some(std::ffi::OsStr::new("Morrowind")));
     /// ```
     pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
@@ -417,7 +417,7 @@ impl VfsFile {
     /// # Examples
     ///
     /// ```
-    /// use dw_vfs_lib::VfsFile;
+    /// use vfstool_lib::VfsFile;
     /// use std::path::PathBuf;
     ///
     /// let path = "C:\\Morrowind\\Data Files\\Morrowind.esm";
