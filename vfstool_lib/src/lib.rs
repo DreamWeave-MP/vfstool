@@ -9,6 +9,7 @@ pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     ffi::OsString,
     mem,
@@ -23,10 +24,11 @@ pub enum SerializeType {
     Toml,
 }
 
-pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
-    let bytes = path.as_ref().as_os_str().as_encoded_bytes();
+pub fn normalize_path<P: AsRef<Path> + ?Sized>(path: &P) -> Cow<'_, Path> {
+    let p = path.as_ref();
+    let bytes = p.as_os_str().as_encoded_bytes();
     if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
-        return path.as_ref().to_path_buf();
+        return Cow::Borrowed(p);
     }
     let normalized: Vec<u8> = bytes
         .iter()
@@ -36,7 +38,9 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
             _ => byte,
         })
         .collect();
-    PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(normalized) })
+    Cow::Owned(PathBuf::from(unsafe {
+        OsString::from_encoded_bytes_unchecked(normalized)
+    }))
 }
 
 /// Normalizes a [`PathBuf`] in-place, reusing its heap allocation.
@@ -175,6 +179,44 @@ pub mod archives {
                 }
             })
             .collect()
+    }
+
+    /// Return the normalized VFS paths for all files in an already-open archive.
+    ///
+    /// Used by [`VFS::from_directories_with_conflict_index`] to enumerate archive
+    /// contents without re-opening the archive from disk.
+    pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
+        match &stored.archive {
+            TypedArchive::Tes3(data) => data
+                .iter()
+                .map(|(key, _)| {
+                    let mut p = PathBuf::from(key.name().to_string());
+                    crate::normalize_path_in_place(&mut p);
+                    p
+                })
+                .collect(),
+            TypedArchive::Tes4(data) => data
+                .iter()
+                .flat_map(|(dir_key, dir)| {
+                    let dir_str = dir_key.name().to_string();
+                    dir.iter()
+                        .map(move |(key, _)| {
+                            let mut p = PathBuf::from(format!("{}\\{}", dir_str, key.name()));
+                            crate::normalize_path_in_place(&mut p);
+                            p
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect(),
+            TypedArchive::Fo4(data) => data
+                .iter()
+                .map(|(key, _)| {
+                    let mut p = PathBuf::from(key.name().to_string());
+                    crate::normalize_path_in_place(&mut p);
+                    p
+                })
+                .collect(),
+        }
     }
 
     pub fn file_map(archives: ArchiveList) -> AHashMap<PathBuf, VfsFile> {

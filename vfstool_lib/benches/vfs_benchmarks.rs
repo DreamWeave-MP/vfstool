@@ -153,11 +153,11 @@ fn bench_normalize_comparison(c: &mut Criterion) {
     let mut g = c.benchmark_group("normalize_comparison");
 
     for &(name, input) in cases {
-        // allocating version — returns a new PathBuf
+        // allocating version — returns a new PathBuf (into_owned avoids borrow-from-local)
         g.bench_function(format!("allocating/{name}"), |b| {
             b.iter_batched(
                 || PathBuf::from(input),
-                |p| normalize_path(black_box(p.as_path())),
+                |p| normalize_path(black_box(p.as_path())).into_owned(),
                 BatchSize::SmallInput,
             )
         });

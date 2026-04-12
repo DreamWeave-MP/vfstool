@@ -67,7 +67,7 @@ impl VFS {
             self.file_map.get(p)
         } else {
             let normalized = normalize_path(p);
-            self.file_map.get(normalized.as_path())
+            self.file_map.get(&*normalized)
         }
     }
 
@@ -103,7 +103,7 @@ impl VFS {
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
     pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl Iterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = normalize_path(&prefix);
+        let normalized_prefix = normalize_path(prefix.as_ref()).into_owned();
         self.file_map.iter().filter_map(move |(path, file)| {
             path.starts_with(&normalized_prefix).then_some((path.as_path(), file))
         })
@@ -114,7 +114,7 @@ impl VFS {
         &self,
         prefix: P,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = normalize_path(&prefix);
+        let normalized_prefix = normalize_path(prefix.as_ref()).into_owned();
         self.file_map.par_iter().filter_map(move |(path, file)| {
             path.starts_with(&normalized_prefix).then_some((path.as_path(), file))
         })
@@ -187,15 +187,15 @@ impl VFS {
     /// in a single directory walk.
     ///
     /// Equivalent to calling [`VFS::from_directories`] and
-    /// [`ConflictIndex::from_directories`] separately, but walks each directory
-    /// only once. The [`ConflictIndex`] covers loose files only; archives are
-    /// loaded into the VFS as normal but are not reflected in the conflict index.
+    /// [`ConflictIndex::from_directories_with_archives`] separately, but walks each
+    /// directory only once. Both archives and loose files are reflected in the
+    /// [`ConflictIndex`], with archives occupying lower-priority positions.
     ///
     /// # Priority ordering
     ///
     /// Matches OpenMW's `data=` semantics: later entries in `search_dirs` have
-    /// higher priority. `ConflictIndex` source indices map directly onto the
-    /// `search_dirs` order — index 0 is the first (lowest-priority) directory.
+    /// higher priority. Archive sources appear before all directory sources in the
+    /// `ConflictIndex` — index 0 is the lowest-priority archive (if any).
     pub fn from_directories_with_conflict_index(
         search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         #[cfg_attr(not(feature = "bsa"), allow(unused_variables))]
@@ -224,20 +224,36 @@ impl VFS {
         let mut vfs = Self::new();
 
         #[cfg(feature = "bsa")]
-        if let Some(list) = archive_list {
-            let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
-                .iter()
-                .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
-                .collect();
-            let archive_handles = archives::from_set(&loose_lookup, &list);
-            vfs.file_map.extend(archives::file_map(archive_handles));
-        }
+        let archive_conflict_sources: Vec<(PathBuf, Vec<PathBuf>)> = {
+            if let Some(list) = archive_list {
+                let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
+                    .iter()
+                    .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                    .collect();
+                let archive_handles = archives::from_set(&loose_lookup, &list);
+                // Enumerate archive paths before consuming handles into file_map.
+                let sources: Vec<(PathBuf, Vec<PathBuf>)> = archive_handles
+                    .iter()
+                    .map(|stored| (stored.path().to_path_buf(), archives::archive_paths(stored)))
+                    .collect();
+                vfs.file_map.extend(archives::file_map(archive_handles));
+                sources
+            } else {
+                Vec::new()
+            }
+        };
 
         for entries in per_dir {
             vfs.file_map.extend(entries);
         }
 
-        let conflict_index = ConflictIndex::from_file_lists(conflict_sources);
+        // Archives occupy lowest-priority positions (prepended before directories).
+        #[cfg(feature = "bsa")]
+        let all_sources = archive_conflict_sources.into_iter().chain(conflict_sources).collect::<Vec<_>>();
+        #[cfg(not(feature = "bsa"))]
+        let all_sources = conflict_sources;
+
+        let conflict_index = ConflictIndex::from_file_lists(all_sources);
         (vfs, conflict_index)
     }
 
@@ -303,7 +319,7 @@ impl VFS {
             self.file_map.contains_key(key)
         } else {
             let normalized = normalize_path(key);
-            self.file_map.contains_key(normalized.as_path())
+            self.file_map.contains_key(&*normalized)
         }
     }
 
