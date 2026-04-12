@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use vfstool_lib::{normalize_path, normalize_path_in_place, vfs::VFS};
+use vfstool_lib::{VFS, normalize_path, normalize_path_in_place};
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -315,6 +315,52 @@ fn bench_tree(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// diff_directory
+// ---------------------------------------------------------------------------
+
+fn bench_diff(c: &mut Criterion) {
+    // VFS built from a 1000-file base directory
+    let base = make_fixture("vfsbench_diff_base", 1000);
+    let vfs = VFS::from_directories(vec![base.path()], None);
+
+    // Mod directory: 100% overlap with the VFS (worst case for conflict detection)
+    let all_conflict = make_fixture("vfsbench_diff_allconflict", 1000);
+
+    // Mod directory: 0% overlap (all additions — no HashMap hits)
+    let all_new = TempDir::new("vfsbench_diff_allnew");
+    for i in 0..500 {
+        all_new.write(&format!("scripts/new_{i:05}.lua"), b"x");
+    }
+
+    // Mod directory: 50/50 mix — half conflict, half addition
+    let mixed = TempDir::new("vfsbench_diff_mixed");
+    for i in 0..250 {
+        // These keys collide with base fixture (same subdir/filename pattern)
+        mixed.write(&format!("textures/file_{i:05}.dat"), b"x");
+    }
+    for i in 0..250 {
+        mixed.write(&format!("scripts/new_{i:05}.lua"), b"x");
+    }
+
+    let mut g = c.benchmark_group("vfs_diff");
+    g.sample_size(20);
+
+    g.bench_function("all_conflict_1000", |b| {
+        b.iter(|| vfs.diff_directory(black_box(all_conflict.path())))
+    });
+
+    g.bench_function("all_addition_500", |b| {
+        b.iter(|| vfs.diff_directory(black_box(all_new.path())))
+    });
+
+    g.bench_function("mixed_500", |b| {
+        b.iter(|| vfs.diff_directory(black_box(mixed.path())))
+    });
+
+    g.finish();
+}
+
+// ---------------------------------------------------------------------------
 // Serialization (gated on the serialize feature)
 // ---------------------------------------------------------------------------
 
@@ -358,6 +404,7 @@ criterion_group!(
     bench_lookup,
     bench_search,
     bench_tree,
+    bench_diff,
     bench_serialize,
 );
 
@@ -371,6 +418,7 @@ criterion_group!(
     bench_lookup,
     bench_search,
     bench_tree,
+    bench_diff,
 );
 
 criterion_main!(benches);

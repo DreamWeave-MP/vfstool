@@ -3,7 +3,7 @@ pub mod vfs;
 pub mod vfs_file;
 
 pub(crate) use directory_node::DirectoryNode;
-pub use vfs::VFS;
+pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
 use std::{
