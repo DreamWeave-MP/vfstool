@@ -1,9 +1,7 @@
 use crate::normalize_path_in_place;
+use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
-use std::{
-    collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// Conflict information for a single source (directory or archive) within a load order.
@@ -17,11 +15,11 @@ use walkdir::WalkDir;
 pub struct DirConflicts {
     /// Normalized VFS paths where this source wins over at least one earlier
     /// source (green up-arrow in MO2 terms).
-    pub overrides: HashSet<PathBuf>,
+    pub overrides: AHashSet<PathBuf>,
 
     /// Normalized VFS paths where this source loses to at least one later
     /// source (red down-arrow in MO2 terms).
-    pub overridden_by: HashSet<PathBuf>,
+    pub overridden_by: AHashSet<PathBuf>,
 }
 
 impl DirConflicts {
@@ -79,7 +77,7 @@ pub struct ConflictIndex {
     /// Only paths present in two or more sources are included.
     ///
     /// Use [`ConflictIndex::sources_containing`] for safe access.
-    path_to_sources: HashMap<PathBuf, Vec<usize>>,
+    path_to_sources: AHashMap<PathBuf, Vec<usize>>,
 }
 
 impl ConflictIndex {
@@ -114,7 +112,7 @@ impl ConflictIndex {
         sources: impl IntoIterator<Item = (PathBuf, Vec<PathBuf>)>,
     ) -> Self {
         let mut source_paths: Vec<PathBuf> = Vec::new();
-        let mut path_to_sources: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+        let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
 
         // Sequential merge preserves source order and therefore priority.
         for (source_path, files) in sources {

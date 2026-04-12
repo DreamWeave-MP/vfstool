@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
@@ -9,9 +10,9 @@ use std::io::{Error, ErrorKind, Result};
 #[cfg(feature = "bsa")]
 use crate::archives;
 
-use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path, normalize_path_in_place};
+use crate::{ConflictIndex, DirectoryNode, DisplayTree, VfsFile, normalize_path, normalize_path_in_place};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     fmt::Write,
     path::{Path, PathBuf},
 };
@@ -19,7 +20,7 @@ use std::{
 // Owned
 type MaybeFile<'a> = Option<&'a VfsFile>;
 type VFSTuple<'a> = (&'a Path, &'a VfsFile);
-type VFSFiles = HashMap<PathBuf, VfsFile>;
+type VFSFiles = AHashMap<PathBuf, VfsFile>;
 
 /// Result of scanning a directory against a [`VFS`].
 ///
@@ -51,14 +52,23 @@ impl VFS {
 
     fn new() -> Self {
         Self {
-            file_map: HashMap::new(),
+            file_map: AHashMap::new(),
         }
     }
 
-    /// Looks up a file in the VFS after normalizing the path
+    /// Looks up a file in the VFS after normalizing the path.
+    ///
+    /// Already-normalized paths skip the allocation — the fast path is a
+    /// direct `&Path` lookup with no heap activity.
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile<'_> {
-        let normalized_path = normalize_path(path);
-        self.file_map.get(&normalized_path)
+        let p = path.as_ref();
+        let bytes = p.as_os_str().as_encoded_bytes();
+        if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
+            self.file_map.get(p)
+        } else {
+            let normalized = normalize_path(p);
+            self.file_map.get(normalized.as_path())
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &VfsFile)> {
@@ -147,28 +157,88 @@ impl VFS {
     ) -> Self {
         let mut vfs = Self::new();
 
-        let dir_maps: Vec<HashMap<PathBuf, VfsFile>> = search_dirs
+        // Collect each dir as a Vec — rayon's parallel iterator collects into Vec
+        // natively; AHashMap does not implement FromParallelIterator.
+        let dir_entries: Vec<Vec<(PathBuf, VfsFile)>> = search_dirs
             .into_iter()
             .map(|dir| Self::directory_contents_to_file_map(dir).collect())
             .collect();
 
         #[cfg(feature = "bsa")]
         if let Some(list) = archive_list {
-            let loose_lookup: HashMap<PathBuf, VfsFile> = dir_maps
+            let loose_lookup: AHashMap<PathBuf, VfsFile> = dir_entries
                 .iter()
-                .flat_map(|m| m.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
                 .collect();
             let archive_handles = archives::from_set(&loose_lookup, &list);
-            vfs.file_map.par_extend(archives::file_map(archive_handles));
+            vfs.file_map.extend(archives::file_map(archive_handles));
         }
 
         // Merge directories in order: later directories override earlier ones,
         // matching OpenMW's VFS semantics (last data= entry wins).
-        for map in dir_maps {
-            vfs.file_map.extend(map);
+        for entries in dir_entries {
+            vfs.file_map.extend(entries);
         }
 
         vfs
+    }
+
+    /// Build a [`VFS`] and a [`ConflictIndex`] from the same set of directories
+    /// in a single directory walk.
+    ///
+    /// Equivalent to calling [`VFS::from_directories`] and
+    /// [`ConflictIndex::from_directories`] separately, but walks each directory
+    /// only once. The [`ConflictIndex`] covers loose files only; archives are
+    /// loaded into the VFS as normal but are not reflected in the conflict index.
+    ///
+    /// # Priority ordering
+    ///
+    /// Matches OpenMW's `data=` semantics: later entries in `search_dirs` have
+    /// higher priority. `ConflictIndex` source indices map directly onto the
+    /// `search_dirs` order — index 0 is the first (lowest-priority) directory.
+    pub fn from_directories_with_conflict_index(
+        search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
+        #[cfg_attr(not(feature = "bsa"), allow(unused_variables))]
+        archive_list: Option<Vec<&str>>,
+    ) -> (Self, ConflictIndex) {
+        let dirs: Vec<PathBuf> = search_dirs
+            .into_iter()
+            .map(|d| d.as_ref().to_path_buf())
+            .collect();
+
+        // Single walk per directory — results feed both VFS and ConflictIndex.
+        let per_dir: Vec<Vec<(PathBuf, VfsFile)>> = dirs
+            .iter()
+            .map(|dir| Self::directory_contents_to_file_map(dir).collect())
+            .collect();
+
+        // Extract normalized keys for ConflictIndex before consuming per_dir.
+        let conflict_sources: Vec<(PathBuf, Vec<PathBuf>)> = dirs
+            .iter()
+            .zip(per_dir.iter())
+            .map(|(dir, entries)| {
+                (dir.clone(), entries.iter().map(|(k, _)| k.clone()).collect())
+            })
+            .collect();
+
+        let mut vfs = Self::new();
+
+        #[cfg(feature = "bsa")]
+        if let Some(list) = archive_list {
+            let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
+                .iter()
+                .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                .collect();
+            let archive_handles = archives::from_set(&loose_lookup, &list);
+            vfs.file_map.extend(archives::file_map(archive_handles));
+        }
+
+        for entries in per_dir {
+            vfs.file_map.extend(entries);
+        }
+
+        let conflict_index = ConflictIndex::from_file_lists(conflict_sources);
+        (vfs, conflict_index)
     }
 
     /// Scans `dir` and classifies every file against this VFS.
@@ -226,9 +296,15 @@ impl VFS {
     ///
     /// `key` is a normalized relative VFS path (e.g. `"textures/foo.dds"`).
     /// The path is normalized before lookup, so case and separator variants
-    /// are accepted.
+    /// are accepted. Already-normalized keys skip the allocation.
     pub fn contains(&self, key: &Path) -> bool {
-        self.file_map.contains_key(&normalize_path(key))
+        let bytes = key.as_os_str().as_encoded_bytes();
+        if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
+            self.file_map.contains_key(key)
+        } else {
+            let normalized = normalize_path(key);
+            self.file_map.contains_key(normalized.as_path())
+        }
     }
 
     /// Returns a sorted version of the VFS contents as a binary tree.

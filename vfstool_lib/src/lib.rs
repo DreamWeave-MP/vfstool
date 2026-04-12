@@ -67,8 +67,8 @@ pub fn normalize_path_in_place(path: &mut PathBuf) {
 
 #[cfg(feature = "bsa")]
 pub mod archives {
+    use ahash::AHashMap;
     use std::{
-        collections::HashMap,
         fs::File,
         path::{Path, PathBuf},
         sync::Arc,
@@ -105,7 +105,7 @@ pub mod archives {
 
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
-    pub fn from_set(file_map: &HashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
+    pub fn from_set(file_map: &AHashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
         archive_list
             .iter()
             .copied()
@@ -177,7 +177,7 @@ pub mod archives {
             .collect()
     }
 
-    pub fn file_map(archives: ArchiveList) -> HashMap<PathBuf, VfsFile> {
+    pub fn file_map(archives: ArchiveList) -> AHashMap<PathBuf, VfsFile> {
         archives
             .iter()
             .flat_map(|stored_archive| {
