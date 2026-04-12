@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use vfstool_lib::{VFS, normalize_path, normalize_path_in_place};
+use vfstool_lib::{ConflictIndex, VFS, normalize_path, normalize_path_in_place};
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -361,6 +361,66 @@ fn bench_diff(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// ConflictIndex
+// ---------------------------------------------------------------------------
+
+fn bench_conflict_index(c: &mut Criterion) {
+    // Simulate a realistic load order:
+    //   base: 1000 files, spread across subdirs
+    //   mod_a: 200 files, 100 conflicting with base
+    //   mod_b: 200 files, 50 conflicting with base, 25 conflicting with mod_a
+
+    let base = make_fixture("vfsbench_ci_base", 1000);
+
+    let mod_a = TempDir::new("vfsbench_ci_mod_a");
+    // 100 files that collide with base (same names)
+    for i in 0..100 {
+        mod_a.write(&format!("textures/file_{i:05}.dat"), b"x");
+    }
+    // 100 files unique to mod_a
+    for i in 0..100 {
+        mod_a.write(&format!("meshes/mod_a_{i:05}.nif"), b"x");
+    }
+
+    let mod_b = TempDir::new("vfsbench_ci_mod_b");
+    // 50 files colliding with base
+    for i in 0..50 {
+        mod_b.write(&format!("textures/file_{i:05}.dat"), b"x");
+    }
+    // 25 files colliding with mod_a
+    for i in 0..25 {
+        mod_b.write(&format!("meshes/mod_a_{i:05}.nif"), b"x");
+    }
+    // 125 unique files
+    for i in 0..125 {
+        mod_b.write(&format!("icons/mod_b_{i:05}.dds"), b"x");
+    }
+
+    let mut g = c.benchmark_group("conflict_index");
+    g.sample_size(20);
+
+    // Two-directory case: base + one mod
+    g.bench_function("two_dirs_1000_plus_200", |b| {
+        b.iter(|| {
+            ConflictIndex::from_directories(black_box(vec![base.path(), mod_a.path()]))
+        })
+    });
+
+    // Three-directory case: full realistic load order
+    g.bench_function("three_dirs_1000_200_200", |b| {
+        b.iter(|| {
+            ConflictIndex::from_directories(black_box(vec![
+                base.path(),
+                mod_a.path(),
+                mod_b.path(),
+            ]))
+        })
+    });
+
+    g.finish();
+}
+
+// ---------------------------------------------------------------------------
 // Serialization (gated on the serialize feature)
 // ---------------------------------------------------------------------------
 
@@ -405,6 +465,7 @@ criterion_group!(
     bench_search,
     bench_tree,
     bench_diff,
+    bench_conflict_index,
     bench_serialize,
 );
 
@@ -419,6 +480,7 @@ criterion_group!(
     bench_search,
     bench_tree,
     bench_diff,
+    bench_conflict_index,
 );
 
 criterion_main!(benches);

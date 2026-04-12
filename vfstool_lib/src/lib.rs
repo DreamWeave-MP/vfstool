@@ -1,8 +1,10 @@
+pub mod conflict;
 pub mod directory_node;
 pub mod vfs;
 pub mod vfs_file;
 
 pub(crate) use directory_node::DirectoryNode;
+pub use conflict::{ConflictIndex, DirConflicts};
 pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
