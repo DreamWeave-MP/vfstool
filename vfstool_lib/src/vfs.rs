@@ -166,9 +166,30 @@ impl VFS {
         vfs
     }
 
-    /// Returns a sorted version of the VFS contents as a binary tree
-    /// Easier to display.
+    /// Returns a sorted version of the VFS contents as a binary tree.
     pub fn tree(&self, relative: bool) -> DisplayTree {
+        self.build_tree(relative, None::<fn(&VfsFile) -> bool>)
+    }
+
+    /// Returns a sorted tree containing only files accepted by `file_filter`.
+    ///
+    /// Unlike the old two-pass implementation (build full tree then prune),
+    /// this filters during construction: directory nodes are only created for
+    /// paths that contain at least one accepted file, so no separate prune pass
+    /// is required.
+    pub fn tree_filtered(
+        &self,
+        relative: bool,
+        file_filter: impl Fn(&VfsFile) -> bool,
+    ) -> DisplayTree {
+        self.build_tree(relative, Some(file_filter))
+    }
+
+    fn build_tree<F: Fn(&VfsFile) -> bool>(
+        &self,
+        relative: bool,
+        file_filter: Option<F>,
+    ) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
         let root_path: PathBuf = if relative { "Data Files" } else { "/" }.into();
 
@@ -193,6 +214,25 @@ impl VFS {
                 ),
             );
 
+            let new_file = match entry.is_archive() {
+                false => VfsFile::from(entry.path()),
+                #[cfg(feature = "bsa")]
+                true => VfsFile::from_archive(
+                    path.to_string_lossy(),
+                    entry.parent_archive_handle().unwrap(),
+                ),
+                #[cfg(not(feature = "bsa"))]
+                true => unimplemented!(
+                    "BSA archives are not supported in this build. Enable the 'bsa' feature of vfstool_lib to use them."
+                ),
+            };
+
+            // Filter before touching the tree so we never create directory
+            // nodes for paths whose files are all excluded.
+            if file_filter.as_ref().is_some_and(|f| !f(&new_file)) {
+                continue;
+            }
+
             let parent = path
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -210,24 +250,12 @@ impl VFS {
                     continue;
                 }
 
+                let component_name = PathBuf::from(component.as_os_str());
                 current_node = current_node
                     .subdirs
-                    .entry(current_path.clone())
+                    .entry(component_name)
                     .or_insert_with(DirectoryNode::new);
             }
-
-            let new_file = match entry.is_archive() {
-                false => VfsFile::from(entry.path()),
-                #[cfg(feature = "bsa")]
-                true => VfsFile::from_archive(
-                    path.to_string_lossy(),
-                    entry.parent_archive_handle().unwrap(),
-                ),
-                #[cfg(not(feature = "bsa"))]
-                true => unimplemented!(
-                    "BSA archives are not supported in this build. Enable the 'bsa' feature of vfstool_lib to use them."
-                ),
-            };
 
             current_node.files.push(new_file);
         }
@@ -235,22 +263,6 @@ impl VFS {
         tree.get_mut(&root_path)
             .expect("Root path should be guaranteed to always exist!")
             .sort();
-
-        tree
-    }
-
-    /// Return a matching set of vfs entries from filter predicates for directories and files
-    /// Might be empty.
-    pub fn tree_filtered(
-        &self,
-        relative: bool,
-        file_filter: impl Fn(&VfsFile) -> bool,
-    ) -> DisplayTree {
-        let mut tree = self.tree(relative);
-
-        tree.iter_mut().for_each(|(_root_dir, files)| {
-            files.filter(&file_filter);
-        });
 
         tree
     }
@@ -764,11 +776,7 @@ mod loose_tests {
         assert_eq!(names, sorted, "files within a DirectoryNode should be alphabetically sorted");
     }
 
-    /// Documents bug #14: subdir keys store full accumulated paths instead of component names.
-    /// The key for "landscape" inside "textures" is currently "textures/landscape", not "landscape".
-    /// This test will pass once the construction loop is fixed.
     #[test]
-    #[ignore = "known bug: tree() subdir keys accumulate full paths (IMPROVEMENTS.md #14)"]
     fn tree_subdir_keys_are_component_names_not_full_paths() {
         let dir = TempDir::new("vfsloose_tree_keys");
         dir.write("textures/landscape/foo.dds", b"");
