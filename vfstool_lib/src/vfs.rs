@@ -13,7 +13,6 @@ use crate::{DirectoryNode, DisplayTree, VfsFile, normalize_path, normalize_path_
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
-    io::{Error, ErrorKind},
     path::{Path, PathBuf},
 };
 
@@ -55,64 +54,44 @@ impl VFS {
         &self,
         substring: S,
     ) -> impl Iterator<Item = VFSTuple<'_>> {
-        let normalized_substring = normalize_path(substring.as_ref())
-            .to_string_lossy()
-            .into_owned();
-
+        let needle = Self::normalize_substring(substring);
         self.file_map.iter().filter_map(move |(path, file)| {
-            if path.to_string_lossy().contains(&normalized_substring) {
-                Some((path.as_path(), file))
-            } else {
-                None
-            }
+            path.to_string_lossy().contains(&needle).then_some((path.as_path(), file))
         })
     }
 
-    /// Given a substring, return an iterator over all paths that contain it.
+    /// Given a substring, return a parallel iterator over all paths that contain it.
     pub fn par_paths_matching<S: AsRef<str>>(
         &self,
         substring: S,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
-        let normalized_substring = normalize_path(substring.as_ref())
-            .to_string_lossy()
-            .into_owned();
-
+        let needle = Self::normalize_substring(substring);
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            if path.to_string_lossy().contains(&normalized_substring) {
-                Some((path.as_path(), file))
-            } else {
-                None
-            }
+            path.to_string_lossy().contains(&needle).then_some((path.as_path(), file))
         })
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
     pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl Iterator<Item = VFSTuple<'_>> {
         let normalized_prefix = normalize_path(&prefix);
-
         self.file_map.iter().filter_map(move |(path, file)| {
-            if path.starts_with(&normalized_prefix) {
-                Some((path.as_path(), file))
-            } else {
-                None
-            }
+            path.starts_with(&normalized_prefix).then_some((path.as_path(), file))
         })
     }
 
-    /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
+    /// Given a path prefix to a location in the VFS, return a parallel iterator to *all* of its contents.
     pub fn par_paths_with<P: AsRef<Path>>(
         &self,
         prefix: P,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
         let normalized_prefix = normalize_path(&prefix);
-
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            if path.starts_with(&normalized_prefix) {
-                Some((path.as_path(), file))
-            } else {
-                None
-            }
+            path.starts_with(&normalized_prefix).then_some((path.as_path(), file))
         })
+    }
+
+    fn normalize_substring<S: AsRef<str>>(s: S) -> String {
+        normalize_path(s.as_ref()).to_string_lossy().into_owned()
     }
 
     /// Returns a parallel iterator meant to be fed into par_extend
