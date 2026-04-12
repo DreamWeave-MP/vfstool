@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 ///
 /// Both can be true simultaneously for sources in the middle of the order.
 #[derive(Debug, Default)]
-pub struct DirConflicts {
+pub struct SourceConflicts {
     /// Normalized VFS paths where this source wins over at least one earlier
     /// source (green up-arrow in MO2 terms).
     pub overrides: AHashSet<PathBuf>,
@@ -22,7 +22,7 @@ pub struct DirConflicts {
     pub overridden_by: AHashSet<PathBuf>,
 }
 
-impl DirConflicts {
+impl SourceConflicts {
     /// True if this source overrides at least one file from an earlier source.
     pub fn has_overrides(&self) -> bool {
         !self.overrides.is_empty()
@@ -71,7 +71,7 @@ pub struct ConflictIndex {
     pub sources: Vec<PathBuf>,
 
     /// Per-source conflict info, indexed by load-order position.
-    pub conflicts: Vec<DirConflicts>,
+    pub conflicts: Vec<SourceConflicts>,
 
     /// Multi-map: normalized path → source indices (ascending = lower priority first).
     /// Only paths present in two or more sources are included.
@@ -129,7 +129,7 @@ impl ConflictIndex {
         path_to_sources.retain(|_, indices| indices.len() > 1);
 
         // Derive per-source winning/losing sets from the multi-map.
-        let mut conflicts: Vec<DirConflicts> = (0..n).map(|_| DirConflicts::default()).collect();
+        let mut conflicts: Vec<SourceConflicts> = (0..n).map(|_| SourceConflicts::default()).collect();
 
         for (path, source_indices) in &path_to_sources {
             // source_indices is sorted ascending (low priority → high priority).
