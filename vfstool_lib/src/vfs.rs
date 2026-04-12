@@ -142,25 +142,32 @@ impl VFS {
     }
 
     pub fn from_directories(
-        search_dirs: impl IntoParallelIterator<Item = impl AsRef<Path> + Sync>,
+        search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         #[cfg_attr(not(feature = "bsa"), allow(unused_variables))]
         archive_list: Option<Vec<&str>>,
     ) -> Self {
         let mut vfs = Self::new();
 
-        let map: HashMap<PathBuf, VfsFile> = search_dirs
-            .into_par_iter()
-            .flat_map(Self::directory_contents_to_file_map)
+        let dir_maps: Vec<HashMap<PathBuf, VfsFile>> = search_dirs
+            .into_iter()
+            .map(|dir| Self::directory_contents_to_file_map(dir).collect())
             .collect();
 
         #[cfg(feature = "bsa")]
         if let Some(list) = archive_list {
-            let archive_handles = archives::from_set(&map, &list);
-
+            let loose_lookup: HashMap<PathBuf, VfsFile> = dir_maps
+                .iter()
+                .flat_map(|m| m.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                .collect();
+            let archive_handles = archives::from_set(&loose_lookup, &list);
             vfs.file_map.par_extend(archives::file_map(archive_handles));
         }
 
-        vfs.file_map.par_extend(map);
+        // Merge directories in order: later directories override earlier ones,
+        // matching OpenMW's VFS semantics (last data= entry wins).
+        for map in dir_maps {
+            vfs.file_map.extend(map);
+        }
 
         vfs
     }
