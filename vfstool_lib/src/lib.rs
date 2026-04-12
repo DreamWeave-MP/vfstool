@@ -69,30 +69,64 @@ pub fn normalize_path_in_place(path: &mut PathBuf) {
     *path = PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(bytes) });
 }
 
-#[cfg(feature = "bsa")]
+/// Returns `true` if the path has a ZIP or PK3 extension (case-insensitive).
+#[cfg(feature = "zip")]
+pub(crate) fn is_zip_or_pk3(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("zip") || e.eq_ignore_ascii_case("pk3"))
+}
+
+#[cfg(any(feature = "bsa", feature = "zip"))]
 pub mod archives {
     use ahash::AHashMap;
     use std::{
+        fmt,
         fs::File,
         path::{Path, PathBuf},
         sync::Arc,
     };
 
+    #[cfg(feature = "zip")]
+    use std::sync::Mutex;
+
     use super::VfsFile;
+
+    #[cfg(feature = "bsa")]
     use ba2::{self, prelude::*, tes3::Archive as TES3Archive};
 
-    #[derive(Debug)]
     pub enum TypedArchive {
+        #[cfg(feature = "bsa")]
         Tes3(ba2::tes3::Archive<'static>),
+        #[cfg(feature = "bsa")]
         Tes4(ba2::tes4::Archive<'static>),
+        #[cfg(feature = "bsa")]
         Fo4(ba2::fo4::Archive<'static>),
+        #[cfg(feature = "zip")]
+        Zip(Mutex<zip::ZipArchive<File>>),
+    }
+
+    impl fmt::Debug for TypedArchive {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                #[cfg(feature = "bsa")]
+                Self::Tes3(_) => f.write_str("TypedArchive::Tes3"),
+                #[cfg(feature = "bsa")]
+                Self::Tes4(_) => f.write_str("TypedArchive::Tes4"),
+                #[cfg(feature = "bsa")]
+                Self::Fo4(_) => f.write_str("TypedArchive::Fo4"),
+                #[cfg(feature = "zip")]
+                Self::Zip(_) => f.write_str("TypedArchive::Zip"),
+            }
+        }
     }
 
     #[derive(Debug)]
     pub struct StoredArchive {
-        // Not actually used, but necessary to keep the `archive` alive
+        /// Keeps the BSA/BA2 memory-map file handle alive.
+        /// `None` for ZIP/PK3 archives — `ZipArchive` owns its file handle internally.
         #[allow(dead_code)]
-        file_handle: File,
+        file_handle: Option<File>,
         archive: TypedArchive,
         path: PathBuf,
     }
@@ -124,61 +158,99 @@ pub mod archives {
                     }
                 };
 
-                let path = valid_archive.path();
-
-                let mut file_handle = match File::open(path) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        eprintln!("vfstool: warning: failed to open archive '{}': {e}", path.display());
-                        return None;
-                    }
-                };
-
-                let format = match ba2::guess_format(&mut file_handle) {
-                    Some(f) => f,
-                    None => {
-                        eprintln!("vfstool: warning: could not determine format of archive '{}', skipping", path.display());
-                        return None;
-                    }
-                };
-
-                match format {
-                    ba2::FileFormat::TES3 => match TES3Archive::read(&file_handle) {
-                        Ok(archive) => Some(Arc::new(StoredArchive {
-                            file_handle,
-                            archive: TypedArchive::Tes3(archive),
-                            path: path.to_path_buf(),
-                        })),
-                        Err(e) => {
-                            eprintln!("vfstool: warning: failed to read TES3 archive '{}': {e}", path.display());
-                            None
-                        }
-                    },
-                    ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file_handle) {
-                        Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
-                            file_handle,
-                            archive: TypedArchive::Tes4(archive),
-                            path: path.to_path_buf(),
-                        })),
-                        Err(e) => {
-                            eprintln!("vfstool: warning: failed to read TES4 archive '{}': {e}", path.display());
-                            None
-                        }
-                    },
-                    ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file_handle) {
-                        Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
-                            file_handle,
-                            archive: TypedArchive::Fo4(archive),
-                            path: path.to_path_buf(),
-                        })),
-                        Err(e) => {
-                            eprintln!("vfstool: warning: failed to read FO4 archive '{}': {e}", path.display());
-                            None
-                        }
-                    },
-                }
+                open_archive(valid_archive.path())
             })
             .collect()
+    }
+
+    /// Try to open a single archive file, detecting its format by extension and content.
+    ///
+    /// ZIP/PK3 files are identified by extension; BSA/BA2 files are identified by
+    /// magic bytes. Returns `None` with a warning on any failure.
+    #[allow(unreachable_code)]
+    fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
+        // ZIP / PK3 — detect by extension before touching file content.
+        #[cfg(feature = "zip")]
+        if crate::is_zip_or_pk3(path) {
+            let file = match File::open(path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("vfstool: warning: failed to open zip '{}': {e}", path.display());
+                    return None;
+                }
+            };
+            return match zip::ZipArchive::new(file) {
+                Ok(archive) => Some(Arc::new(StoredArchive {
+                    file_handle: None,
+                    archive: TypedArchive::Zip(Mutex::new(archive)),
+                    path: path.to_path_buf(),
+                })),
+                Err(e) => {
+                    eprintln!("vfstool: warning: failed to read zip '{}': {e}", path.display());
+                    None
+                }
+            };
+        }
+
+        // BSA / BA2 — detect by magic bytes.
+        #[cfg(feature = "bsa")]
+        {
+            let mut file_handle = match File::open(path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("vfstool: warning: failed to open archive '{}': {e}", path.display());
+                    return None;
+                }
+            };
+            let format = match ba2::guess_format(&mut file_handle) {
+                Some(f) => f,
+                None => {
+                    eprintln!("vfstool: warning: could not determine format of archive '{}', skipping", path.display());
+                    return None;
+                }
+            };
+            return match format {
+                ba2::FileFormat::TES3 => match TES3Archive::read(&file_handle) {
+                    Ok(archive) => Some(Arc::new(StoredArchive {
+                        file_handle: Some(file_handle),
+                        archive: TypedArchive::Tes3(archive),
+                        path: path.to_path_buf(),
+                    })),
+                    Err(e) => {
+                        eprintln!("vfstool: warning: failed to read TES3 archive '{}': {e}", path.display());
+                        None
+                    }
+                },
+                ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file_handle) {
+                    Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
+                        file_handle: Some(file_handle),
+                        archive: TypedArchive::Tes4(archive),
+                        path: path.to_path_buf(),
+                    })),
+                    Err(e) => {
+                        eprintln!("vfstool: warning: failed to read TES4 archive '{}': {e}", path.display());
+                        None
+                    }
+                },
+                ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file_handle) {
+                    Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
+                        file_handle: Some(file_handle),
+                        archive: TypedArchive::Fo4(archive),
+                        path: path.to_path_buf(),
+                    })),
+                    Err(e) => {
+                        eprintln!("vfstool: warning: failed to read FO4 archive '{}': {e}", path.display());
+                        None
+                    }
+                },
+            };
+        }
+
+        eprintln!(
+            "vfstool: warning: '{}' is not a recognized archive format, skipping",
+            path.display()
+        );
+        None
     }
 
     /// Return the normalized VFS paths for all files in an already-open archive.
@@ -187,6 +259,7 @@ pub mod archives {
     /// contents without re-opening the archive from disk.
     pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
         match &stored.archive {
+            #[cfg(feature = "bsa")]
             TypedArchive::Tes3(data) => data
                 .iter()
                 .map(|(key, _)| {
@@ -195,6 +268,7 @@ pub mod archives {
                     p
                 })
                 .collect(),
+            #[cfg(feature = "bsa")]
             TypedArchive::Tes4(data) => data
                 .iter()
                 .flat_map(|(dir_key, dir)| {
@@ -208,6 +282,7 @@ pub mod archives {
                         .collect::<Vec<_>>()
                 })
                 .collect(),
+            #[cfg(feature = "bsa")]
             TypedArchive::Fo4(data) => data
                 .iter()
                 .map(|(key, _)| {
@@ -216,6 +291,19 @@ pub mod archives {
                     p
                 })
                 .collect(),
+            #[cfg(feature = "zip")]
+            TypedArchive::Zip(archive) => {
+                let guard = archive.lock().expect("zip mutex should not be poisoned");
+                guard
+                    .file_names()
+                    .filter(|name| !name.ends_with('/'))
+                    .map(|name| {
+                        let mut p = PathBuf::from(name);
+                        crate::normalize_path_in_place(&mut p);
+                        p
+                    })
+                    .collect()
+            }
         }
     }
 
@@ -225,6 +313,7 @@ pub mod archives {
             .flat_map(|stored_archive| {
                 let iter: Box<dyn Iterator<Item = (PathBuf, VfsFile)>> =
                     match &stored_archive.archive {
+                        #[cfg(feature = "bsa")]
                         TypedArchive::Tes3(data) => Box::new(data.iter().map(|(key, _value)| {
                             let name_string = key.name().to_string();
                             let mut normalized = PathBuf::from(&name_string);
@@ -234,6 +323,7 @@ pub mod archives {
                                 VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
                             )
                         })),
+                        #[cfg(feature = "bsa")]
                         TypedArchive::Tes4(data) => {
                             Box::new(data.iter().flat_map(move |(dir_key, dir)| {
                                 let dir_string = dir_key.name();
@@ -249,6 +339,7 @@ pub mod archives {
                                 })
                             }))
                         }
+                        #[cfg(feature = "bsa")]
                         TypedArchive::Fo4(data) => Box::new(data.iter().map(|(key, _value)| {
                             let name_string = key.name().to_string();
                             let mut normalized = PathBuf::from(&name_string);
@@ -258,6 +349,30 @@ pub mod archives {
                                 VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
                             )
                         })),
+                        #[cfg(feature = "zip")]
+                        TypedArchive::Zip(archive) => {
+                            // Collect eagerly — the iterator borrows from the MutexGuard
+                            // which is local and cannot escape the match arm.
+                            let guard =
+                                archive.lock().expect("zip mutex should not be poisoned");
+                            let entries: Vec<(PathBuf, VfsFile)> = guard
+                                .file_names()
+                                .filter(|name| !name.ends_with('/'))
+                                .map(|name| {
+                                    // Keep the original name for lookup in open(); normalize
+                                    // separately for the VFS HashMap key.
+                                    let original_name = name.to_string();
+                                    let mut normalized = PathBuf::from(name);
+                                    crate::normalize_path_in_place(&mut normalized);
+                                    let vfs_file = VfsFile::from_archive(
+                                        &original_name,
+                                        Arc::clone(stored_archive),
+                                    );
+                                    (normalized, vfs_file)
+                                })
+                                .collect();
+                            Box::new(entries.into_iter())
+                        }
                     };
                 iter
             })

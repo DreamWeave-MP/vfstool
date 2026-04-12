@@ -12,6 +12,7 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 [dependencies]
 ahash = "0.8"
 ba2 = { version = "3.0.1", optional = true }
+zip = { version = "2", optional = true }
 rayon = "1.11.0"
 serde = { version = "1.0.225", features = ["derive"], optional = true }
 serde_json = { version = "1.0.145", optional = true }
@@ -25,6 +26,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [features]
 default = []
 bsa = ["dep:ba2"]
+zip = ["dep:zip"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
 
 [[bench]]

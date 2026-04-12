@@ -8,7 +8,7 @@ use ba2::{
     },
 };
 
-#[cfg(feature = "bsa")]
+#[cfg(any(feature = "bsa", feature = "zip"))]
 use std::{
     io::{Cursor, Error, ErrorKind},
     sync::Arc,
@@ -20,7 +20,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(feature = "bsa")]
+#[cfg(any(feature = "bsa", feature = "zip"))]
 use crate::archives::{StoredArchive, TypedArchive};
 
 #[cfg(feature = "bsa")]
@@ -116,7 +116,7 @@ impl Read for TES4FileReader {
     }
 }
 
-#[cfg(feature = "bsa")]
+#[cfg(any(feature = "bsa", feature = "zip"))]
 #[derive(Debug)]
 pub struct ArchiveReference {
     path: PathBuf,
@@ -149,7 +149,7 @@ impl ArchiveReference {
 
 #[derive(Debug)]
 pub enum FileType {
-    #[cfg(feature = "bsa")]
+    #[cfg(any(feature = "bsa", feature = "zip"))]
     Archive(ArchiveReference),
     Loose(PathBuf),
 }
@@ -206,7 +206,7 @@ impl VfsFile {
         }
     }
 
-    #[cfg(feature = "bsa")]
+    #[cfg(any(feature = "bsa", feature = "zip"))]
     pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> Self {
         let path = PathBuf::from(path.as_ref());
         VfsFile {
@@ -220,7 +220,7 @@ impl VfsFile {
     pub fn is_loose(&self) -> bool {
         match self.file {
             FileType::Loose(_) => true,
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(_) => false,
         }
     }
@@ -228,7 +228,7 @@ impl VfsFile {
     pub fn is_archive(&self) -> bool {
         match self.file {
             FileType::Loose(_) => false,
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(_) => true,
         }
     }
@@ -236,7 +236,7 @@ impl VfsFile {
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => {
                 let path_str = archive_ref
                     .parent_archive
@@ -256,7 +256,7 @@ impl VfsFile {
         match &self.file {
             FileType::Loose(_) => None,
 
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => {
                 let name = archive_ref
                     .parent_archive
@@ -270,7 +270,7 @@ impl VfsFile {
         }
     }
 
-    #[cfg(feature = "bsa")]
+    #[cfg(any(feature = "bsa", feature = "zip"))]
     pub fn parent_archive_handle(&self) -> Result<Arc<StoredArchive>, Error> {
         match &self.file {
             FileType::Loose(_) => Err(Error::new(
@@ -308,12 +308,13 @@ impl VfsFile {
                 Ok(Box::new(file))
             }
 
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => {
                 let parent = archive_ref.parent_archive.handle();
                 let path_string = archive_ref.path.to_string_lossy().to_string();
 
                 match parent {
+                    #[cfg(feature = "bsa")]
                     TypedArchive::Tes3(archive) => {
                         let key: Tes3Key = path_string.into();
                         let bytes = archive
@@ -328,6 +329,7 @@ impl VfsFile {
                         Ok(Box::new(Cursor::new(bytes)))
                     }
 
+                    #[cfg(feature = "bsa")]
                     TypedArchive::Tes4(archive) => {
                         let (dir_key, file_key) =
                             ArchiveReference::tes4_keys(archive_ref.path.as_path())?;
@@ -343,6 +345,7 @@ impl VfsFile {
                         Ok(Box::new(TES4FileReader::new(file)?))
                     }
 
+                    #[cfg(feature = "bsa")]
                     TypedArchive::Fo4(archive) => {
                         let key: Fo4ArchiveKey = path_string.into();
                         let file: &Fo4File = archive.get(&key).ok_or_else(|| {
@@ -352,6 +355,22 @@ impl VfsFile {
                             )
                         })?;
                         Ok(Box::new(Fo4FileReader::new(file)))
+                    }
+
+                    #[cfg(feature = "zip")]
+                    TypedArchive::Zip(archive) => {
+                        let mut guard = archive
+                            .lock()
+                            .map_err(|_| io::Error::new(io::ErrorKind::Other, "zip mutex poisoned"))?;
+                        let buf = {
+                            let mut entry = guard
+                                .by_name(&path_string)
+                                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+                            let mut buf = Vec::with_capacity(entry.size() as usize);
+                            io::copy(&mut entry, &mut buf)?;
+                            buf
+                        };
+                        Ok(Box::new(Cursor::new(buf)))
                     }
                 }
             }
@@ -384,7 +403,7 @@ impl VfsFile {
             FileType::Loose(path) => path.file_name(),
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => archive_ref.path.file_name(),
         }
     }
@@ -417,7 +436,7 @@ impl VfsFile {
             FileType::Loose(path) => path.file_stem(),
             // This doesn't actually retrieve the filename, it just normalizes it
             // Now it does retrieve the filename, but wtf
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => archive_ref.path.file_stem(),
         }
     }
@@ -443,7 +462,7 @@ impl VfsFile {
         match &self.file {
             FileType::Loose(path) => path.as_path(),
 
-            #[cfg(feature = "bsa")]
+            #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => &archive_ref.path,
         }
     }

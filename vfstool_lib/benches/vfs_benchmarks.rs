@@ -5,6 +5,9 @@ use std::{
 };
 use vfstool_lib::{ConflictIndex, VFS, normalize_path, normalize_path_in_place};
 
+#[cfg(feature = "zip")]
+use std::io::Write as IoWrite;
+
 // ---------------------------------------------------------------------------
 // Fixture helpers
 // ---------------------------------------------------------------------------
@@ -37,6 +40,27 @@ impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+/// Write a ZIP archive into `dir` at `filename` with `n` stored entries.
+///
+/// Entries are spread across the same subdirectory layout used by `make_fixture`
+/// so the two fixture types are directly comparable.
+#[cfg(feature = "zip")]
+fn make_zip_fixture(dir: &TempDir, filename: &str, n: usize) {
+    let path = dir.path().join(filename);
+    let file = fs::File::create(&path).unwrap();
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    let subdirs = ["textures", "meshes", "icons", "sound", "music", "scripts"];
+    for i in 0..n {
+        let subdir = subdirs[i % subdirs.len()];
+        let name = format!("{subdir}/file_{i:05}.dat");
+        zip.start_file(&name, options).unwrap();
+        zip.write_all(b"x").unwrap();
+    }
+    zip.finish().unwrap();
 }
 
 /// Create a fixture directory with `n` files spread across a realistic
@@ -451,10 +475,107 @@ fn bench_serialize(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// ZIP / PK3 archive benchmarks
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "zip")]
+fn bench_zip(c: &mut Criterion) {
+    let mut g = c.benchmark_group("vfs_zip");
+    g.sample_size(20);
+
+    // --- Construction with a ZIP archive ---
+    for &n in &[100usize, 500, 2000] {
+        let dir = TempDir::new(&format!("vfsbench_zip_construct_{n}"));
+        make_zip_fixture(&dir, "data.zip", n);
+
+        g.bench_with_input(
+            BenchmarkId::new("construction", n),
+            &dir,
+            |b, dir| {
+                b.iter(|| {
+                    VFS::from_directories(
+                        vec![black_box(dir.path())],
+                        Some(vec!["data.zip"]),
+                    )
+                })
+            },
+        );
+    }
+
+    // --- Lookup in a ZIP-backed VFS ---
+    {
+        let dir = TempDir::new("vfsbench_zip_lookup");
+        make_zip_fixture(&dir, "data.zip", 1000);
+        let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+
+        // Hit: already-normalized key
+        g.bench_function("lookup_hit_normalized", |b| {
+            b.iter(|| vfs.get_file(black_box("textures/file_00000.dat")))
+        });
+
+        // Hit: needs case folding
+        g.bench_function("lookup_hit_uppercase", |b| {
+            b.iter(|| vfs.get_file(black_box("Textures/File_00000.dat")))
+        });
+
+        // Miss
+        g.bench_function("lookup_miss", |b| {
+            b.iter(|| vfs.get_file(black_box("textures/no_such_file.dds")))
+        });
+    }
+
+    // --- open() from a ZIP entry (mutex lock + by_name + io::copy) ---
+    {
+        let dir = TempDir::new("vfsbench_zip_open");
+        // 1 KiB payload so io::copy has non-trivial work to do
+        let payload: Vec<u8> = (0u8..=255).cycle().take(1024).collect();
+        {
+            let path = dir.path().join("data.zip");
+            let file = fs::File::create(&path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            zip.start_file("scripts/payload.lua", options).unwrap();
+            zip.write_all(&payload).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+
+        g.bench_function("open_1kb_entry", |b| {
+            b.iter(|| {
+                let file = vfs.get_file(black_box("scripts/payload.lua")).unwrap();
+                let mut buf = Vec::with_capacity(1024);
+                std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
+                buf
+            })
+        });
+    }
+
+    g.finish();
+}
+
+// ---------------------------------------------------------------------------
 // criterion_group wiring
 // ---------------------------------------------------------------------------
 
-#[cfg(feature = "serialize")]
+#[cfg(all(feature = "serialize", feature = "zip"))]
+criterion_group!(
+    benches,
+    bench_normalize,
+    bench_normalize_in_place,
+    bench_normalize_comparison,
+    bench_construction,
+    bench_lookup,
+    bench_search,
+    bench_tree,
+    bench_diff,
+    bench_conflict_index,
+    bench_serialize,
+    bench_zip,
+);
+
+#[cfg(all(feature = "serialize", not(feature = "zip")))]
 criterion_group!(
     benches,
     bench_normalize,
@@ -469,7 +590,22 @@ criterion_group!(
     bench_serialize,
 );
 
-#[cfg(not(feature = "serialize"))]
+#[cfg(all(not(feature = "serialize"), feature = "zip"))]
+criterion_group!(
+    benches,
+    bench_normalize,
+    bench_normalize_in_place,
+    bench_normalize_comparison,
+    bench_construction,
+    bench_lookup,
+    bench_search,
+    bench_tree,
+    bench_diff,
+    bench_conflict_index,
+    bench_zip,
+);
+
+#[cfg(not(any(feature = "serialize", feature = "zip")))]
 criterion_group!(
     benches,
     bench_normalize,

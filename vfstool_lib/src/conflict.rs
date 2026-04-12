@@ -214,98 +214,141 @@ impl ConflictIndex {
     }
 }
 
-#[cfg(feature = "bsa")]
+#[cfg(any(feature = "bsa", feature = "zip"))]
 impl ConflictIndex {
-    /// Extract normalized VFS paths from a BSA or BA2 archive.
+    /// Extract normalized VFS paths from an archive (BSA, BA2, ZIP, or PK3).
     ///
     /// Logs a warning and returns an empty list on any failure (missing file,
     /// unknown format, read error), consistent with how `VFS::from_directories`
     /// treats bad archives.
+    #[allow(unreachable_code)]
     fn paths_from_archive(path: &Path) -> Vec<PathBuf> {
-        use ba2::prelude::*;
         use std::fs::File;
 
-        let mut file = match File::open(path) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!(
-                    "vfstool: warning: failed to open archive '{}': {e}",
-                    path.display()
-                );
-                return Vec::new();
-            }
-        };
-
-        let format = match ba2::guess_format(&mut file) {
-            Some(f) => f,
-            None => {
-                eprintln!(
-                    "vfstool: warning: could not determine format of archive '{}', skipping",
-                    path.display()
-                );
-                return Vec::new();
-            }
-        };
-
-        match format {
-            ba2::FileFormat::TES3 => match ba2::tes3::Archive::read(&file) {
+        #[cfg(feature = "zip")]
+        if crate::is_zip_or_pk3(path) {
+            let file = match File::open(path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!(
+                        "vfstool: warning: failed to open archive '{}': {e}",
+                        path.display()
+                    );
+                    return Vec::new();
+                }
+            };
+            return match zip::ZipArchive::new(file) {
                 Ok(archive) => archive
-                    .iter()
-                    .map(|(key, _)| {
-                        let mut p = PathBuf::from(key.name().to_string());
+                    .file_names()
+                    .filter(|name| !name.ends_with('/'))
+                    .map(|name| {
+                        let mut p = PathBuf::from(name);
                         normalize_path_in_place(&mut p);
                         p
                     })
                     .collect(),
                 Err(e) => {
                     eprintln!(
-                        "vfstool: warning: failed to read TES3 archive '{}': {e}",
+                        "vfstool: warning: failed to read ZIP archive '{}': {e}",
                         path.display()
                     );
                     Vec::new()
                 }
-            },
-            ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file) {
-                Ok((archive, _)) => archive
-                    .iter()
-                    .flat_map(|(dir_key, dir)| {
-                        let dir_str = dir_key.name().to_string();
-                        dir.iter()
-                            .map(move |(key, _)| {
-                                let mut p =
-                                    PathBuf::from(format!("{}\\{}", dir_str, key.name()));
-                                normalize_path_in_place(&mut p);
-                                p
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .collect(),
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to read TES4 archive '{}': {e}",
-                        path.display()
-                    );
-                    Vec::new()
-                }
-            },
-            ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file) {
-                Ok((archive, _)) => archive
-                    .iter()
-                    .map(|(key, _)| {
-                        let mut p = PathBuf::from(key.name().to_string());
-                        normalize_path_in_place(&mut p);
-                        p
-                    })
-                    .collect(),
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to read FO4 archive '{}': {e}",
-                        path.display()
-                    );
-                    Vec::new()
-                }
-            },
+            };
         }
+
+        #[cfg(feature = "bsa")]
+        {
+            use ba2::prelude::*;
+
+            let mut file = match File::open(path) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!(
+                        "vfstool: warning: failed to open archive '{}': {e}",
+                        path.display()
+                    );
+                    return Vec::new();
+                }
+            };
+
+            let format = match ba2::guess_format(&mut file) {
+                Some(f) => f,
+                None => {
+                    eprintln!(
+                        "vfstool: warning: could not determine format of archive '{}', skipping",
+                        path.display()
+                    );
+                    return Vec::new();
+                }
+            };
+
+            return match format {
+                ba2::FileFormat::TES3 => match ba2::tes3::Archive::read(&file) {
+                    Ok(archive) => archive
+                        .iter()
+                        .map(|(key, _)| {
+                            let mut p = PathBuf::from(key.name().to_string());
+                            normalize_path_in_place(&mut p);
+                            p
+                        })
+                        .collect(),
+                    Err(e) => {
+                        eprintln!(
+                            "vfstool: warning: failed to read TES3 archive '{}': {e}",
+                            path.display()
+                        );
+                        Vec::new()
+                    }
+                },
+                ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file) {
+                    Ok((archive, _)) => archive
+                        .iter()
+                        .flat_map(|(dir_key, dir)| {
+                            let dir_str = dir_key.name().to_string();
+                            dir.iter()
+                                .map(move |(key, _)| {
+                                    let mut p =
+                                        PathBuf::from(format!("{}\\{}", dir_str, key.name()));
+                                    normalize_path_in_place(&mut p);
+                                    p
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .collect(),
+                    Err(e) => {
+                        eprintln!(
+                            "vfstool: warning: failed to read TES4 archive '{}': {e}",
+                            path.display()
+                        );
+                        Vec::new()
+                    }
+                },
+                ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file) {
+                    Ok((archive, _)) => archive
+                        .iter()
+                        .map(|(key, _)| {
+                            let mut p = PathBuf::from(key.name().to_string());
+                            normalize_path_in_place(&mut p);
+                            p
+                        })
+                        .collect(),
+                    Err(e) => {
+                        eprintln!(
+                            "vfstool: warning: failed to read FO4 archive '{}': {e}",
+                            path.display()
+                        );
+                        Vec::new()
+                    }
+                },
+            };
+        }
+
+        eprintln!(
+            "vfstool: warning: '{}' is not a recognized archive format, skipping",
+            path.display()
+        );
+        Vec::new()
     }
 
     /// Analyse an ordered set of directories and archives for VFS conflicts.
