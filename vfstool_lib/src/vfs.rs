@@ -4,7 +4,7 @@ use walkdir::WalkDir;
 #[cfg(feature = "serialize")]
 use crate::SerializeType;
 #[cfg(feature = "serialize")]
-use std::io::Result;
+use std::io::{Error, ErrorKind, Result};
 
 #[cfg(feature = "bsa")]
 use crate::archives;
