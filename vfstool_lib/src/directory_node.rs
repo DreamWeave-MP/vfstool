@@ -1,5 +1,4 @@
 use crate::{DisplayTree, VfsFile};
-use std::collections::BTreeMap;
 
 #[cfg(feature = "serialize")]
 use serde::{Serialize, Serializer, ser::SerializeMap};

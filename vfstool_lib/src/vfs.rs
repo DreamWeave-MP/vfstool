@@ -14,7 +14,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
     io::{Error, ErrorKind},
-    ops::Index,
     path::{Path, PathBuf},
 };
 
