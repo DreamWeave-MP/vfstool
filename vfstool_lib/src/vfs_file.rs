@@ -125,7 +125,7 @@ pub struct ArchiveReference {
 
 #[cfg(feature = "bsa")]
 impl ArchiveReference {
-    pub fn tes4_keys(path: &PathBuf) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
+    pub fn tes4_keys(path: &Path) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
         let dir_key: Tes4ArchiveKey = path
             .parent()
             .map(|p| p.to_string_lossy().into_owned().into())
@@ -313,33 +313,47 @@ impl VfsFile {
                 let parent = archive_ref.parent_archive.handle();
                 let path_string = archive_ref.path.to_string_lossy().to_string();
 
-                let data = match parent {
+                match parent {
                     TypedArchive::Tes3(archive) => {
                         let key: Tes3Key = path_string.into();
-                        archive.get(&key).and_then(|data| Some(data.as_bytes()))
+                        let bytes = archive
+                            .get(&key)
+                            .map(|data| data.as_bytes().to_vec())
+                            .ok_or_else(|| {
+                                io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    "File not found in TES3 archive",
+                                )
+                            })?;
+                        Ok(Box::new(Cursor::new(bytes)))
                     }
 
                     TypedArchive::Tes4(archive) => {
-                        let (dir_key, file_key) = ArchiveReference::tes4_keys(&archive_ref.path)?;
-
+                        let (dir_key, file_key) =
+                            ArchiveReference::tes4_keys(archive_ref.path.as_path())?;
                         let file: &Tes4File = archive
                             .get(&dir_key)
                             .and_then(|dir| dir.get(&file_key))
-                            .unwrap();
-
-                        return Ok(Box::new(TES4FileReader::new(file)?));
+                            .ok_or_else(|| {
+                                io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    "File not found in TES4 archive",
+                                )
+                            })?;
+                        Ok(Box::new(TES4FileReader::new(file)?))
                     }
 
                     TypedArchive::Fo4(archive) => {
                         let key: Fo4ArchiveKey = path_string.into();
-                        let file: &Fo4File = archive.get(&key).unwrap();
-                        return Ok(Box::new(Fo4FileReader::new(file)));
+                        let file: &Fo4File = archive.get(&key).ok_or_else(|| {
+                            io::Error::new(
+                                io::ErrorKind::NotFound,
+                                "File not found in FO4 archive",
+                            )
+                        })?;
+                        Ok(Box::new(Fo4FileReader::new(file)))
                     }
-                };
-
-                let cursor = Cursor::new(data.unwrap());
-
-                Ok(Box::new(cursor))
+                }
             }
         }
     }
