@@ -481,7 +481,7 @@ fn main() -> Result<()> {
             // Lossy compare could produce false positives, but only if there are non-unicode
             // characters at the same position in both the path and string being matched and the
             // rest of the string is the same
-            let path_string = normalize_path(path).to_string_lossy().to_string();
+            let path_string = normalize_path(&path).to_string_lossy().to_string();
             let path_regex: regex::Regex = match regex::RegexBuilder::new(&path_string)
                 .case_insensitive(true)
                 .build()
@@ -493,7 +493,7 @@ fn main() -> Result<()> {
                 }
             };
 
-            let tree = vfs.tree_filtered(args.use_relative, |file| {
+            let tree = vfs.tree_filtered(args.use_relative, |_key, file| {
                 let normalized = normalize_path(file.path());
                 path_regex.is_match(&normalized.to_string_lossy())
             });
@@ -575,15 +575,17 @@ fn main() -> Result<()> {
             filter_data_paths(&filter_path, &mut paths);
 
             let filtered_vfs = VFS::from_directories(&paths, None);
-            let filter_normalized = normalize_path(&filter_path);
+            let filter_normalized = normalize_path(&filter_path).into_owned();
 
-            let files_remaining = vfs.tree_filtered(args.use_relative, |file| {
-                let path = file.path();
-                // Check if there's a file whose ending matches this path, but not this exact path
+            let files_remaining = vfs.tree_filtered(args.use_relative, |key, file| {
                 if replacements_only {
-                    filtered_vfs.has_normalized_not_exact(path)
+                    // A replacement: filter_path has a file at this key, but the full VFS
+                    // serves it from somewhere else (i.e., a later directory won).
+                    filtered_vfs.contains(key)
+                        && !normalize_path(file.path()).starts_with(&filter_normalized)
                 } else {
-                    normalize_path(path).starts_with(&filter_normalized)
+                    // Still loaded from filter_path — not overridden by anything later.
+                    normalize_path(file.path()).starts_with(&filter_normalized)
                 }
             });
 
