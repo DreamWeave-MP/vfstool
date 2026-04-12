@@ -31,7 +31,7 @@ use serde::{Serialize, Serializer, ser::SerializeMap};
 /// ```
 ///
 /// The `sort` and `filter` methods allow organizing and modifying the directory contents.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DirectoryNode {
     pub files: Vec<VfsFile>,
     pub subdirs: DisplayTree,
@@ -39,10 +39,7 @@ pub struct DirectoryNode {
 
 impl DirectoryNode {
     pub fn new() -> Self {
-        Self {
-            files: Vec::new(),
-            subdirs: BTreeMap::new(),
-        }
+        Self::default()
     }
 
     /// Sorts the files in the directory by name and recursively sorts subdirectories.
@@ -111,9 +108,7 @@ impl Serialize for DirectoryNode {
         }
 
         for (dir_name, subdir) in &self.subdirs {
-            let dir_key = dir_name.file_name().unwrap_or_default().to_string_lossy();
-
-            map.serialize_entry(&dir_key, subdir)?;
+            map.serialize_entry(&dir_name.to_string_lossy(), subdir)?;
         }
 
         map.end()
