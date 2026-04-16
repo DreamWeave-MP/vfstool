@@ -6,7 +6,10 @@ use std::{
     io::{self, Result, Write},
     path::PathBuf,
 };
-use vfstool_lib::{ConflictIndex, SerializeType, normalize_path, serialize_value, vfs::VFS};
+use vfstool_lib::{
+    changed_files, snapshot_directory, ConflictIndex, SerializeType, normalize_path,
+    serialize_value, vfs::VFS,
+};
 
 #[cfg(unix)]
 use std::os::unix::fs::symlink as soft_link;
@@ -202,6 +205,32 @@ enum Commands {
         format: OutputFormat,
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+    /// Dump the VFS to a directory, run a command, then capture new/modified files to data-local.
+    ///
+    /// Use {} in the command arguments as a placeholder for the merged directory path.
+    ///
+    /// Example: vfstool run /tmp/merged -- tes3conv {} output.json
+    Run {
+        /// Directory to dump the merged VFS into
+        merged_dir: PathBuf,
+
+        /// Command and arguments to execute
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
+
+        /// Keep the merged directory after the command exits
+        #[arg(long)]
+        keep_merged: bool,
+
+        /// Destination for captured files (defaults to data-local from openmw.cfg)
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Always copy files instead of hardlinking them.
+        /// Hardlinks are used by default to avoid duplicating data on disk.
+        #[arg(long)]
+        copy: bool,
     },
 }
 
@@ -889,6 +918,72 @@ fn main() -> Result<()> {
 
             let report = DiffReport { source_a, source_b, higher_priority, shared, only_in_a, only_in_b };
             write_serialized(output, format, &report)?;
+        }
+        Commands::Run { merged_dir, command, keep_merged, output, copy } => {
+            let cfg = load_openmw_config(resolved_config_dir);
+
+            let data_local: PathBuf = output.unwrap_or_else(|| {
+                match cfg.data_local() {
+                    Some(dir) => dir.parsed().to_path_buf(),
+                    None => {
+                        eprintln!(
+                            "{}No data-local set in openmw.cfg; use --output to specify a destination.",
+                            print::err_prefix()
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            });
+
+            fs::create_dir_all(&merged_dir)?;
+            let merged = merged_dir;
+
+            eprintln!("Dumping VFS to {}...", merged.display());
+            let count = vfs.dump_to_directory(&merged, !copy)?;
+            eprintln!("Dumped {count} files.");
+
+            let baseline = snapshot_directory(&merged)?;
+
+            let substituted: Vec<String> = command
+                .iter()
+                .map(|arg| {
+                    if arg == "{}" {
+                        merged.to_string_lossy().into_owned()
+                    } else {
+                        arg.clone()
+                    }
+                })
+                .collect();
+
+            let status = std::process::Command::new(&substituted[0])
+                .args(&substituted[1..])
+                .status()?;
+
+            let changed = changed_files(&merged, &baseline)?;
+
+            if changed.is_empty() {
+                eprintln!("No files changed.");
+            } else {
+                eprintln!(
+                    "Capturing {} changed file(s) to {}...",
+                    changed.len(),
+                    data_local.display()
+                );
+                for rel in &changed {
+                    let dest = data_local.join(rel);
+                    if let Some(parent) = dest.parent() {
+                        fs::create_dir_all(parent)?;
+                    }
+                    fs::copy(merged.join(rel), &dest)?;
+                    println!("{} -> {}", rel.display(), dest.display());
+                }
+            }
+
+            if !keep_merged {
+                fs::remove_dir_all(&merged)?;
+            }
+
+            std::process::exit(status.code().unwrap_or(1));
         }
     }
 

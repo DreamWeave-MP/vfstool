@@ -80,6 +80,55 @@ impl VFS {
         self.file_map.par_iter()
     }
 
+    /// Dump every file in the VFS into `dir`, preserving relative paths.
+    ///
+    /// When `use_hardlinks` is `true`, loose files are hardlinked; if the
+    /// hardlink fails (e.g. cross-device), the file is copied instead. Archive
+    /// files are always extracted via [`VfsFile::open`] regardless of mode.
+    /// The destination directory must already exist. Returns the number of
+    /// files successfully written.
+    pub fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize> {
+        use std::io::Read;
+        let mut count = 0usize;
+        for (relative_path, file) in &self.file_map {
+            let dest = dir.join(relative_path);
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            if file.is_loose() {
+                if !file.path().exists() {
+                    eprintln!(
+                        "vfstool: skipping {}: source no longer exists at {}",
+                        relative_path.display(),
+                        file.path().display()
+                    );
+                    continue;
+                }
+                if use_hardlinks {
+                    if let Err(_) = std::fs::hard_link(file.path(), &dest) {
+                        std::fs::copy(file.path(), &dest)?;
+                    }
+                } else {
+                    std::fs::copy(file.path(), &dest)?;
+                }
+            } else {
+                match file.open() {
+                    Ok(mut reader) => {
+                        let mut buf = Vec::new();
+                        reader.read_to_end(&mut buf)?;
+                        std::fs::write(&dest, &buf)?;
+                    }
+                    Err(e) => {
+                        eprintln!("vfstool: skipping {}: {e}", relative_path.display());
+                        continue;
+                    }
+                }
+            }
+            count += 1;
+        }
+        Ok(count)
+    }
+
     /// Given a substring, return an iterator over all paths that contain it.
     pub fn paths_matching<S: AsRef<str>>(
         &self,
