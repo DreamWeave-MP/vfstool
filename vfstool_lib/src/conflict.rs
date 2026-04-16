@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::normalize_path_in_place;
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;

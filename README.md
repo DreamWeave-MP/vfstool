@@ -200,6 +200,11 @@ vfstool remaining -r /path/to/filter
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+This project is dual-licensed under either:
+
+- [MIT License](LICENSE-MIT)
+- [Apache License, Version 2.0](LICENSE-APACHE)
+
+You may choose either license at your option.
 
 ---

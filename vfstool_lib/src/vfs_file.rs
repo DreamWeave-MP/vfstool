@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 #[cfg(feature = "bsa")]
 use ba2::{
     fo4::{ArchiveKey as Fo4ArchiveKey, File as Fo4File},
