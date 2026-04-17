@@ -82,51 +82,56 @@ impl VFS {
 
     /// Dump every file in the VFS into `dir`, preserving relative paths.
     ///
-    /// When `use_hardlinks` is `true`, loose files are hardlinked; if the
-    /// hardlink fails (e.g. cross-device), the file is copied instead. Archive
-    /// files are always extracted via [`VfsFile::open`] regardless of mode.
+    /// When `use_hardlinks` is `true`, loose files are hardlinked; cross-device
+    /// link failures fall back to a copy. All other hardlink errors propagate.
+    /// Archive files are always streamed via [`VfsFile::open`] regardless of mode.
     /// The destination directory must already exist. Returns the number of
     /// files successfully written.
     pub fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize> {
-        use std::io::Read;
-        let mut count = 0usize;
-        for (relative_path, file) in &self.file_map {
-            let dest = dir.join(relative_path);
-            if let Some(parent) = dest.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            if file.is_loose() {
-                if !file.path().exists() {
-                    eprintln!(
-                        "vfstool: skipping {}: source no longer exists at {}",
-                        relative_path.display(),
-                        file.path().display()
-                    );
-                    continue;
+        let written: std::io::Result<Vec<bool>> = self
+            .file_map
+            .par_iter()
+            .map(|(relative_path, file)| -> std::io::Result<bool> {
+                let dest = dir.join(relative_path);
+                if let Some(parent) = dest.parent() {
+                    std::fs::create_dir_all(parent)?;
                 }
-                if use_hardlinks {
-                    if let Err(_) = std::fs::hard_link(file.path(), &dest) {
+                if file.is_loose() {
+                    if !file.path().exists() {
+                        eprintln!(
+                            "vfstool: skipping {}: source no longer exists at {}",
+                            relative_path.display(),
+                            file.path().display()
+                        );
+                        return Ok(false);
+                    }
+                    if use_hardlinks {
+                        match std::fs::hard_link(file.path(), &dest) {
+                            Ok(()) => {}
+                            Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+                                std::fs::copy(file.path(), &dest)?;
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    } else {
                         std::fs::copy(file.path(), &dest)?;
                     }
                 } else {
-                    std::fs::copy(file.path(), &dest)?;
-                }
-            } else {
-                match file.open() {
-                    Ok(mut reader) => {
-                        let mut buf = Vec::new();
-                        reader.read_to_end(&mut buf)?;
-                        std::fs::write(&dest, &buf)?;
-                    }
-                    Err(e) => {
-                        eprintln!("vfstool: skipping {}: {e}", relative_path.display());
-                        continue;
+                    match file.open() {
+                        Ok(mut reader) => {
+                            let mut out = std::fs::File::create(&dest)?;
+                            std::io::copy(&mut reader, &mut out)?;
+                        }
+                        Err(e) => {
+                            eprintln!("vfstool: skipping {}: {e}", relative_path.display());
+                            return Ok(false);
+                        }
                     }
                 }
-            }
-            count += 1;
-        }
-        Ok(count)
+                Ok(true)
+            })
+            .collect();
+        Ok(written?.into_iter().filter(|&ok| ok).count())
     }
 
     /// Given a substring, return an iterator over all paths that contain it.
@@ -1588,5 +1593,157 @@ END OF ACT IV, SCENE III";
         TEST_DATA
             .iter()
             .for_each(|test_file| fs::remove_file(test_file).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod dump_tests {
+    use super::*;
+    use std::{fs, path::Path};
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::current_dir().unwrap().join(name);
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+
+        fn write(&self, rel: &str, data: &[u8]) -> PathBuf {
+            let target = self.0.join(rel);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(&target, data).unwrap();
+            target
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn dump_creates_files() {
+        let src = TempDir::new("dump_creates_src");
+        src.write("textures/foo.dds", b"dds_data");
+        src.write("meshes/bar.nif", b"nif_data");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_creates_dest");
+        vfs.dump_to_directory(dest.path(), false).unwrap();
+
+        assert_eq!(fs::read(dest.path().join("textures/foo.dds")).unwrap(), b"dds_data");
+        assert_eq!(fs::read(dest.path().join("meshes/bar.nif")).unwrap(), b"nif_data");
+    }
+
+    #[test]
+    fn dump_creates_subdirectories() {
+        let src = TempDir::new("dump_subdirs_src");
+        src.write("a/b/c/deep.txt", b"deep");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_subdirs_dest");
+        vfs.dump_to_directory(dest.path(), false).unwrap();
+
+        assert!(dest.path().join("a/b/c/deep.txt").exists());
+    }
+
+    #[test]
+    fn dump_count_accurate() {
+        let src = TempDir::new("dump_count_src");
+        src.write("a.txt", b"");
+        src.write("b.txt", b"");
+        src.write("sub/c.txt", b"");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_count_dest");
+        let count = vfs.dump_to_directory(dest.path(), false).unwrap();
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn dump_copy_mode() {
+        let src = TempDir::new("dump_copy_src");
+        src.write("data.txt", b"hello world");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_copy_dest");
+        vfs.dump_to_directory(dest.path(), false).unwrap();
+        assert_eq!(fs::read(dest.path().join("data.txt")).unwrap(), b"hello world");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dump_hardlink_mode() {
+        use std::os::unix::fs::MetadataExt;
+        let src = TempDir::new("dump_hardlink_src");
+        src.write("data.txt", b"linked");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_hardlink_dest");
+        vfs.dump_to_directory(dest.path(), true).unwrap();
+
+        let meta = fs::metadata(dest.path().join("data.txt")).unwrap();
+        assert!(meta.nlink() >= 2, "hardlinked file should have nlink >= 2");
+    }
+
+    #[test]
+    fn dump_skips_missing_source() {
+        let src = TempDir::new("dump_missing_src");
+        let gone = src.write("gone.txt", b"x");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        // Delete source file before dumping
+        fs::remove_file(&gone).unwrap();
+
+        let dest = TempDir::new("dump_missing_dest");
+        let count = vfs.dump_to_directory(dest.path(), false).unwrap();
+        assert_eq!(count, 0);
+        assert!(!dest.path().join("gone.txt").exists());
+    }
+
+    #[test]
+    fn dump_overwrites_existing() {
+        let src = TempDir::new("dump_overwrite_src");
+        src.write("f.txt", b"new_content");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_overwrite_dest");
+        dest.write("f.txt", b"old_content");
+
+        vfs.dump_to_directory(dest.path(), false).unwrap();
+        assert_eq!(fs::read(dest.path().join("f.txt")).unwrap(), b"new_content");
+    }
+
+    #[test]
+    #[cfg(feature = "zip")]
+    fn dump_archive_files_correct_content() {
+        use std::io::Write as IoWrite;
+        let src = TempDir::new("dump_zip_src");
+
+        // Create a ZIP archive with one entry.
+        let zip_path = src.path().join("data.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            writer.start_file("scripts/test.lua", options).unwrap();
+            writer.write_all(b"return 42").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let vfs = VFS::from_directories(vec![src.path()], Some(vec!["data.zip"]));
+        let dest = TempDir::new("dump_zip_dest");
+        vfs.dump_to_directory(dest.path(), false).unwrap();
+
+        let content = fs::read(dest.path().join("scripts/test.lua")).unwrap();
+        assert_eq!(content, b"return 42");
     }
 }

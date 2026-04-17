@@ -938,52 +938,84 @@ fn main() -> Result<()> {
             fs::create_dir_all(&merged_dir)?;
             let merged = merged_dir;
 
-            eprintln!("Dumping VFS to {}...", merged.display());
-            let count = vfs.dump_to_directory(&merged, !copy)?;
-            eprintln!("Dumped {count} files.");
+            // Run all fallible logic in a closure so cleanup always executes,
+            // even on early error. std::process::exit bypasses destructors, so
+            // we call remove_dir_all explicitly rather than relying on Drop.
+            let (inner_result, subprocess_status) = (|| -> (Result<()>, Option<std::process::ExitStatus>) {
+                eprintln!("Dumping VFS to {}...", merged.display());
+                let count = match vfs.dump_to_directory(&merged, !copy) {
+                    Ok(c) => c,
+                    Err(e) => return (Err(e), None),
+                };
+                eprintln!("Dumped {count} files.");
 
-            let baseline = snapshot_directory(&merged)?;
+                let baseline = match snapshot_directory(&merged) {
+                    Ok(b) => b,
+                    Err(e) => return (Err(e), None),
+                };
 
-            let substituted: Vec<String> = command
-                .iter()
-                .map(|arg| {
-                    if arg == "{}" {
-                        merged.to_string_lossy().into_owned()
-                    } else {
-                        arg.clone()
-                    }
-                })
-                .collect();
+                let substituted: Vec<String> = command
+                    .iter()
+                    .map(|arg| {
+                        if arg == "{}" {
+                            merged.to_string_lossy().into_owned()
+                        } else {
+                            arg.clone()
+                        }
+                    })
+                    .collect();
 
-            let status = std::process::Command::new(&substituted[0])
-                .args(&substituted[1..])
-                .status()?;
+                let status = match std::process::Command::new(&substituted[0])
+                    .args(&substituted[1..])
+                    .status()
+                {
+                    Ok(s) => s,
+                    Err(e) => return (Err(e), None),
+                };
 
-            let changed = changed_files(&merged, &baseline)?;
-
-            if changed.is_empty() {
-                eprintln!("No files changed.");
-            } else {
-                eprintln!(
-                    "Capturing {} changed file(s) to {}...",
-                    changed.len(),
-                    data_local.display()
-                );
-                for rel in &changed {
-                    let dest = data_local.join(rel);
-                    if let Some(parent) = dest.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    fs::copy(merged.join(rel), &dest)?;
-                    println!("{} -> {}", rel.display(), dest.display());
+                if !status.success() {
+                    eprintln!(
+                        "vfstool: subprocess exited with {status}, not capturing files."
+                    );
+                    return (Ok(()), Some(status));
                 }
-            }
+
+                let changed = match changed_files(&merged, &baseline) {
+                    Ok(c) => c,
+                    Err(e) => return (Err(e), Some(status)),
+                };
+
+                if changed.is_empty() {
+                    eprintln!("No files changed.");
+                } else {
+                    eprintln!(
+                        "Capturing {} changed file(s) to {}...",
+                        changed.len(),
+                        data_local.display()
+                    );
+                    for rel in &changed {
+                        let dest = data_local.join(rel);
+                        if let Some(parent) = dest.parent() {
+                            if let Err(e) = fs::create_dir_all(parent) {
+                                return (Err(e), Some(status));
+                            }
+                        }
+                        if let Err(e) = fs::copy(merged.join(rel), &dest) {
+                            return (Err(e), Some(status));
+                        }
+                        println!("{} -> {}", rel.display(), dest.display());
+                    }
+                }
+
+                (Ok(()), Some(status))
+            })();
 
             if !keep_merged {
-                fs::remove_dir_all(&merged)?;
+                let _ = fs::remove_dir_all(&merged);
             }
 
-            std::process::exit(status.code().unwrap_or(1));
+            inner_result?;
+            std::process::exit(subprocess_status.and_then(|s| s.code()).unwrap_or(1));
         }
     }
 

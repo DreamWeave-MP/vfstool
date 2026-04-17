@@ -12,6 +12,7 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 [dependencies]
 ahash = "0.8"
 ba2 = { version = "3.0.1", optional = true }
+blake3 = "1"
 zip = { version = "2", optional = true }
 rayon = "1.11.0"
 serde = { version = "1.0.225", features = ["derive"], optional = true }

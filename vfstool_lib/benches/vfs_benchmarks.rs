@@ -4,7 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use vfstool_lib::{ConflictIndex, VFS, normalize_path, normalize_path_in_place};
+use vfstool_lib::{ConflictIndex, VFS, changed_files, normalize_path, normalize_path_in_place, snapshot_directory};
 
 #[cfg(feature = "zip")]
 use std::io::Write as IoWrite;
@@ -557,6 +557,78 @@ fn bench_zip(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
+// bench_dump
+// ---------------------------------------------------------------------------
+
+fn bench_dump(c: &mut Criterion) {
+    let mut g = c.benchmark_group("bench_dump");
+    g.sample_size(10); // I/O-heavy; fewer samples to keep CI time reasonable.
+
+    for &n in &[100usize, 500, 2000] {
+        let src = make_fixture(&format!("vfsbench_dump_src_{n}"), n);
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        g.bench_with_input(BenchmarkId::new("hardlink", n), &n, |b, _| {
+            b.iter_batched(
+                || TempDir::new(&format!("vfsbench_dump_hl_dest_{n}")),
+                |dest| vfs.dump_to_directory(black_box(dest.path()), true).unwrap(),
+                BatchSize::PerIteration,
+            )
+        });
+
+        g.bench_with_input(BenchmarkId::new("copy", n), &n, |b, _| {
+            b.iter_batched(
+                || TempDir::new(&format!("vfsbench_dump_cp_dest_{n}")),
+                |dest| vfs.dump_to_directory(black_box(dest.path()), false).unwrap(),
+                BatchSize::PerIteration,
+            )
+        });
+    }
+
+    g.finish();
+}
+
+// ---------------------------------------------------------------------------
+// bench_run
+// ---------------------------------------------------------------------------
+
+fn bench_run(c: &mut Criterion) {
+    let mut g = c.benchmark_group("bench_run");
+    g.sample_size(10);
+
+    for &n in &[100usize, 500, 2000] {
+        let dir = make_fixture(&format!("vfsbench_run_snap_{n}"), n);
+        g.bench_with_input(BenchmarkId::new("snapshot", n), &n, |b, _| {
+            b.iter(|| snapshot_directory(black_box(dir.path())).unwrap())
+        });
+    }
+
+    let dir = make_fixture("vfsbench_run_changed_base", 500);
+    let baseline = snapshot_directory(dir.path()).unwrap();
+
+    g.bench_function("changed_files_no_changes", |b| {
+        b.iter(|| changed_files(black_box(dir.path()), black_box(&baseline)).unwrap())
+    });
+
+    g.bench_function("changed_files_all_changes", |b| {
+        let empty = std::collections::HashMap::new();
+        b.iter(|| changed_files(black_box(dir.path()), black_box(&empty)).unwrap())
+    });
+
+    let partial: std::collections::HashMap<_, _> = baseline
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| i % 2 == 0)
+        .map(|(_, (k, v))| (k.clone(), *v))
+        .collect();
+    g.bench_function("changed_files_half_changes", |b| {
+        b.iter(|| changed_files(black_box(dir.path()), black_box(&partial)).unwrap())
+    });
+
+    g.finish();
+}
+
+// ---------------------------------------------------------------------------
 // criterion_group wiring
 // ---------------------------------------------------------------------------
 
@@ -574,6 +646,8 @@ criterion_group!(
     bench_conflict_index,
     bench_serialize,
     bench_zip,
+    bench_dump,
+    bench_run,
 );
 
 #[cfg(all(feature = "serialize", not(feature = "zip")))]
@@ -589,6 +663,8 @@ criterion_group!(
     bench_diff,
     bench_conflict_index,
     bench_serialize,
+    bench_dump,
+    bench_run,
 );
 
 #[cfg(all(not(feature = "serialize"), feature = "zip"))]
@@ -604,6 +680,8 @@ criterion_group!(
     bench_diff,
     bench_conflict_index,
     bench_zip,
+    bench_dump,
+    bench_run,
 );
 
 #[cfg(not(any(feature = "serialize", feature = "zip")))]
@@ -618,6 +696,8 @@ criterion_group!(
     bench_tree,
     bench_diff,
     bench_conflict_index,
+    bench_dump,
+    bench_run,
 );
 
 criterion_main!(benches);
