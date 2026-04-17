@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+use crate::vfs::VFS;
 use std::{
     collections::HashMap,
     io::{self, BufReader, Read},
@@ -6,6 +7,45 @@ use std::{
 };
 use rayon::prelude::*;
 use walkdir::WalkDir;
+
+pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
+
+/// Dump the VFS to `merged_dir` and capture a baseline snapshot.
+///
+/// Returns the number of files dumped and the snapshot for use with
+/// [`run_finalize`]. The caller is responsible for executing the subprocess
+/// between these two calls.
+pub fn run_setup(vfs: &VFS, merged_dir: &Path, use_hardlinks: bool) -> io::Result<(usize, Snapshot)> {
+    std::fs::create_dir_all(merged_dir)?;
+    let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
+    let baseline = snapshot_directory(merged_dir)?;
+    Ok((count, baseline))
+}
+
+/// Copy files changed since `baseline` from `merged_dir` into `output_dir`.
+///
+/// Returns a list of `(relative_path, destination_path)` pairs for every file
+/// that was copied. The caller should call this only after the subprocess
+/// succeeds.
+pub fn run_finalize(
+    merged_dir: &Path,
+    baseline: &Snapshot,
+    output_dir: &Path,
+) -> io::Result<Vec<(PathBuf, PathBuf)>> {
+    let changed = changed_files(merged_dir, baseline)?;
+    let mut copied = Vec::new();
+
+    for rel in changed {
+        let dest = output_dir.join(&rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(merged_dir.join(&rel), &dest)?;
+        copied.push((rel, dest));
+    }
+
+    Ok(copied)
+}
 
 /// Compute the BLAKE3 hash of a file's contents.
 /// Uses a 64 KiB stack buffer — avoids loading the whole file into memory.

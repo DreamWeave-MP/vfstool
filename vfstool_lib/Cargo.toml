@@ -15,6 +15,7 @@ ba2 = { version = "3.0.1", optional = true }
 blake3 = "1"
 zip = { version = "2", optional = true }
 rayon = "1.11.0"
+regex = "1"
 serde = { version = "1.0.225", features = ["derive"], optional = true }
 serde_json = { version = "1.0.145", optional = true }
 serde_yaml = { version = "0.9.34-deprecated", optional = true }

@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use clap::{Parser, Subcommand, ValueEnum};
 use std::{
-    collections::HashMap,
-    fs::{self, hard_link, metadata},
+    fs,
     io::{self, Result, Write},
     path::PathBuf,
 };
 use vfstool_lib::{
-    changed_files, snapshot_directory, ConflictIndex, SerializeType, normalize_path,
+    CollapseOptions, ConflictIndex, SerializeType, normalize_path, run_finalize, run_setup,
     serialize_value, vfs::VFS,
 };
-
-#[cfg(unix)]
-use std::os::unix::fs::symlink as soft_link;
-
-#[cfg(windows)]
-use std::os::windows::fs::symlink_file as soft_link;
 
 pub enum VFSToolExitCode {
     FindFailed = 1,
@@ -36,10 +29,9 @@ impl From<VFSToolExitCode> for i32 {
 }
 
 mod print {
-    pub const RED: &str = "\x1b[31m";
-    pub const GREEN: &str = "\x1b[32m";
-    pub const BLUE: &str = "\x1b[34m";
-    pub const RESET: &str = "\x1b[0m";
+    const GREEN: &str = "\x1b[32m";
+    const BLUE: &str = "\x1b[34m";
+    const RESET: &str = "\x1b[0m";
 
     pub const fn err_prefix() -> &'static str {
         concat!("\x1b[31m", "[ ERROR ]", "\x1b[0m", ": ")
@@ -47,10 +39,6 @@ mod print {
 
     pub const fn success_prefix() -> &'static str {
         concat!("\x1b[32m", "[ SUCCESS ]", "\x1b[0m", ": ")
-    }
-
-    pub fn red<S: std::fmt::Display>(input: S) -> String {
-        format!("{RED}{input}{RESET}")
     }
 
     pub fn blue<S: std::fmt::Display>(input: S) -> String {
@@ -242,54 +230,6 @@ enum OutputFormat {
     Toml,
 }
 
-/// Type of search to do when finding a file
-#[derive(Debug, PartialEq, ValueEnum, Clone)]
-enum FindType {
-    Contains,
-    Extension,
-    Folder,
-    Prefix,
-    Stem,
-    StemExact,
-    Name,
-    NameExact,
-}
-
-// --- Serialization structs for new commands ---
-
-#[derive(serde::Serialize)]
-struct ConflictsReport {
-    sources: Vec<ConflictSourceEntry>,
-}
-
-#[derive(serde::Serialize)]
-struct ConflictSourceEntry {
-    path: PathBuf,
-    overrides: Vec<PathBuf>,
-    overridden_by: Vec<PathBuf>,
-}
-
-#[derive(serde::Serialize)]
-struct ShadowedReport {
-    sources: Vec<ShadowedSource>,
-}
-
-#[derive(serde::Serialize)]
-struct ShadowedSource {
-    path: PathBuf,
-    shadowed_files: Vec<PathBuf>,
-}
-
-#[derive(serde::Serialize)]
-struct DiffReport {
-    source_a: PathBuf,
-    source_b: PathBuf,
-    higher_priority: PathBuf,
-    shared: Vec<PathBuf>,
-    only_in_a: Vec<PathBuf>,
-    only_in_b: Vec<PathBuf>,
-}
-
 // --- Helpers ---
 
 fn load_openmw_config(config_path: PathBuf) -> openmw_config::OpenMWConfiguration {
@@ -331,7 +271,7 @@ fn build_conflict_index(config_path: PathBuf) -> (VFS, ConflictIndex) {
 }
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
-    let dir_metadata = metadata(dir);
+    let dir_metadata = std::fs::metadata(dir);
 
     match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
         false => {
@@ -363,11 +303,6 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
     ))
 }
 
-fn filter_data_paths(to_keep: &PathBuf, paths: &mut Vec<PathBuf>) {
-    let normalized_input = normalize_path(&to_keep);
-    paths.retain(|path| normalize_path(&path).eq(&normalized_input))
-}
-
 fn output_to_serialize_type(format: OutputFormat) -> SerializeType {
     match format {
         OutputFormat::Json => SerializeType::Json,
@@ -386,7 +321,6 @@ fn construct_vfs(config_path: PathBuf) -> VFS {
     };
 
     let data_paths = config.data_directories();
-
     let archives = config
         .fallback_archives_iter()
         .map(|archive| archive.value().as_str())
@@ -401,7 +335,6 @@ fn write_serialized_vfs(
     files: &vfstool_lib::DisplayTree,
 ) -> io::Result<()> {
     let serialized = VFS::serialize_from_tree(files, output_to_serialize_type(format))?;
-
     match path {
         None => println!("{serialized}"),
         Some(path) => {
@@ -413,7 +346,6 @@ fn write_serialized_vfs(
             write!(file, "{serialized}")?;
         }
     }
-
     Ok(())
 }
 
@@ -432,234 +364,42 @@ fn main() -> Result<()> {
             extract_archives,
             symbolic,
         } => {
-            if metadata(&collapse_into).is_err() {
-                fs::create_dir_all(&collapse_into)?;
-            };
-
-            vfs.iter().for_each(|(relative_path, file)| {
-                let merged_path = collapse_into.join(relative_path);
-                let merged_dir = merged_path.parent().unwrap();
-
-                if metadata(&merged_dir).is_err() {
-                    fs::create_dir_all(&merged_dir).unwrap();
-                };
-
-                if file.is_loose() {
-                    if !file.path().exists() {
-                        eprintln!(
-                            "Skipping {}: source file no longer exists at {}",
-                            relative_path.display(),
-                            file.path().display()
-                        );
-                        return;
-                    }
-
-                    if let Err(e) = fs::remove_file(&merged_path) {
-                        if e.kind() != io::ErrorKind::NotFound {
-                            eprintln!(
-                                "Failed to remove existing file at {}: {}",
-                                merged_path.display(), e
-                            );
-                            return;
-                        }
-                    }
-
-                    // Since we extract files *out of* BSA archives
-                    // Don't bother including them in the collapsed directory
-                    if let Some(extension) = file.path().extension() {
-                        let extension = extension.to_ascii_lowercase();
-                        let file_name = file.file_name().unwrap_or_default().to_ascii_lowercase();
-
-                        if (extension == "bsa" || extension == "ba2") && extract_archives && file_name != "archiveinvalidationinvalidated!.bsa" {
-                            println!("Skipping archive {}", file.file_name().unwrap().to_string_lossy());
-                            return;
-                        }
-                    }
-
-                    let link_fn = if symbolic {
-                        soft_link
-                    } else {
-                        hard_link
-                    };
-
-                    if let Err(error) = link_fn(file.path(), &merged_path) {
-                        eprintln!(
-                            "Symlink attempt for {} failed due to error: {}",
-                            file.path().display(),
-                            error.to_string()
-                        );
-
-                        if allow_copying {
-                            if let Err(error) = fs::copy(file.path(), &merged_path) {
-                                eprintln!(
-                                    "Fallback file copying was enabled, but copying {} to {} failed due to {}!",
-                                    file.path().display(),
-                                    merged_path.display(),
-                                    error.to_string()
-                                );
-                            }
-                        }
-                    } else {
-                        println!("Successfully wrote {} to {}", file.path().display(), merged_path.display());
-                    };
-                } else {
-                    if !extract_archives {
-                        println!(
-                            "Skipping {}, which is loaded from a BSA file at: {}",
-                            relative_path.display(),
-                            file.parent_archive_path().unwrap()
-                        )
-                    } else {
-                        match file.open() {
-                            Ok(mut data) => {
-                                let mut buf: Vec<u8> = Vec::new();
-                                match data.read_to_end(&mut buf) {
-                                    Err(error) => eprintln!(
-                                        "Failed to read archived file {}: {}",
-                                        relative_path.display(),
-                                        error
-                                    ),
-                                    Ok(_) => {
-                                        if let Err(error) = fs::write(&merged_path, buf) {
-                                            eprintln!(
-                                                "Extracting archived file {} to {} failed: {}",
-                                                relative_path.display(),
-                                                merged_path.display(),
-                                                error
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            Err(error) => {
-                                eprintln!("Failed to open archived file {}: {}", relative_path.display(), error)
-                            }
-                        };
-                    }
-                }
-            });
+            vfs.collapse_into(
+                &collapse_into,
+                &CollapseOptions { allow_copying, extract_archives, use_symlinks: symbolic },
+            )?;
         }
         Commands::Extract {
             source_file,
             target_dir,
-        } => match vfs.get_file(&source_file) {
-            Some(file) => {
-                let mut dir_meta = metadata(&target_dir);
-
-                if dir_meta.is_err() {
-                    fs::create_dir_all(&target_dir)?;
-                    dir_meta = metadata(&target_dir);
-                }
-
-                let dir_meta = dir_meta?;
-
-                if dir_meta.is_dir() {
-                    match source_file.file_name() {
-                        Some(name) => {
-                            let target_path = target_dir.join(name);
-
-                            if file.is_loose() {
-                                if let Err(error) = fs::copy(file.path(), &target_path) {
-                                    eprintln!(
-                                        "{}Failed extracting loose file from the vfs: {}",
-                                        print::err_prefix(),
-                                        print::red(error.to_string()),
-                                    );
-                                } else {
-                                    println!(
-                                        "{}Successfully extracted {} to {}",
-                                        print::success_prefix(),
-                                        print::green(file.path().display()),
-                                        print::blue(target_dir.display())
-                                    );
-                                };
-                            } else {
-                                match file.open() {
-                                    Ok(mut data) => {
-                                        let mut buf: Vec<u8> = Vec::new();
-                                        match data.read_to_end(&mut buf) {
-                                            Err(error) => eprintln!(
-                                                "{}Failed to read archived file {}: {}",
-                                                print::err_prefix(),
-                                                print::green(source_file.display()),
-                                                print::red(error.to_string()),
-                                            ),
-                                            Ok(_) => {
-                                                if let Err(error) = fs::write(&target_path, buf) {
-                                                    eprintln!(
-                                                        "{}Extracting archived file {} to {} failed: {}",
-                                                        print::err_prefix(),
-                                                        print::green(source_file.display()),
-                                                        print::blue(target_path.display()),
-                                                        print::red(error.to_string()),
-                                                    );
-                                                } else {
-                                                    println!(
-                                                        "{}Successfully extracted {} to {}",
-                                                        print::success_prefix(),
-                                                        print::green(file.path().display()),
-                                                        print::blue(target_dir.display()),
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Err(error) => {
-                                        eprintln!(
-                                            "{}Failed to open archived file {}: {}",
-                                            print::err_prefix(),
-                                            print::green(source_file.display()),
-                                            print::red(error.to_string()),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        None => eprintln!(
-                            "{}Source file {} does not have a file name! Cannot extract it!",
-                            print::err_prefix(),
-                            print::green(source_file.display()),
-                        ),
-                    };
-                } else {
-                    eprintln!(
-                        "{}Provided argument {} is not a directory! Cannot extract here!",
-                        print::err_prefix(),
-                        print::green(target_dir.display()),
-                    );
-                }
+        } => {
+            match vfs.extract_file(&source_file, &target_dir)? {
+                None => eprintln!(
+                    "{}Couldn't locate {} in the vfs!",
+                    print::err_prefix(),
+                    print::green(source_file.display()),
+                ),
+                Some(dest) => println!(
+                    "{}Successfully extracted {} to {}",
+                    print::success_prefix(),
+                    print::green(source_file.display()),
+                    print::blue(dest.parent().unwrap_or(&target_dir).display()),
+                ),
             }
-            None => eprintln!(
-                "{}Couldn't locate {} in the vfs!",
-                print::err_prefix(),
-                print::green(source_file.display()),
-            ),
-        },
+        }
         Commands::Find {
             path,
             format,
             output,
         } => {
-            // Lossy compare could produce false positives, but only if there are non-unicode
-            // characters at the same position in both the path and string being matched and the
-            // rest of the string is the same
             let path_string = normalize_path(&path).to_string_lossy().to_string();
-            let path_regex: regex::Regex = match regex::RegexBuilder::new(&path_string)
-                .case_insensitive(true)
-                .build()
-            {
-                Ok(regex) => regex,
-                Err(error) => {
-                    eprintln!("{error}");
+            let tree = match vfs.find_by_regex(&path_string, args.use_relative) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("{e}");
                     std::process::exit(VFSToolExitCode::BadRegex.into());
                 }
             };
-
-            let tree = vfs.tree_filtered(args.use_relative, |_key, file| {
-                let normalized = normalize_path(file.path());
-                path_regex.is_match(&normalized.to_string_lossy())
-            });
-
             write_serialized_vfs(output, format, &tree)?;
         }
         Commands::FindFile {
@@ -677,8 +417,6 @@ fn main() -> Result<()> {
                             print::blue(path.display()),
                         )
                     }
-
-                    // Ugly, make a dedicated enum for exit values later
                     std::process::exit(VFSToolExitCode::FindFailed.into());
                 }
             };
@@ -728,79 +466,31 @@ fn main() -> Result<()> {
                 Ok(config) => config,
             };
 
-            let mut paths = config
+            let all_dirs: Vec<PathBuf> = config
                 .data_directories_iter()
                 .map(|dir| dir.parsed().to_owned())
                 .collect();
 
-            filter_data_paths(&filter_path, &mut paths);
-
-            let filtered_vfs = VFS::from_directories(&paths, None);
-            let filter_normalized = normalize_path(&filter_path).into_owned();
-
-            let files_remaining = vfs.tree_filtered(args.use_relative, |key, file| {
-                if replacements_only {
-                    // A replacement: filter_path has a file at this key, but the full VFS
-                    // serves it from somewhere else (i.e., a later directory won).
-                    filtered_vfs.contains(key)
-                        && !normalize_path(file.path()).starts_with(&filter_normalized)
-                } else {
-                    // Still loaded from filter_path — not overridden by anything later.
-                    normalize_path(file.path()).starts_with(&filter_normalized)
-                }
-            });
-
-            write_serialized_vfs(output, format, &files_remaining)?;
+            let tree = vfs.remaining(&filter_path, replacements_only, &all_dirs, args.use_relative);
+            write_serialized_vfs(output, format, &tree)?;
         }
         Commands::Conflicts { format, output } => {
             let (_, ci) = build_conflict_index(resolved_config_dir);
-
-            let report = ConflictsReport {
-                sources: ci.sources.iter().enumerate().map(|(i, src)| {
-                    let resolve = |p: &PathBuf| -> PathBuf {
-                        if args.use_relative { p.clone() } else { src.join(p) }
-                    };
-                    let mut overrides: Vec<PathBuf> =
-                        ci.conflicts[i].overrides.iter().map(resolve).collect();
-                    let mut overridden_by: Vec<PathBuf> =
-                        ci.conflicts[i].overridden_by.iter().map(resolve).collect();
-                    overrides.sort();
-                    overridden_by.sort();
-                    ConflictSourceEntry { path: src.clone(), overrides, overridden_by }
-                }).collect(),
-            };
-
+            let report = ci.conflicts_report(args.use_relative);
             write_serialized(output, format, &report)?;
         }
         Commands::Shadowed { format, output } => {
             let (_, ci) = build_conflict_index(resolved_config_dir);
-
-            let sources: Vec<ShadowedSource> = ci
-                .sources
-                .iter()
-                .enumerate()
-                .filter_map(|(i, src)| {
-                    if !ci.conflicts[i].is_overridden() {
-                        return None;
-                    }
-                    let mut shadowed_files: Vec<PathBuf> =
-                        ci.conflicts[i].overridden_by.iter().cloned().collect();
-                    shadowed_files.sort();
-                    Some(ShadowedSource { path: src.clone(), shadowed_files })
-                })
-                .collect();
-
-            let total = sources.len();
-            eprintln!("{total} sources have fully shadowed files");
-
-            write_serialized(output, format, &ShadowedReport { sources })?;
+            let report = ci.shadowed_report(args.use_relative);
+            eprintln!("{} sources have fully shadowed files", report.sources.len());
+            write_serialized(output, format, &report)?;
         }
         Commands::Which { path } => {
             let (vfs, ci) = build_conflict_index(resolved_config_dir);
             let normalized = normalize_path(&path).into_owned();
 
-            let winner = match vfs.get_file(&normalized) {
-                Some(f) => f,
+            let result = match ci.which(&vfs, &normalized) {
+                Some(r) => r,
                 None => {
                     eprintln!(
                         "{}VFS path '{}' not found.",
@@ -812,61 +502,23 @@ fn main() -> Result<()> {
             };
 
             println!("VFS path: {}\n", normalized.display());
-
-            let winner_display = if winner.is_loose() {
-                winner.path().display().to_string()
+            if result.is_unique {
+                println!("  {}  {} (no conflicts — only source)", print::green("WINNER"), result.winner);
             } else {
-                winner.parent_archive_path().unwrap_or_default()
-            };
-
-            let source_indices = ci.sources_containing(&normalized);
-
-            if source_indices.is_empty() {
-                println!("  {}  {} (no conflicts — only source)", print::green("WINNER"), winner_display);
-            } else {
-                println!("  {}  {}", print::green("WINNER"), winner_display);
-
-                // Find which source the winner belongs to so we can skip it in "also in"
-                let winner_src_idx = if winner.is_loose() {
-                    ci.sources.iter().position(|src| winner.path().starts_with(src))
-                } else {
-                    winner.parent_archive_path().and_then(|ap| {
-                        ci.sources.iter().position(|src| src == &PathBuf::from(&ap))
-                    })
-                };
-
-                for &idx in source_indices {
-                    if Some(idx) == winner_src_idx {
-                        continue;
-                    }
-                    println!("  also in {} (overridden)", ci.sources[idx].display());
+                println!("  {}  {}", print::green("WINNER"), result.winner);
+                for src in &result.also_in {
+                    println!("  also in {} (overridden)", src.display());
                 }
             }
         }
         Commands::Stats => {
             let (vfs, ci) = build_conflict_index(resolved_config_dir);
+            let report = ci.stats(&vfs);
 
-            let mut wins: HashMap<usize, usize> = HashMap::new();
-            for (_, file) in vfs.iter() {
-                let source_idx = if file.is_loose() {
-                    ci.sources.iter().position(|src| file.path().starts_with(src))
-                } else {
-                    file.parent_archive_path().and_then(|ap| {
-                        ci.sources
-                            .iter()
-                            .position(|src| src.to_string_lossy() == ap.as_str())
-                    })
-                };
-                if let Some(idx) = source_idx {
-                    *wins.entry(idx).or_insert(0) += 1;
-                }
-            }
-
-            // Compute column widths
-            let path_width = ci
-                .sources
+            let path_width = report
+                .rows
                 .iter()
-                .map(|s| s.display().to_string().len())
+                .map(|r| r.source.display().to_string().len())
                 .max()
                 .unwrap_or(6)
                 .max(6);
@@ -875,48 +527,19 @@ fn main() -> Result<()> {
                 "{:<path_width$}  {:>6}  {:>9}  {:>10}",
                 "Source", "Wins", "Overrides", "Overridden"
             );
-            for (i, src) in ci.sources.iter().enumerate() {
-                let w = wins.get(&i).copied().unwrap_or(0);
-                let overrides = ci.conflicts[i].overrides.len();
-                let overridden = ci.conflicts[i].overridden_by.len();
+            for row in &report.rows {
                 println!(
                     "{:<path_width$}  {:>6}  {:>9}  {:>10}",
-                    src.display(),
-                    w,
-                    overrides,
-                    overridden,
+                    row.source.display(),
+                    row.wins,
+                    row.overrides,
+                    row.overridden,
                 );
             }
         }
         Commands::Diff { source_a, source_b, format, output } => {
-            let vfs_a = VFS::from_directories([&source_a], None);
-            let vfs_b = VFS::from_directories([&source_b], None);
-
-            let keys_a: std::collections::HashSet<PathBuf> =
-                vfs_a.iter().map(|(k, _)| k.clone()).collect();
-            let keys_b: std::collections::HashSet<PathBuf> =
-                vfs_b.iter().map(|(k, _)| k.clone()).collect();
-
-            let mut shared: Vec<PathBuf> = keys_a.intersection(&keys_b).cloned().collect();
-            let mut only_in_a: Vec<PathBuf> = keys_a.difference(&keys_b).cloned().collect();
-            let mut only_in_b: Vec<PathBuf> = keys_b.difference(&keys_a).cloned().collect();
-            shared.sort();
-            only_in_a.sort();
-            only_in_b.sort();
-
-            // Determine load-order priority from the full ConflictIndex
             let (_, ci) = build_conflict_index(resolved_config_dir);
-            let idx_a = ci.sources.iter().position(|s| s == &source_a);
-            let idx_b = ci.sources.iter().position(|s| s == &source_b);
-            let higher_priority = match (idx_a, idx_b) {
-                (Some(a), Some(b)) => {
-                    if a > b { source_a.clone() } else { source_b.clone() }
-                }
-                // If either path isn't in the index just fall back to source_b
-                _ => source_b.clone(),
-            };
-
-            let report = DiffReport { source_a, source_b, higher_priority, shared, only_in_a, only_in_b };
+            let report = ci.diff_report(&source_a, &source_b);
             write_serialized(output, format, &report)?;
         }
         Commands::Run { merged_dir, command, keep_merged, output, copy } => {
@@ -935,24 +558,15 @@ fn main() -> Result<()> {
                 }
             });
 
-            fs::create_dir_all(&merged_dir)?;
             let merged = merged_dir;
 
-            // Run all fallible logic in a closure so cleanup always executes,
-            // even on early error. std::process::exit bypasses destructors, so
-            // we call remove_dir_all explicitly rather than relying on Drop.
             let (inner_result, subprocess_status) = (|| -> (Result<()>, Option<std::process::ExitStatus>) {
                 eprintln!("Dumping VFS to {}...", merged.display());
-                let count = match vfs.dump_to_directory(&merged, !copy) {
-                    Ok(c) => c,
+                let (count, baseline) = match run_setup(&vfs, &merged, !copy) {
+                    Ok(r) => r,
                     Err(e) => return (Err(e), None),
                 };
                 eprintln!("Dumped {count} files.");
-
-                let baseline = match snapshot_directory(&merged) {
-                    Ok(b) => b,
-                    Err(e) => return (Err(e), None),
-                };
 
                 let substituted: Vec<String> = command
                     .iter()
@@ -974,35 +588,24 @@ fn main() -> Result<()> {
                 };
 
                 if !status.success() {
-                    eprintln!(
-                        "vfstool: subprocess exited with {status}, not capturing files."
-                    );
+                    eprintln!("vfstool: subprocess exited with {status}, not capturing files.");
                     return (Ok(()), Some(status));
                 }
 
-                let changed = match changed_files(&merged, &baseline) {
+                let copied = match run_finalize(&merged, &baseline, &data_local) {
                     Ok(c) => c,
                     Err(e) => return (Err(e), Some(status)),
                 };
 
-                if changed.is_empty() {
+                if copied.is_empty() {
                     eprintln!("No files changed.");
                 } else {
                     eprintln!(
                         "Capturing {} changed file(s) to {}...",
-                        changed.len(),
+                        copied.len(),
                         data_local.display()
                     );
-                    for rel in &changed {
-                        let dest = data_local.join(rel);
-                        if let Some(parent) = dest.parent() {
-                            if let Err(e) = fs::create_dir_all(parent) {
-                                return (Err(e), Some(status));
-                            }
-                        }
-                        if let Err(e) = fs::copy(merged.join(rel), &dest) {
-                            return (Err(e), Some(status));
-                        }
+                    for (rel, dest) in &copied {
                         println!("{} -> {}", rel.display(), dest.display());
                     }
                 }

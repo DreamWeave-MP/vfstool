@@ -12,9 +12,11 @@ use std::io::{Error, ErrorKind, Result};
 use crate::archives;
 
 use crate::{ConflictIndex, DirectoryNode, DisplayTree, VfsFile, normalize_path, normalize_path_in_place};
+use crate::reports::CollapseOptions;
 use std::{
     collections::BTreeMap,
     fmt::Write,
+    io,
     path::{Path, PathBuf},
 };
 
@@ -132,6 +134,226 @@ impl VFS {
             })
             .collect();
         Ok(written?.into_iter().filter(|&ok| ok).count())
+    }
+
+    /// Search the VFS using a case-insensitive regex pattern.
+    ///
+    /// Returns a filtered [`DisplayTree`] containing only files whose VFS path
+    /// matches `pattern`. The pattern is compiled with `case_insensitive(true)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if `pattern` is not a valid regex.
+    pub fn find_by_regex(&self, pattern: &str, relative: bool) -> std::result::Result<DisplayTree, regex::Error> {
+        let normalized = normalize_path(pattern);
+        let re = regex::RegexBuilder::new(&normalized.to_string_lossy())
+            .case_insensitive(true)
+            .build()?;
+        Ok(self.tree_filtered(relative, |_key, file| {
+            let normalized_path = normalize_path(file.path());
+            re.is_match(&normalized_path.to_string_lossy())
+        }))
+    }
+
+    /// Collapse the entire VFS into `dest`, creating hardlinks, symlinks, or copies.
+    ///
+    /// Per-file errors are reported via `eprintln!` rather than aborting —
+    /// this matches the original CLI behavior of continuing past individual
+    /// link/copy failures.
+    pub fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()> {
+        std::fs::create_dir_all(dest)?;
+
+        self.file_map.iter().for_each(|(relative_path, file)| {
+            let merged_path = dest.join(relative_path);
+            let merged_dir = merged_path.parent().unwrap();
+
+            if let Err(e) = std::fs::create_dir_all(merged_dir) {
+                eprintln!(
+                    "vfstool: failed to create directory {}: {}",
+                    merged_dir.display(), e
+                );
+                return;
+            }
+
+            if file.is_loose() {
+                if !file.path().exists() {
+                    eprintln!(
+                        "vfstool: skipping {}: source file no longer exists at {}",
+                        relative_path.display(),
+                        file.path().display()
+                    );
+                    return;
+                }
+
+                if let Err(e) = std::fs::remove_file(&merged_path) {
+                    if e.kind() != io::ErrorKind::NotFound {
+                        eprintln!(
+                            "vfstool: failed to remove existing file at {}: {}",
+                            merged_path.display(), e
+                        );
+                        return;
+                    }
+                }
+
+                // Skip archive files when --extract-archives is set
+                if opts.extract_archives {
+                    if let Some(ext) = file.path().extension() {
+                        let ext = ext.to_ascii_lowercase();
+                        let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
+                        if (ext == "bsa" || ext == "ba2")
+                            && name != "archiveinvalidationinvalidated!.bsa"
+                        {
+                            eprintln!(
+                                "vfstool: skipping archive {}",
+                                file.file_name().unwrap().to_string_lossy()
+                            );
+                            return;
+                        }
+                    }
+                }
+
+                let link_result = if opts.use_symlinks {
+                    Self::symlink(file.path(), &merged_path)
+                } else {
+                    std::fs::hard_link(file.path(), &merged_path)
+                };
+
+                if let Err(e) = link_result {
+                    eprintln!(
+                        "vfstool: link failed for {}: {}",
+                        file.path().display(), e
+                    );
+                    if opts.allow_copying {
+                        if let Err(e) = std::fs::copy(file.path(), &merged_path) {
+                            eprintln!(
+                                "vfstool: fallback copy of {} to {} failed: {}",
+                                file.path().display(),
+                                merged_path.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+            } else if opts.extract_archives {
+                match file.open() {
+                    Ok(mut data) => {
+                        use io::Read;
+                        let mut buf = Vec::new();
+                        match data.read_to_end(&mut buf) {
+                            Err(e) => eprintln!(
+                                "vfstool: failed to read archived file {}: {}",
+                                relative_path.display(), e
+                            ),
+                            Ok(_) => {
+                                if let Err(e) = std::fs::write(&merged_path, buf) {
+                                    eprintln!(
+                                        "vfstool: failed to extract {} to {}: {}",
+                                        relative_path.display(),
+                                        merged_path.display(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!(
+                        "vfstool: failed to open archived file {}: {}",
+                        relative_path.display(), e
+                    ),
+                }
+            } else {
+                eprintln!(
+                    "vfstool: skipping {}, loaded from archive: {}",
+                    relative_path.display(),
+                    file.parent_archive_path().unwrap_or_default()
+                );
+            }
+        });
+
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
+        std::os::unix::fs::symlink(src, dst)
+    }
+
+    #[cfg(windows)]
+    fn symlink(src: &Path, dst: &Path) -> io::Result<()> {
+        std::os::windows::fs::symlink_file(src, dst)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    fn symlink(_src: &Path, _dst: &Path) -> io::Result<()> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "symlinks are not supported on this platform",
+        ))
+    }
+
+    /// Extract a single VFS file into `dest_dir`.
+    ///
+    /// Returns the path of the extracted file on success. Returns `None` if
+    /// `vfs_path` is not found in the VFS.
+    pub fn extract_file(&self, vfs_path: &Path, dest_dir: &Path) -> io::Result<Option<PathBuf>> {
+        let file = match self.get_file(vfs_path) {
+            Some(f) => f,
+            None => return Ok(None),
+        };
+
+        std::fs::create_dir_all(dest_dir)?;
+
+        let file_name = vfs_path
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "vfs_path has no file name"))?;
+
+        let dest = dest_dir.join(file_name);
+
+        if file.is_loose() {
+            std::fs::copy(file.path(), &dest)?;
+        } else {
+            use io::Read;
+            let mut buf = Vec::new();
+            file.open()?.read_to_end(&mut buf)?;
+            std::fs::write(&dest, buf)?;
+        }
+
+        Ok(Some(dest))
+    }
+
+    /// Return a filtered tree showing files from or replacing `filter_path`.
+    ///
+    /// `all_dirs` is the full ordered list of data directories (as from openmw.cfg).
+    /// The method builds a single-directory VFS for `filter_path`, then filters
+    /// the full VFS accordingly.
+    ///
+    /// When `replacements_only` is `false`: files still served from `filter_path`.
+    /// When `replacements_only` is `true`: files where `filter_path` has a copy
+    /// but the full VFS serves them from a different (higher-priority) source.
+    pub fn remaining(
+        &self,
+        filter_path: &Path,
+        replacements_only: bool,
+        all_dirs: &[PathBuf],
+        relative: bool,
+    ) -> DisplayTree {
+        let filter_normalized = normalize_path(filter_path).into_owned();
+
+        let filtered_dirs: Vec<&PathBuf> = all_dirs
+            .iter()
+            .filter(|d| normalize_path(d.as_path()) == filter_normalized.as_path())
+            .collect();
+
+        let filtered_vfs = VFS::from_directories(filtered_dirs, None);
+
+        self.tree_filtered(relative, |key, file| {
+            if replacements_only {
+                filtered_vfs.contains(key)
+                    && !normalize_path(file.path()).starts_with(&filter_normalized)
+            } else {
+                normalize_path(file.path()).starts_with(&filter_normalized)
+            }
+        })
     }
 
     /// Given a substring, return an iterator over all paths that contain it.

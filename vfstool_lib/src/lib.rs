@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 pub mod conflict;
 pub mod directory_node;
+pub mod reports;
 pub mod run;
 pub mod vfs;
 pub mod vfs_file;
 
 pub(crate) use directory_node::DirectoryNode;
 pub use conflict::{ConflictIndex, SourceConflicts};
-pub use run::{changed_files, snapshot_directory};
+pub use reports::{
+    CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
+    ShadowedSource, StatsReport, StatsRow, WhichResult,
+};
+pub use run::{changed_files, run_finalize, run_setup, snapshot_directory, Snapshot};
 pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
