@@ -219,6 +219,12 @@ enum Commands {
         /// Hardlinks are used by default to avoid duplicating data on disk.
         #[arg(long)]
         copy: bool,
+
+        /// Working directory for the child process.
+        ///
+        /// Defaults to the current working directory if not set.
+        #[arg(long)]
+        working_dir: Option<PathBuf>,
     },
 }
 
@@ -542,7 +548,7 @@ fn main() -> Result<()> {
             let report = ci.diff_report(&source_a, &source_b);
             write_serialized(output, format, &report)?;
         }
-        Commands::Run { merged_dir, command, keep_merged, output, copy } => {
+        Commands::Run { merged_dir, command, keep_merged, output, copy, working_dir } => {
             let cfg = load_openmw_config(resolved_config_dir);
 
             let data_local: PathBuf = output.unwrap_or_else(|| {
@@ -579,10 +585,12 @@ fn main() -> Result<()> {
                     })
                     .collect();
 
-                let status = match std::process::Command::new(&substituted[0])
-                    .args(&substituted[1..])
-                    .status()
-                {
+                let mut cmd = std::process::Command::new(&substituted[0]);
+                cmd.args(&substituted[1..]);
+                if let Some(ref dir) = working_dir {
+                    cmd.current_dir(dir);
+                }
+                let status = match cmd.status() {
                     Ok(s) => s,
                     Err(e) => return (Err(e), None),
                 };
