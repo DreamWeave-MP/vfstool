@@ -836,4 +836,207 @@ mod tests {
         assert!(index.conflicts[1].has_overrides(), "dir should override the archive");
         assert!(!index.conflicts[1].is_overridden(), "nothing overrides the dir");
     }
+
+    // ---- conflicts_report ----
+
+    #[test]
+    fn conflicts_report_relative_paths() {
+        let d1 = TempDir::new("ci_report_cr_d1");
+        let d2 = TempDir::new("ci_report_cr_d2");
+        d1.write("shared.txt", b"");
+        d2.write("shared.txt", b"");
+        d1.write("only1.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.conflicts_report(true);
+
+        assert_eq!(report.sources.len(), 2);
+        // d2 (idx 1) overrides shared.txt — its overrides list should contain the relative key
+        let d2_entry = &report.sources[1];
+        assert!(!d2_entry.overrides.is_empty(), "d2 should have overrides");
+        assert!(
+            d2_entry.overrides.iter().any(|p| p == &PathBuf::from("shared.txt")),
+            "overrides should contain the relative key 'shared.txt'"
+        );
+    }
+
+    #[test]
+    fn conflicts_report_sorted() {
+        let d1 = TempDir::new("ci_report_cr_sort_d1");
+        let d2 = TempDir::new("ci_report_cr_sort_d2");
+        d1.write("b.txt", b"");
+        d1.write("a.txt", b"");
+        d2.write("b.txt", b"");
+        d2.write("a.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.conflicts_report(true);
+
+        let overrides = &report.sources[1].overrides;
+        assert!(
+            overrides.windows(2).all(|w| w[0] <= w[1]),
+            "overrides should be sorted"
+        );
+        let overridden_by = &report.sources[0].overridden_by;
+        assert!(
+            overridden_by.windows(2).all(|w| w[0] <= w[1]),
+            "overridden_by should be sorted"
+        );
+    }
+
+    // ---- shadowed_report ----
+
+    #[test]
+    fn shadowed_report_clean_source_excluded() {
+        let d1 = TempDir::new("ci_report_sr_clean_d1");
+        let d2 = TempDir::new("ci_report_sr_clean_d2");
+        // No shared files — no conflicts
+        d1.write("only1.txt", b"");
+        d2.write("only2.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.shadowed_report(true);
+        assert!(
+            report.sources.is_empty(),
+            "no sources should appear when there are no conflicts"
+        );
+    }
+
+    #[test]
+    fn shadowed_report_overridden_source_included_sorted() {
+        let d1 = TempDir::new("ci_report_sr_over_d1");
+        let d2 = TempDir::new("ci_report_sr_over_d2");
+        d1.write("b.txt", b"");
+        d1.write("a.txt", b"");
+        d2.write("b.txt", b"");
+        d2.write("a.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.shadowed_report(true);
+
+        // d1 is overridden by d2, so it should appear in the shadowed report
+        assert!(!report.sources.is_empty(), "d1 should appear as shadowed");
+        let shadowed = &report.sources[0];
+        assert!(
+            shadowed.shadowed_files.windows(2).all(|w| w[0] <= w[1]),
+            "shadowed_files should be sorted"
+        );
+    }
+
+    // ---- which ----
+
+    #[test]
+    fn which_returns_none_for_missing_path() {
+        let d1 = TempDir::new("ci_report_wh_none_d1");
+        d1.write("present.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path()]);
+        let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path()], None);
+        let result = index.which(&vfs, Path::new("absent.txt"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn which_unique_file_is_unique() {
+        let d1 = TempDir::new("ci_report_wh_uniq_d1");
+        d1.write("unique.txt", b"x");
+
+        let index = ConflictIndex::from_directories(vec![d1.path()]);
+        let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path()], None);
+        let result = index.which(&vfs, Path::new("unique.txt")).expect("file should be found");
+        assert!(result.is_unique, "file only in one source should be unique");
+        assert!(result.also_in.is_empty());
+    }
+
+    #[test]
+    fn which_shared_file_has_also_in() {
+        let d1 = TempDir::new("ci_report_wh_shared_d1");
+        let d2 = TempDir::new("ci_report_wh_shared_d2");
+        d1.write("shared.txt", b"d1");
+        d2.write("shared.txt", b"d2");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let (vfs, _) =
+            VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
+        let result = index.which(&vfs, Path::new("shared.txt")).expect("file should be found");
+        // d2 wins (higher priority), so also_in should contain d1
+        assert!(!result.is_unique);
+        assert!(
+            result.also_in.contains(&d1.path().to_path_buf()),
+            "lower-priority dir should be in also_in"
+        );
+    }
+
+    // ---- stats ----
+
+    #[test]
+    fn stats_wins_and_overrides() {
+        let d1 = TempDir::new("ci_report_st_d1");
+        let d2 = TempDir::new("ci_report_st_d2");
+        d1.write("shared.txt", b"d1");
+        d1.write("only1.txt", b"d1");
+        d2.write("shared.txt", b"d2");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let (vfs, _) =
+            VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
+        let report = index.stats(&vfs);
+
+        assert_eq!(report.rows.len(), 2);
+        let row_d1 = &report.rows[0]; // d1 = lower priority
+        let row_d2 = &report.rows[1]; // d2 = higher priority
+
+        // d2 serves shared.txt — it wins on that file
+        assert!(row_d2.wins > 0, "d2 should have wins > 0");
+        // d2 overrides d1 on shared.txt
+        assert_eq!(row_d2.overrides, 1, "d2 overrides one file");
+        // d1 is overridden on shared.txt
+        assert!(row_d1.overridden > 0, "d1 should have overridden > 0");
+    }
+
+    // ---- diff_report ----
+
+    #[test]
+    fn diff_report_shared_and_unique() {
+        let d1 = TempDir::new("ci_report_dr_d1");
+        let d2 = TempDir::new("ci_report_dr_d2");
+        d1.write("shared.txt", b"");
+        d1.write("only_a.txt", b"");
+        d2.write("shared.txt", b"");
+        d2.write("only_b.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.diff_report(d1.path(), d2.path());
+
+        assert!(
+            report.shared.contains(&PathBuf::from("shared.txt")),
+            "shared.txt should be in shared"
+        );
+        assert!(
+            report.only_in_a.contains(&PathBuf::from("only_a.txt")),
+            "only_a.txt should be only in a"
+        );
+        assert!(
+            report.only_in_b.contains(&PathBuf::from("only_b.txt")),
+            "only_b.txt should be only in b"
+        );
+    }
+
+    #[test]
+    fn diff_report_higher_priority_is_later_dir() {
+        let d1 = TempDir::new("ci_report_dr_prio_d1");
+        let d2 = TempDir::new("ci_report_dr_prio_d2");
+        d1.write("f.txt", b"");
+        d2.write("f.txt", b"");
+
+        // d2 comes later, so it should have higher priority
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.diff_report(d1.path(), d2.path());
+
+        assert_eq!(
+            report.higher_priority,
+            d2.path().to_path_buf(),
+            "d2 (later) should have higher priority"
+        );
+    }
 }

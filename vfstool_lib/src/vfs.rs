@@ -45,6 +45,10 @@ pub struct DirectoryDiff<'vfs> {
     pub additions: Vec<(PathBuf, VfsFile)>,
 }
 
+/// Virtual file system built from an ordered list of data directories and optional archives.
+///
+/// Keys are normalized (lowercase, forward-slash) relative paths. Later directories and loose
+/// files have higher priority, matching OpenMW's `data=` semantics.
 pub struct VFS {
     file_map: VFSFiles,
 }
@@ -74,10 +78,12 @@ impl VFS {
         }
     }
 
+    /// Returns an iterator over all `(normalized_key, file)` pairs in the VFS.
     pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &VfsFile)> {
         self.file_map.iter()
     }
 
+    /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.
     pub fn par_iter(&self) -> impl ParallelIterator<Item = (&PathBuf, &VfsFile)> {
         self.file_map.par_iter()
     }
@@ -185,30 +191,28 @@ impl VFS {
                     return;
                 }
 
-                if let Err(e) = std::fs::remove_file(&merged_path) {
-                    if e.kind() != io::ErrorKind::NotFound {
-                        eprintln!(
-                            "vfstool: failed to remove existing file at {}: {}",
-                            merged_path.display(), e
-                        );
-                        return;
-                    }
+                if let Err(e) = std::fs::remove_file(&merged_path)
+                    && e.kind() != io::ErrorKind::NotFound
+                {
+                    eprintln!(
+                        "vfstool: failed to remove existing file at {}: {}",
+                        merged_path.display(), e
+                    );
+                    return;
                 }
 
                 // Skip archive files when --extract-archives is set
-                if opts.extract_archives {
-                    if let Some(ext) = file.path().extension() {
-                        let ext = ext.to_ascii_lowercase();
-                        let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
-                        if (ext == "bsa" || ext == "ba2")
-                            && name != "archiveinvalidationinvalidated!.bsa"
-                        {
-                            eprintln!(
-                                "vfstool: skipping archive {}",
-                                file.file_name().unwrap().to_string_lossy()
-                            );
-                            return;
-                        }
+                if opts.extract_archives && let Some(ext) = file.path().extension() {
+                    let ext = ext.to_ascii_lowercase();
+                    let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
+                    if (ext == "bsa" || ext == "ba2")
+                        && name != "archiveinvalidationinvalidated!.bsa"
+                    {
+                        eprintln!(
+                            "vfstool: skipping archive {}",
+                            file.file_name().unwrap().to_string_lossy()
+                        );
+                        return;
                     }
                 }
 
@@ -223,15 +227,13 @@ impl VFS {
                         "vfstool: link failed for {}: {}",
                         file.path().display(), e
                     );
-                    if opts.allow_copying {
-                        if let Err(e) = std::fs::copy(file.path(), &merged_path) {
-                            eprintln!(
-                                "vfstool: fallback copy of {} to {} failed: {}",
-                                file.path().display(),
-                                merged_path.display(),
-                                e
-                            );
-                        }
+                    if opts.allow_copying && let Err(e) = std::fs::copy(file.path(), &merged_path) {
+                        eprintln!(
+                            "vfstool: fallback copy of {} to {} failed: {}",
+                            file.path().display(),
+                            merged_path.display(),
+                            e
+                        );
                     }
                 }
             } else if opts.extract_archives {
@@ -427,6 +429,11 @@ impl VFS {
             })
     }
 
+    /// Build a [`VFS`] from an ordered list of directories and an optional archive list.
+    ///
+    /// Later entries in `search_dirs` override earlier ones (OpenMW `data=` semantics).
+    /// If `archive_list` is provided and the `bsa` or `zip` feature is enabled, archives are
+    /// loaded at lower priority than all loose files.
     pub fn from_directories(
         search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         #[cfg_attr(not(any(feature = "bsa", feature = "zip")), allow(unused_variables))]
@@ -635,8 +642,7 @@ impl VFS {
         tree.insert(root_path.clone(), DirectoryNode::new());
 
         for (key, entry) in &self.file_map {
-            let path = PathBuf::from(
-                if relative {
+            let path = if relative {
                     entry.parent_archive_name()
                 } else {
                     entry.parent_archive_path()
@@ -650,8 +656,7 @@ impl VFS {
                         }
                     },
                     |parent| PathBuf::from(parent).join(key),
-                ),
-            );
+                );
 
             let new_file = match entry.is_archive() {
                 false => VfsFile::from(entry.path()),
@@ -675,7 +680,7 @@ impl VFS {
             let parent = path
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
-                .unwrap_or_else(|| root_path.as_path());
+                .unwrap_or(root_path.as_path());
 
             let mut current_path = PathBuf::new();
             let mut current_node = tree
@@ -693,7 +698,7 @@ impl VFS {
                 current_node = current_node
                     .subdirs
                     .entry(component_name)
-                    .or_insert_with(DirectoryNode::new);
+                    .or_default();
             }
 
             current_node.files.push(new_file);
@@ -747,7 +752,7 @@ impl VFS {
     }
 }
 
-fn write_node<W: Write>(w: &mut W, node: &DirectoryNode, dir: &PathBuf) -> std::fmt::Result {
+fn write_node<W: Write>(w: &mut W, node: &DirectoryNode, dir: &Path) -> std::fmt::Result {
     if !node.files.is_empty() {
         write!(w, "{}", VFS::dir_str(dir.to_string_lossy()))?;
         for file in &node.files {
@@ -1384,6 +1389,153 @@ mod loose_tests {
             collect_all_filenames(filt_root),
         );
     }
+
+    // ---- find_by_regex ----
+
+    fn count_files_in_tree(tree: &DisplayTree) -> usize {
+        fn count(node: &DirectoryNode) -> usize {
+            node.files.len() + node.subdirs.values().map(count).sum::<usize>()
+        }
+        tree.values().map(count).sum()
+    }
+
+    #[test]
+    fn find_by_regex_matching_files_returned() {
+        let dir = TempDir::new("vfs_newmethods_regex_match");
+        dir.write("foo.txt", b"a");
+        dir.write("bar.txt", b"b");
+        dir.write("baz.nif", b"c");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        // Use a character-class instead of backslash-escaped dot so that
+        // normalize_path (which converts '\' to '/') doesn't corrupt the pattern.
+        let tree = vfs.find_by_regex("[.]txt$", true).unwrap();
+        let count = count_files_in_tree(&tree);
+        assert_eq!(count, 2, "only .txt files should match");
+    }
+
+    #[test]
+    fn find_by_regex_non_matching_excluded() {
+        let dir = TempDir::new("vfs_newmethods_regex_excl");
+        dir.write("alpha.dds", b"a");
+        dir.write("beta.nif", b"b");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        let tree = vfs.find_by_regex("[.]txt$", true).unwrap();
+        let count = count_files_in_tree(&tree);
+        assert_eq!(count, 0, "no .txt files should match");
+    }
+
+    #[test]
+    fn find_by_regex_invalid_returns_err() {
+        let dir = TempDir::new("vfs_newmethods_regex_err");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        assert!(vfs.find_by_regex(r"[invalid", true).is_err());
+    }
+
+    #[test]
+    fn find_by_regex_case_insensitive() {
+        let dir = TempDir::new("vfs_newmethods_regex_case");
+        dir.write("foo.txt", b"a");
+        dir.write("other.nif", b"b");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        // Pattern in uppercase should still match the lowercase filename
+        let tree = vfs.find_by_regex("FOO", true).unwrap();
+        let count = count_files_in_tree(&tree);
+        assert_eq!(count, 1, "FOO pattern should match foo.txt case-insensitively");
+    }
+
+    // ---- extract_file ----
+
+    #[test]
+    fn extract_file_returns_none_for_missing_path() {
+        let dir = TempDir::new("vfs_newmethods_extract_none");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+        let dest = TempDir::new("vfs_newmethods_extract_none_dest");
+        let result = vfs.extract_file(Path::new("nonexistent.txt"), dest.path()).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_file_copies_content_to_dest() {
+        let src = TempDir::new("vfs_newmethods_extract_src");
+        src.write("data.bin", b"hello extract");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("vfs_newmethods_extract_dest");
+        let extracted = vfs
+            .extract_file(Path::new("data.bin"), dest.path())
+            .unwrap()
+            .expect("file should be found and extracted");
+
+        assert!(extracted.exists());
+        assert_eq!(fs::read(&extracted).unwrap(), b"hello extract");
+    }
+
+    #[test]
+    fn extract_file_creates_dest_dir_if_missing() {
+        let src = TempDir::new("vfs_newmethods_extract_mkdest");
+        src.write("note.txt", b"content");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        // Use a dest dir that does not yet exist
+        let base = TempDir::new("vfs_newmethods_extract_mkdest_base");
+        let dest = base.path().join("new_subdir");
+        assert!(!dest.exists(), "dest should not exist yet");
+
+        let extracted = vfs
+            .extract_file(Path::new("note.txt"), &dest)
+            .unwrap()
+            .expect("file should be extracted");
+
+        assert!(extracted.exists());
+    }
+
+    // ---- remaining ----
+
+    #[test]
+    fn remaining_replacements_false_includes_files_from_filter_path() {
+        let dir1 = TempDir::new("vfs_newmethods_rem_d1");
+        let dir2 = TempDir::new("vfs_newmethods_rem_d2");
+
+        // dir1 has unique.txt (not overridden by dir2)
+        dir1.write("unique.txt", b"from dir1");
+        // both have shared.txt — dir2 wins
+        dir1.write("shared.txt", b"dir1 version");
+        dir2.write("shared.txt", b"dir2 version");
+        dir2.write("only_dir2.txt", b"dir2 only");
+
+        let all_dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
+        let vfs = VFS::from_directories(all_dirs.iter().map(|p| p.as_path()), None);
+
+        // replacements_only=false: files still served FROM dir1
+        let tree = vfs.remaining(dir1.path(), false, &all_dirs, true);
+        let count = count_files_in_tree(&tree);
+        // unique.txt is served from dir1; shared.txt is NOT (dir2 wins)
+        assert_eq!(count, 1, "only unique.txt should still be served from dir1");
+    }
+
+    #[test]
+    fn remaining_replacements_true_includes_overridden_files() {
+        let dir1 = TempDir::new("vfs_newmethods_rem2_d1");
+        let dir2 = TempDir::new("vfs_newmethods_rem2_d2");
+
+        // dir1 has unique.txt and shared.txt; dir2 overrides shared.txt
+        dir1.write("unique.txt", b"from dir1");
+        dir1.write("shared.txt", b"dir1 version");
+        dir2.write("shared.txt", b"dir2 version");
+
+        let all_dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
+        let vfs = VFS::from_directories(all_dirs.iter().map(|p| p.as_path()), None);
+
+        // replacements_only=true: files that dir1 has but a higher-priority dir wins
+        let tree = vfs.remaining(dir1.path(), true, &all_dirs, true);
+        let count = count_files_in_tree(&tree);
+        // shared.txt is in dir1 but served from dir2 — it should appear
+        // unique.txt is in dir1 and still served from dir1 — it should NOT appear
+        assert_eq!(count, 1, "only the overridden shared.txt should appear");
+    }
 }
 
 #[cfg(all(test, feature = "zip"))]
@@ -1633,7 +1785,7 @@ mod tests {
     use super::*;
     use ba2::tes3::{Archive, ArchiveKey, File};
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     const TEST_DATA: &[&str] = &[
         "file1.txt",
@@ -1727,7 +1879,7 @@ END OF ACT IV, SCENE III";
         create_files(&dir1, &TEST_DATA[0..3]); // file1.txt, file2.txt, file3.txt
         create_files(&dir2, &TEST_DATA[0..2]); // file1.txt, file2.txt
         create_files(&dir3, &TEST_DATA[0..1]); // file1.txt
-        create_files(&temp_path.to_path_buf(), &TEST_DATA[..]);
+        create_files(&temp_path.to_path_buf(), TEST_DATA);
 
         (dir1, dir2, dir3)
     }
@@ -1749,12 +1901,12 @@ END OF ACT IV, SCENE III";
 
     fn verify_file_locations(
         vfs: &VFS,
-        bsa1: &PathBuf,
-        bsa2: &PathBuf,
-        bsa3: &PathBuf,
-        dir1: &PathBuf,
-        dir2: &PathBuf,
-        dir3: &PathBuf,
+        bsa1: &Path,
+        bsa2: &Path,
+        bsa3: &Path,
+        dir1: &Path,
+        dir2: &Path,
+        dir3: &Path,
     ) {
         assert_eq!(
             vfs.file_map

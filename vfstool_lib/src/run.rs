@@ -8,6 +8,7 @@ use std::{
 use rayon::prelude::*;
 use walkdir::WalkDir;
 
+/// Map from relative file path to its BLAKE3 digest, used to detect changes after a subprocess run.
 pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 
 /// Dump the VFS to `merged_dir` and capture a baseline snapshot.
@@ -227,5 +228,82 @@ mod tests {
         dir.write("b.txt", b"y");
         let changed = changed_files(dir.path(), &HashMap::new()).unwrap();
         assert_eq!(changed.len(), 2);
+    }
+
+    // ---- run_setup ----
+
+    #[test]
+    fn run_setup_creates_merged_dir() {
+        let src = TempDir::new("run_new_setup_src");
+        src.write("file.txt", b"hello");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let base = TempDir::new("run_new_setup_base");
+        let merged = base.path().join("merged_does_not_exist");
+        assert!(!merged.exists());
+
+        run_setup(&vfs, &merged, false).unwrap();
+        assert!(merged.exists(), "run_setup should create merged_dir");
+    }
+
+    #[test]
+    fn run_setup_count_matches_vfs_size() {
+        let src = TempDir::new("run_new_setup_count_src");
+        src.write("a.txt", b"1");
+        src.write("b.txt", b"2");
+        src.write("sub/c.txt", b"3");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_setup_count_merged");
+        let (count, _) = run_setup(&vfs, merged.path(), false).unwrap();
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn run_setup_returns_non_empty_snapshot() {
+        let src = TempDir::new("run_new_setup_snap_src");
+        src.write("file.txt", b"data");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_setup_snap_merged");
+        let (_, snapshot) = run_setup(&vfs, merged.path(), false).unwrap();
+        assert!(!snapshot.is_empty(), "snapshot should contain entries after setup");
+    }
+
+    // ---- run_finalize ----
+
+    #[test]
+    fn run_finalize_empty_when_nothing_changed() {
+        let src = TempDir::new("run_new_finalize_nochange_src");
+        src.write("file.txt", b"data");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_finalize_nochange_merged");
+        let (_, baseline) = run_setup(&vfs, merged.path(), false).unwrap();
+
+        let output = TempDir::new("run_new_finalize_nochange_out");
+        let copied = run_finalize(merged.path(), &baseline, output.path()).unwrap();
+        assert!(copied.is_empty(), "nothing changed so nothing should be copied");
+    }
+
+    #[test]
+    fn run_finalize_copies_modified_file() {
+        let src = TempDir::new("run_new_finalize_mod_src");
+        src.write("file.txt", b"original");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_finalize_mod_merged");
+        let (_, baseline) = run_setup(&vfs, merged.path(), false).unwrap();
+
+        // Modify the file in merged_dir after baseline
+        fs::write(merged.path().join("file.txt"), b"modified").unwrap();
+
+        let output = TempDir::new("run_new_finalize_mod_out");
+        let copied = run_finalize(merged.path(), &baseline, output.path()).unwrap();
+
+        assert!(!copied.is_empty(), "modified file should be copied");
+        let (rel, dest) = &copied[0];
+        assert_eq!(rel, &PathBuf::from("file.txt"));
+        assert_eq!(fs::read(dest).unwrap(), b"modified");
     }
 }

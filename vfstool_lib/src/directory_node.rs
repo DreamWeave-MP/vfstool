@@ -33,11 +33,14 @@ use serde::{Serialize, Serializer, ser::SerializeMap};
 /// The `sort` and `filter` methods allow organizing and modifying the directory contents.
 #[derive(Debug, Default)]
 pub struct DirectoryNode {
+    /// Files residing directly in this directory.
     pub files: Vec<VfsFile>,
+    /// Named subdirectories, keyed by their single path component.
     pub subdirs: DisplayTree,
 }
 
 impl DirectoryNode {
+    /// Creates an empty [`DirectoryNode`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -278,7 +281,7 @@ mod tests {
     fn test_directory_node_filter() {
         let mut root = sample_directory_node();
 
-        root.filter(&|file| file.file_name().map_or(false, |name| name.to_string_lossy().contains('2')));
+        root.filter(&|file| file.file_name().is_some_and(|name| name.to_string_lossy().contains('2')));
 
         assert_eq!(
             root.subdirs.len(),

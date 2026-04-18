@@ -453,7 +453,7 @@ fn main() -> Result<()> {
                 println!(
                     "{}Successfully found VFS File {} at path {}",
                     print::success_prefix(),
-                    print::blue(&path.display()),
+                    print::blue(path.display()),
                     print::green(&path_display),
                 )
             }

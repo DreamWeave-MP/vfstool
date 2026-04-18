@@ -1,115 +1,101 @@
-# dw_vfs_lib
+# vfstool_lib
 
-dw_vfs_lib is a reimplementation of OpenMW's virtual file system, or VFS. It provides tools for working with directory structures, archive files, and file metadata, making it ideal for applications that need to handle complex file hierarchies - including complex mod loadouts handled by mod managers. dw_vfs_lib does not inherently depend on OpenMW or any particular game or technology - it can be repurposed easily for almost any use case.
+`vfstool_lib` is a reimplementation of OpenMW's virtual file system (VFS). It provides tools for working with directory structures, archive files, and file metadata — ideal for applications that handle complex mod loadouts. It does not depend on OpenMW or any particular game.
 
 ---
 
 ## Features
 
-- **Virtual File System (VFS)**:
-  - Manage files and directories in a virtualized structure.
-  - Normalize paths for consistent access.
-  - Query files by name, prefix, or other criteria.
-
-- **Parallel Processing**:
-  - Leverages the `rayon` crate for efficient parallel operations on large file sets.
-
-- **Serialization (Optional)**:
-  - Serialize the VFS structure to JSON, YAML, or TOML formats using `serde`.
-
-- **Archive Support**:
-  - Integrates with the `ba2` crate to handle Bethesda archive formats (e.g., BSA, BA2).
+- **Virtual File System (VFS)**: Build from ordered data directories. Later directories win (matching OpenMW `data=` semantics). Loose files always beat archive files.
+- **Conflict analysis**: Per-source override and overridden-by sets, plus high-level reports for the `conflicts`, `shadowed`, `which`, `stats`, and `diff` queries.
+- **Archive support**: BSA/BA2 (Morrowind, Oblivion, Skyrim, Fallout 4) via the `ba2` crate (`bsa` feature). ZIP/PK3 via the `zip` crate (`zip` feature).
+- **Serialization**: JSON, YAML, TOML output via `serde` (`serialize` feature).
+- **Parallel processing**: Directory walks and hash operations use `rayon`.
+- **MO2-style runner support**: `run_setup` / `run_finalize` for dump-run-collect workflows.
 
 ---
 
 ## Installation
 
-Add dw_vfs_lib to your Cargo.toml:
-
 ```toml
 [dependencies]
-dw_vfs_lib = "0.1.0"
+vfstool_lib = "1.0"
 ```
 
-To enable optional serialization features:
+With archive and serialization support:
 
 ```toml
 [dependencies]
-dw_vfs_lib = { version = "0.1.0", features = ["serde"] }
+vfstool_lib = { version = "1.0", features = ["bsa", "serialize"] }
 ```
 
 ---
 
 ## Usage
 
-### Basic Example
+### Basic example
 
 ```rust
-use dw_vfs_lib::VFS;
+use vfstool_lib::vfs::VFS;
 use std::path::PathBuf;
 
 fn main() {
-    // Directories to scan
     let search_dirs = vec![
-        PathBuf::from("path/to/dir1"),
-        PathBuf::from("path/to/dir2"),
-        PathBuf::from("path/to/dir3"),
+        PathBuf::from("path/to/base"),
+        PathBuf::from("path/to/mod"),   // higher priority
     ];
+    let archive_list = Some(vec!["Morrowind.bsa"]);
 
-    // List of Bethesda archive files to load
-    let archive_list = Some(vec!["archive1.bsa", "archive2.bsa"]);
-
-    // Construct the VFS
     let vfs = VFS::from_directories(search_dirs, archive_list);
 
-    // Example: Iterate over all files in the VFS
-    for (path, file) in vfs.iter() {
-        println!("File: {:?}, Path: {:?}", file, path);
+    for (key, file) in vfs.iter() {
+        println!("{key:?} → {file:?}");
     }
 }
 ```
 
----
-
-### Serialization (Optional)
-
-Enable the `serialize` feature to serialize the VFS structure to your preferred text format:
+### Conflict analysis
 
 ```rust
-use dw_vfs_lib::{VFS, SerializeType};
+use vfstool_lib::vfs::VFS;
 
-fn main() {
-    let search_dirs = vec![
-        PathBuf::from("path/to/dir1"),
-        PathBuf::from("path/to/dir2"),
-        PathBuf::from("path/to/dir3"),
-    ];
+let (vfs, ci) = VFS::from_directories_with_conflict_index(
+    vec!["path/to/base", "path/to/mod"],
+    None,
+);
 
-    let vfs = VFS::from_directories(search_dirs, None);
-
-    // Serialize the VFS to JSON
-    let tree = vfs.tree(false);
-    let json = vfs.serialize_from_tree(&tree, SerializeType::Json).unwrap();
-    println!("Serialized VFS: {}", json);
+let report = ci.conflicts_report(true);  // use_relative = true
+for entry in &report.sources {
+    println!("{}: {} overrides, {} overridden",
+        entry.path.display(),
+        entry.overrides.len(),
+        entry.overridden_by.len());
 }
+```
+
+### Serialization
+
+```rust
+use vfstool_lib::{vfs::VFS, SerializeType};
+
+let vfs = VFS::from_directories(vec!["path/to/data"], None);
+let tree = vfs.tree(false, None);
+let json = vfs.serialize_from_tree(&tree, SerializeType::Json).unwrap();
+println!("{json}");
 ```
 
 ---
 
-## Feature Flags
+## Feature flags
 
-- `default`: No optional features enabled.
-- `serialize`: Enables serialization to JSON, YAML, and TOML.
+| Flag | Description |
+|------|-------------|
+| `bsa` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
+| `zip` | ZIP/PK3 archive support |
+| `serialize` | JSON/YAML/TOML output via serde |
 
 ---
 
 ## License
 
-This project is dual-licensed under either:
-
-- [MIT License](../LICENSE-MIT)
-- [Apache License, Version 2.0](../LICENSE-APACHE)
-
-You may choose either license at your option.
-
----
+Dual-licensed under [MIT](../LICENSE-MIT) or [Apache 2.0](../LICENSE-APACHE) at your option.

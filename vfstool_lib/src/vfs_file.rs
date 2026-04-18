@@ -24,6 +24,7 @@ use std::{
 #[cfg(any(feature = "bsa", feature = "zip"))]
 use crate::archives::{StoredArchive, TypedArchive};
 
+/// Streaming reader over a Fallout 4 BA2 file stored as multiple chunks.
 #[cfg(feature = "bsa")]
 pub struct Fo4FileReader<'a> {
     chunks: std::vec::IntoIter<&'a [u8]>,
@@ -35,6 +36,7 @@ pub struct Fo4FileReader<'a> {
 /// Since FO4 Archives are stored in chunks, implement a custom reader for them
 /// This allows to seamlessly call read on them as we do for other all other file types
 impl<'a> Fo4FileReader<'a> {
+    /// Creates a [`Fo4FileReader`] that streams chunks from `file` in order.
     pub fn new(file: &'a Fo4File) -> Self {
         let mut chunks = file
             .iter()
@@ -84,6 +86,7 @@ impl Read for Fo4FileReader<'_> {
     }
 }
 
+/// Reader over a TES4 (Oblivion/Skyrim BSA) file, decompressing on construction if needed.
 #[cfg(feature = "bsa")]
 pub struct TES4FileReader {
     data: Cursor<Vec<u8>>, // Cursor over the file's data (decompressed or raw)
@@ -117,6 +120,7 @@ impl Read for TES4FileReader {
     }
 }
 
+/// A reference to a single file within an open [`StoredArchive`].
 #[cfg(any(feature = "bsa", feature = "zip"))]
 #[derive(Debug)]
 pub struct ArchiveReference {
@@ -126,6 +130,7 @@ pub struct ArchiveReference {
 
 #[cfg(feature = "bsa")]
 impl ArchiveReference {
+    /// Decompose a normalized VFS path into a TES4 directory key and file key pair.
     pub fn tes4_keys(path: &Path) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
         let dir_key: Tes4ArchiveKey = path
             .parent()
@@ -148,10 +153,13 @@ impl ArchiveReference {
     }
 }
 
+/// Backing storage for a [`VfsFile`]: either a loose path on disk or an archive entry.
 #[derive(Debug)]
 pub enum FileType {
+    /// File stored inside a BSA, BA2, ZIP, or PK3 archive.
     #[cfg(any(feature = "bsa", feature = "zip"))]
     Archive(ArchiveReference),
+    /// Loose file on the real filesystem, identified by its absolute path.
     Loose(PathBuf),
 }
 
@@ -187,8 +195,8 @@ impl VfsFile {
     /// # Notes
     ///
     /// - Paths **must not be normalized** at creation time to avoid potential file lookup issues.
-    /// - VfsFile does not, itself, verify that the provided path exists at creation time
-    /// this responsibility is left up to its constructor (typically, the VFS struct)
+    /// - VfsFile does not, itself, verify that the provided path exists at creation time;
+    ///   this responsibility is left up to its constructor (typically, the VFS struct)
     ///
     /// # Examples
     ///
@@ -207,6 +215,10 @@ impl VfsFile {
         }
     }
 
+    /// Creates a [`VfsFile`] backed by an entry inside `parent_archive`.
+    ///
+    /// `path` is the in-archive path of the file (not normalized; normalization happens at the
+    /// VFS key level, not here).
     #[cfg(any(feature = "bsa", feature = "zip"))]
     pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> Self {
         let path = PathBuf::from(path.as_ref());
@@ -218,6 +230,7 @@ impl VfsFile {
         }
     }
 
+    /// Returns `true` if this file is a loose file on the real filesystem.
     pub fn is_loose(&self) -> bool {
         match self.file {
             FileType::Loose(_) => true,
@@ -226,6 +239,7 @@ impl VfsFile {
         }
     }
 
+    /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, or PK3 archive.
     pub fn is_archive(&self) -> bool {
         match self.file {
             FileType::Loose(_) => false,
@@ -234,6 +248,7 @@ impl VfsFile {
         }
     }
 
+    /// Returns the absolute path to the parent archive as a string, or `None` for loose files.
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
@@ -242,9 +257,6 @@ impl VfsFile {
                 let path_str = archive_ref
                     .parent_archive
                     .path()
-                    // This was supposed to return the full path.. right?
-                    // .file_name()
-                    // .unwrap()
                     .to_string_lossy()
                     .to_string();
 
@@ -253,6 +265,7 @@ impl VfsFile {
         }
     }
 
+    /// Returns just the file name of the parent archive (e.g. `"Morrowind.bsa"`), or `None` for loose files.
     pub fn parent_archive_name(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
@@ -271,6 +284,7 @@ impl VfsFile {
         }
     }
 
+    /// Returns an `Arc` clone of the parent archive handle, or an error for loose files.
     #[cfg(any(feature = "bsa", feature = "zip"))]
     pub fn parent_archive_handle(&self) -> Result<Arc<StoredArchive>, Error> {
         match &self.file {
@@ -305,7 +319,7 @@ impl VfsFile {
     pub fn open(&self) -> io::Result<Box<dyn Read + '_>> {
         match &self.file {
             FileType::Loose(path) => {
-                let file = StdFile::open(&path)?;
+                let file = StdFile::open(path)?;
                 Ok(Box::new(file))
             }
 
@@ -384,8 +398,8 @@ impl VfsFile {
     ///
     /// * `Some(&str)` - If the path contains a valid file name.
     /// * `None` - If the path does not have a file name. This should be a rare exception as any
-    /// files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
-    /// binaries)
+    ///   files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
+    ///   binaries)
     ///
     /// # Examples
     ///
@@ -402,8 +416,6 @@ impl VfsFile {
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_name(),
-            // This doesn't actually retrieve the filename, it just normalizes it
-            // Now it does retrieve the filename, but wtf
             #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => archive_ref.path.file_name(),
         }
@@ -417,8 +429,8 @@ impl VfsFile {
     ///
     /// * `Some(&str)` - If the path contains a valid file name.
     /// * `None` - If the path does not have a file name. This should be a rare exception as any
-    /// files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
-    /// binaries)
+    ///   files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
+    ///   binaries)
     ///
     /// # Examples
     ///
@@ -435,8 +447,6 @@ impl VfsFile {
     pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_stem(),
-            // This doesn't actually retrieve the filename, it just normalizes it
-            // Now it does retrieve the filename, but wtf
             #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => archive_ref.path.file_stem(),
         }
@@ -560,7 +570,7 @@ END OF ACT IV, SCENE III";
     #[test]
     fn open_existing_file() {
         let test_path = "test_file.txt";
-        let _ = File::create(&test_path);
+        let _ = File::create(test_path);
 
         let vfs_file = VfsFile::from(test_path);
 
@@ -582,7 +592,7 @@ END OF ACT IV, SCENE III";
     fn open_loose_file_with_weird_chars() -> std::io::Result<()> {
         let test_path = "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt";
 
-        let mut fd = File::create(&test_path)?;
+        let mut fd = File::create(test_path)?;
 
         write!(fd, "{}", TEST_DATA)?;
 

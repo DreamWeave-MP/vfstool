@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+#![deny(missing_docs)]
+//! Virtual file system library for OpenMW modding tools.
+/// Conflict analysis: per-source override and overridden-by sets.
 pub mod conflict;
+/// Tree node used for display and serialization of VFS directory structure.
 pub mod directory_node;
+/// Report types returned by conflict, shadowed, which, stats, and diff subcommands.
 pub mod reports;
+/// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
+/// Core [`VFS`] struct and directory-construction logic.
 pub mod vfs;
+/// [`VfsFile`] wrapper for loose and archive-backed files.
 pub mod vfs_file;
 
 pub(crate) use directory_node::DirectoryNode;
@@ -24,11 +32,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Sorted map from a directory name to its [`DirectoryNode`], used for display and serialization.
 pub type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
 
+/// Output format for [`serialize_value`] and [`VFS::serialize_from_tree`].
 pub enum SerializeType {
+    /// Serialize as JSON.
     Json,
+    /// Serialize as YAML.
     Yaml,
+    /// Serialize as TOML.
     Toml,
 }
 
@@ -48,6 +61,9 @@ pub fn serialize_value<T: serde::Serialize>(
     }
 }
 
+/// Normalize a path by converting backslashes to forward slashes and lowercasing ASCII letters.
+///
+/// Returns a borrowed `Cow` when no transformation is needed, avoiding allocation on the fast path.
 pub fn normalize_path<P: AsRef<Path> + ?Sized>(path: &P) -> Cow<'_, Path> {
     let p = path.as_ref();
     let bytes = p.as_os_str().as_encoded_bytes();
@@ -101,6 +117,9 @@ pub(crate) fn is_zip_or_pk3(path: &std::path::Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("zip") || e.eq_ignore_ascii_case("pk3"))
 }
 
+/// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
+///
+/// Enabled when the `bsa` or `zip` feature is active.
 #[cfg(any(feature = "bsa", feature = "zip"))]
 pub mod archives {
     use ahash::AHashMap;
@@ -119,13 +138,18 @@ pub mod archives {
     #[cfg(feature = "bsa")]
     use ba2::{self, prelude::*, tes3::Archive as TES3Archive};
 
+    /// An open archive, tagged by its format.
     pub enum TypedArchive {
+        /// TES3 (Morrowind) BSA archive.
         #[cfg(feature = "bsa")]
         Tes3(ba2::tes3::Archive<'static>),
+        /// TES4 (Oblivion/Skyrim) BSA archive.
         #[cfg(feature = "bsa")]
         Tes4(ba2::tes4::Archive<'static>),
+        /// Fallout 4 BA2 archive.
         #[cfg(feature = "bsa")]
         Fo4(ba2::fo4::Archive<'static>),
+        /// ZIP or PK3 archive.
         #[cfg(feature = "zip")]
         Zip(Mutex<zip::ZipArchive<File>>),
     }
@@ -145,6 +169,7 @@ pub mod archives {
         }
     }
 
+    /// An opened, heap-allocated archive together with its on-disk path.
     #[derive(Debug)]
     pub struct StoredArchive {
         /// Keeps the BSA/BA2 memory-map file handle alive.
@@ -156,17 +181,21 @@ pub mod archives {
     }
 
     impl StoredArchive {
+        /// Returns the typed archive handle.
         pub fn handle(&self) -> &TypedArchive {
             &self.archive
         }
 
+        /// Returns the absolute path to the archive file on disk.
         pub fn path(&self) -> &Path {
             &self.path
         }
     }
 
+    /// Ordered list of open archive handles.
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
+    /// Open every archive named in `archive_list` that can be resolved through `file_map`.
     pub fn from_set(file_map: &AHashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
         archive_list
             .iter()
@@ -331,6 +360,7 @@ pub mod archives {
         }
     }
 
+    /// Build a normalized-path → [`VfsFile`] map from an [`ArchiveList`].
     pub fn file_map(archives: ArchiveList) -> AHashMap<PathBuf, VfsFile> {
         archives
             .iter()
@@ -356,7 +386,7 @@ pub mod archives {
                                     let mut normalized = PathBuf::from(&archive_path);
                                     crate::normalize_path_in_place(&mut normalized);
                                     let vfs_file = VfsFile::from_archive(
-                                        &normalized.to_string_lossy(),
+                                        normalized.to_string_lossy(),
                                         Arc::clone(stored_archive),
                                     );
                                     (normalized, vfs_file)
