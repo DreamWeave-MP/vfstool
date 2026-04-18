@@ -8,24 +8,25 @@ on:
     tags: ['*']
 
 jobs:
-  release:
-    strategy:
-      matrix:
-        os: [macos-latest, macos-15-intel, ubuntu-latest, windows-latest]
-    
-    runs-on: ${{ matrix.os }}
-    
+  build-app:
     permissions:
       contents: write
+      pages: write
       id-token: write
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run Corprus Crucible
-        uses: DreamWeave-MP/StroggForge/.github/actions/corprus-crucible@v1
-        with:
-          binary_name: 'vfstool'
-          vt_api_key: ${{ secrets.VT_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-    
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v9
+    secrets: inherit
+    with:
+      binary_names: '["vfstool"]'
+      publish_docs: false
+
+  build-lib:
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v9
+    secrets: inherit
+    with:
+      crate_names: '["vfstool_lib"]'
+      dependent_repo_names: '["DreamWeave-MP/Morrobroom"]'
+      generate_benchmarks: true
