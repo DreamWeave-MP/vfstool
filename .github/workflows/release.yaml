@@ -21,7 +21,7 @@ jobs:
       generate_benchmarks: true
 
   build-app:
-    depends: build-lib
+    needs: build-lib
     permissions:
       contents: write
       pages: write
