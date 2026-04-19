@@ -9,7 +9,7 @@ use std::{
 
 /// Source type in the load order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub enum SourceKind {
     /// A loose data directory.
     LooseDir,
@@ -144,7 +144,7 @@ impl Default for SemanticOpts {
 
 /// Deterministic lock file output.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct VfsLock {
     /// Schema version.
     pub schema_version: u32,
@@ -154,7 +154,7 @@ pub struct VfsLock {
 
 /// One deterministic lock entry.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct VfsLockEntry {
     /// Normalized key.
     pub key: PathBuf,

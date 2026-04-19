@@ -3,11 +3,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::{
     fs,
     io::{self, Result, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, LayerIndex, Policy, ReorderOp, Rule, SerializeType,
-    SourceKind, normalize_path, run_finalize, run_setup, serialize_value, vfs::VFS,
+    CandidatePlanOpts, CollapseOptions, ConflictIndex, LayerIndex, Policy, ReorderOp, Rule,
+    SerializeType, SimOpts, SourceKind, VfsLock, normalize_path, run_finalize, run_setup,
+    serialize_value, vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
@@ -269,6 +270,88 @@ enum Commands {
         source_a: PathBuf,
         /// Source path B.
         source_b: PathBuf,
+        /// Optional impact bucket globs (repeat this flag).
+        #[arg(long = "bucket")]
+        buckets: Vec<String>,
+        /// Maximum number of changed keys included in output sample.
+        #[arg(long, default_value_t = 100)]
+        sample_limit: usize,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Simulate moving one source before another in load order.
+    SimulateMoveBefore {
+        /// Source path to move.
+        source: PathBuf,
+        /// Destination source before which `source` is inserted.
+        before: PathBuf,
+        /// Optional impact bucket globs (repeat this flag).
+        #[arg(long = "bucket")]
+        buckets: Vec<String>,
+        /// Maximum number of changed keys included in output sample.
+        #[arg(long, default_value_t = 100)]
+        sample_limit: usize,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Simulate moving one source after another in load order.
+    SimulateMoveAfter {
+        /// Source path to move.
+        source: PathBuf,
+        /// Destination source after which `source` is inserted.
+        after: PathBuf,
+        /// Optional impact bucket globs (repeat this flag).
+        #[arg(long = "bucket")]
+        buckets: Vec<String>,
+        /// Maximum number of changed keys included in output sample.
+        #[arg(long, default_value_t = 100)]
+        sample_limit: usize,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Simulate a full explicit source order from a file.
+    SimulateFullOrder {
+        /// Text file with one absolute source path per line.
+        ///
+        /// Empty lines and lines beginning with '#' are ignored.
+        #[arg(long)]
+        order_file: PathBuf,
+        /// Optional impact bucket globs (repeat this flag).
+        #[arg(long = "bucket")]
+        buckets: Vec<String>,
+        /// Maximum number of changed keys included in output sample.
+        #[arg(long, default_value_t = 100)]
+        sample_limit: usize,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Compare current VFS state to a lock manifest.
+    Drift {
+        /// Path to lock manifest (yaml/json/toml; inferred from extension).
+        lock_file: PathBuf,
+        /// If set, drift causes exit code 4.
+        #[arg(long, default_value_t = true)]
+        fail_on_drift: bool,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Preflight one candidate directory before adding it to the load order.
+    PlanCandidate {
+        /// Candidate data directory to evaluate.
+        candidate_dir: PathBuf,
+        /// Disable semantic (content hash) comparison for conflicts.
+        #[arg(long)]
+        no_semantic: bool,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -387,6 +470,64 @@ fn parse_policy(path: &PathBuf) -> io::Result<Policy> {
     }
 
     Ok(Policy { rules })
+}
+
+fn parse_order_file(path: &Path) -> io::Result<Vec<PathBuf>> {
+    let content = fs::read_to_string(path)?;
+    Ok(content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(PathBuf::from)
+        .collect())
+}
+
+fn parse_lock_file(path: &Path) -> io::Result<VfsLock> {
+    let content = fs::read_to_string(path)?;
+    match path.extension().and_then(std::ffi::OsStr::to_str) {
+        Some("json") => serde_json::from_str(&content).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid JSON lock file '{}': {e}", path.display()),
+            )
+        }),
+        Some("toml") => toml::from_str(&content).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid TOML lock file '{}': {e}", path.display()),
+            )
+        }),
+        _ => serde_yaml::from_str(&content).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid YAML lock file '{}': {e}", path.display()),
+            )
+        }),
+    }
+}
+
+fn run_simulation_command(
+    resolved_config_dir: PathBuf,
+    op: ReorderOp,
+    buckets: Vec<String>,
+    sample_limit: usize,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> io::Result<()> {
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let opts = SimOpts {
+        sample_limit,
+        impact_buckets: buckets,
+    };
+
+    match layer.simulate_with_opts(&vfs, op, &opts) {
+        Ok(delta) => write_serialized(output, format, &delta),
+        Err(err) if err.kind() == io::ErrorKind::InvalidInput => {
+            eprintln!("{}{}", print::err_prefix(), err);
+            std::process::exit(2);
+        }
+        Err(err) => Err(err),
+    }
 }
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
@@ -777,10 +918,94 @@ fn main() -> Result<()> {
                 std::process::exit(3);
             }
         }
-        Commands::SimulateSwap { source_a, source_b, format, output } => {
+        Commands::SimulateSwap {
+            source_a,
+            source_b,
+            buckets,
+            sample_limit,
+            format,
+            output,
+        } => {
+            run_simulation_command(
+                resolved_config_dir,
+                ReorderOp::Swap(source_a, source_b),
+                buckets,
+                sample_limit,
+                format,
+                output,
+            )?;
+        }
+        Commands::SimulateMoveBefore {
+            source,
+            before,
+            buckets,
+            sample_limit,
+            format,
+            output,
+        } => {
+            run_simulation_command(
+                resolved_config_dir,
+                ReorderOp::MoveBefore { source, before },
+                buckets,
+                sample_limit,
+                format,
+                output,
+            )?;
+        }
+        Commands::SimulateMoveAfter {
+            source,
+            after,
+            buckets,
+            sample_limit,
+            format,
+            output,
+        } => {
+            run_simulation_command(
+                resolved_config_dir,
+                ReorderOp::MoveAfter { source, after },
+                buckets,
+                sample_limit,
+                format,
+                output,
+            )?;
+        }
+        Commands::SimulateFullOrder {
+            order_file,
+            buckets,
+            sample_limit,
+            format,
+            output,
+        } => {
+            let order = parse_order_file(&order_file)?;
+            run_simulation_command(
+                resolved_config_dir,
+                ReorderOp::FullOrder(order),
+                buckets,
+                sample_limit,
+                format,
+                output,
+            )?;
+        }
+        Commands::Drift { lock_file, fail_on_drift, format, output } => {
+            let lock = parse_lock_file(&lock_file)?;
             let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let delta = layer.simulate(&vfs, ReorderOp::Swap(source_a, source_b))?;
-            write_serialized(output, format, &delta)?;
+            let report = layer.diff_against_lock(&vfs, &lock)?;
+            let has_drift = !report.entries.is_empty();
+            write_serialized(output, format, &report)?;
+            if has_drift && fail_on_drift {
+                std::process::exit(4);
+            }
+        }
+        Commands::PlanCandidate { candidate_dir, no_semantic, format, output } => {
+            let (vfs, layer) = build_layer_index(resolved_config_dir);
+            let plan = layer.plan_candidate_directory(
+                &vfs,
+                &candidate_dir,
+                CandidatePlanOpts {
+                    include_semantic: !no_semantic,
+                },
+            )?;
+            write_serialized(output, format, &plan)?;
         }
     }
 
