@@ -20,9 +20,10 @@ pub mod vfs_file;
 
 pub(crate) use directory_node::DirectoryNode;
 pub use analysis::{
-    LayerIndex, ProviderRecord, ProvenanceChain, ReorderOp, SemanticConflict, SemanticConflictReport,
-    SemanticProvider, SemanticRelation, SimulationDelta, SourceDelta, SourceKind, SourceMeta,
-    VfsLock, VfsLockEntry,
+    ArchiveHashMode, BucketDelta, DriftEntry, DriftKind, DriftReport, LayerIndex, ProviderRecord,
+    ProvenanceChain, ReorderOp, SemanticConflict, SemanticConflictReport, SemanticOpts,
+    SemanticProvider, SemanticRelation, SimOpts, SimulationDelta, SourceDelta, SourceKind,
+    SourceMeta, VfsLock, VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub use policy::{Policy, PolicyResult, Rule, Severity, Violation};
