@@ -84,19 +84,19 @@ fn bench_normalize(c: &mut Criterion) {
     let mut g = c.benchmark_group("normalize_path");
 
     g.bench_function("already_normalized", |b| {
-        b.iter(|| normalize_path(black_box("textures/landscape/foo.dds")))
+        b.iter(|| normalize_path(black_box("textures/landscape/foo.dds")));
     });
 
     g.bench_function("backslash_only", |b| {
-        b.iter(|| normalize_path(black_box("textures\\landscape\\foo.dds")))
+        b.iter(|| normalize_path(black_box("textures\\landscape\\foo.dds")));
     });
 
     g.bench_function("uppercase_only", |b| {
-        b.iter(|| normalize_path(black_box("Meshes/Actors/XBase_Anim.NIF")))
+        b.iter(|| normalize_path(black_box("Meshes/Actors/XBase_Anim.NIF")));
     });
 
     g.bench_function("combined_case_and_backslash", |b| {
-        b.iter(|| normalize_path(black_box("Meshes\\Actors\\XBase_Anim.NIF")))
+        b.iter(|| normalize_path(black_box("Meshes\\Actors\\XBase_Anim.NIF")));
     });
 
     g.bench_function("long_path_combined", |b| {
@@ -104,7 +104,7 @@ fn bench_normalize(c: &mut Criterion) {
             normalize_path(black_box(
                 "Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS",
             ))
-        })
+        });
     });
 
     g.finish();
@@ -123,7 +123,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
     // allocation overhead inflating the measurement.
     g.bench_function("already_normalized", |b| {
         let mut p = PathBuf::from("textures/landscape/foo.dds");
-        b.iter(|| normalize_path_in_place(black_box(&mut p)))
+        b.iter(|| normalize_path_in_place(black_box(&mut p)));
     });
 
     // Slow paths: the PathBuf is modified in place, so each iteration must
@@ -137,7 +137,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
                 p
             },
             BatchSize::SmallInput,
-        )
+        );
     });
 
     g.bench_function("long_path_combined", |b| {
@@ -148,7 +148,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
                 p
             },
             BatchSize::SmallInput,
-        )
+        );
     });
 
     g.finish();
@@ -184,7 +184,7 @@ fn bench_normalize_comparison(c: &mut Criterion) {
                 || PathBuf::from(input),
                 |p| normalize_path(black_box(p.as_path())).into_owned(),
                 BatchSize::SmallInput,
-            )
+            );
         });
 
         // in-place version — modifies the PathBuf, returns it to prevent DCE
@@ -196,7 +196,7 @@ fn bench_normalize_comparison(c: &mut Criterion) {
                     p
                 },
                 BatchSize::SmallInput,
-            )
+            );
         });
     }
 
@@ -215,7 +215,7 @@ fn bench_construction(c: &mut Criterion) {
         let fixture = make_fixture(&format!("vfsbench_construct_{n}"), n);
 
         g.bench_with_input(BenchmarkId::from_parameter(n), &fixture, |b, dir| {
-            b.iter(|| VFS::from_directories(vec![black_box(dir.path())], None))
+            b.iter(|| VFS::from_directories(vec![black_box(dir.path())], None));
         });
     }
 
@@ -234,27 +234,27 @@ fn bench_lookup(c: &mut Criterion) {
 
     // Key exists, already normalized — exercises the fast path
     g.bench_function("hit_normalized", |b| {
-        b.iter(|| vfs.get_file(black_box("textures/file_00000.dat")))
+        b.iter(|| vfs.get_file(black_box("textures/file_00000.dat")));
     });
 
     // Key exists, needs case folding — exercises normalize_path before lookup
     g.bench_function("hit_uppercase", |b| {
-        b.iter(|| vfs.get_file(black_box("Textures/File_00000.dat")))
+        b.iter(|| vfs.get_file(black_box("Textures/File_00000.dat")));
     });
 
     // Key exists, needs backslash conversion
     g.bench_function("hit_backslash", |b| {
-        b.iter(|| vfs.get_file(black_box("textures\\file_00000.dat")))
+        b.iter(|| vfs.get_file(black_box("textures\\file_00000.dat")));
     });
 
     // Key exists, needs both — worst-case normalization before hit
     g.bench_function("hit_combined", |b| {
-        b.iter(|| vfs.get_file(black_box("Textures\\File_00000.dat")))
+        b.iter(|| vfs.get_file(black_box("Textures\\File_00000.dat")));
     });
 
     // Key does not exist — exercises full normalization + HashMap miss
     g.bench_function("miss", |b| {
-        b.iter(|| vfs.get_file(black_box("textures/no_such_file.dds")))
+        b.iter(|| vfs.get_file(black_box("textures/no_such_file.dds")));
     });
 
     g.finish();
@@ -272,27 +272,27 @@ fn bench_search(c: &mut Criterion) {
 
     // paths_matching: broad — hits ~1/6 of all entries
     g.bench_function("paths_matching_broad", |b| {
-        b.iter(|| vfs.paths_matching(black_box("textures")).count())
+        b.iter(|| vfs.paths_matching(black_box("textures")).count());
     });
 
     // paths_matching: narrow — single unique entry
     g.bench_function("paths_matching_narrow", |b| {
-        b.iter(|| vfs.paths_matching(black_box("file_00042")).count())
+        b.iter(|| vfs.paths_matching(black_box("file_00042")).count());
     });
 
     // paths_matching: miss — scans everything, returns nothing
     g.bench_function("paths_matching_miss", |b| {
-        b.iter(|| vfs.paths_matching(black_box("sprites")).count())
+        b.iter(|| vfs.paths_matching(black_box("sprites")).count());
     });
 
     // paths_with: broad prefix
     g.bench_function("paths_with_broad", |b| {
-        b.iter(|| vfs.paths_with(black_box("textures")).count())
+        b.iter(|| vfs.paths_with(black_box("textures")).count());
     });
 
     // paths_with: miss
     g.bench_function("paths_with_miss", |b| {
-        b.iter(|| vfs.paths_with(black_box("sprites")).count())
+        b.iter(|| vfs.paths_with(black_box("sprites")).count());
     });
 
     g.finish();
@@ -310,11 +310,11 @@ fn bench_tree(c: &mut Criterion) {
     g.sample_size(20);
 
     g.bench_function("tree_full_relative", |b| {
-        b.iter(|| vfs.tree(black_box(true)))
+        b.iter(|| vfs.tree(black_box(true)));
     });
 
     g.bench_function("tree_full_absolute", |b| {
-        b.iter(|| vfs.tree(black_box(false)))
+        b.iter(|| vfs.tree(black_box(false)));
     });
 
     // tree_filtered: filter by extension — exercises the key+file predicate
@@ -323,17 +323,17 @@ fn bench_tree(c: &mut Criterion) {
             vfs.tree_filtered(true, |_key, file| {
                 file.path().extension().is_some_and(|e| e == "dat")
             })
-        })
+        });
     });
 
     // tree_filtered: degenerate case — nothing matches
     g.bench_function("tree_filtered_none_match", |b| {
-        b.iter(|| vfs.tree_filtered(true, |_, _| black_box(false)))
+        b.iter(|| vfs.tree_filtered(true, |_, _| black_box(false)));
     });
 
     // tree_filtered: degenerate case — everything matches (equivalent to tree())
     g.bench_function("tree_filtered_all_match", |b| {
-        b.iter(|| vfs.tree_filtered(true, |_, _| black_box(true)))
+        b.iter(|| vfs.tree_filtered(true, |_, _| black_box(true)));
     });
 
     g.finish();
@@ -371,15 +371,15 @@ fn bench_diff(c: &mut Criterion) {
     g.sample_size(20);
 
     g.bench_function("all_conflict_1000", |b| {
-        b.iter(|| vfs.diff_directory(black_box(all_conflict.path())))
+        b.iter(|| vfs.diff_directory(black_box(all_conflict.path())));
     });
 
     g.bench_function("all_addition_500", |b| {
-        b.iter(|| vfs.diff_directory(black_box(all_new.path())))
+        b.iter(|| vfs.diff_directory(black_box(all_new.path())));
     });
 
     g.bench_function("mixed_500", |b| {
-        b.iter(|| vfs.diff_directory(black_box(mixed.path())))
+        b.iter(|| vfs.diff_directory(black_box(mixed.path())));
     });
 
     g.finish();
@@ -428,7 +428,7 @@ fn bench_conflict_index(c: &mut Criterion) {
     g.bench_function("two_dirs_1000_plus_200", |b| {
         b.iter(|| {
             ConflictIndex::from_directories(black_box(vec![base.path(), mod_a.path()]))
-        })
+        });
     });
 
     // Three-directory case: full realistic load order
@@ -439,7 +439,7 @@ fn bench_conflict_index(c: &mut Criterion) {
                 mod_a.path(),
                 mod_b.path(),
             ]))
-        })
+        });
     });
 
     g.finish();
@@ -461,15 +461,15 @@ fn bench_serialize(c: &mut Criterion) {
     g.sample_size(20);
 
     g.bench_function("json", |b| {
-        b.iter(|| VFS::serialize_from_tree(black_box(&tree), SerializeType::Json))
+        b.iter(|| VFS::serialize_from_tree(black_box(&tree), SerializeType::Json));
     });
 
     g.bench_function("yaml", |b| {
-        b.iter(|| VFS::serialize_from_tree(black_box(&tree), SerializeType::Yaml))
+        b.iter(|| VFS::serialize_from_tree(black_box(&tree), SerializeType::Yaml));
     });
 
     g.bench_function("toml", |b| {
-        b.iter(|| VFS::serialize_from_tree(black_box(&tree), SerializeType::Toml))
+        b.iter(|| VFS::serialize_from_tree(black_box(&tree), SerializeType::Toml));
     });
 
     g.finish();
@@ -573,7 +573,7 @@ fn bench_dump(c: &mut Criterion) {
                 || TempDir::new(&format!("vfsbench_dump_hl_dest_{n}")),
                 |dest| vfs.dump_to_directory(black_box(dest.path()), true).unwrap(),
                 BatchSize::PerIteration,
-            )
+            );
         });
 
         g.bench_with_input(BenchmarkId::new("copy", n), &n, |b, _| {
@@ -581,7 +581,7 @@ fn bench_dump(c: &mut Criterion) {
                 || TempDir::new(&format!("vfsbench_dump_cp_dest_{n}")),
                 |dest| vfs.dump_to_directory(black_box(dest.path()), false).unwrap(),
                 BatchSize::PerIteration,
-            )
+            );
         });
     }
 
@@ -599,7 +599,7 @@ fn bench_run(c: &mut Criterion) {
     for &n in &[100usize, 500, 2000] {
         let dir = make_fixture(&format!("vfsbench_run_snap_{n}"), n);
         g.bench_with_input(BenchmarkId::new("snapshot", n), &n, |b, _| {
-            b.iter(|| snapshot_directory(black_box(dir.path())).unwrap())
+            b.iter(|| snapshot_directory(black_box(dir.path())).unwrap());
         });
     }
 
@@ -607,12 +607,12 @@ fn bench_run(c: &mut Criterion) {
     let baseline = snapshot_directory(dir.path()).unwrap();
 
     g.bench_function("changed_files_no_changes", |b| {
-        b.iter(|| changed_files(black_box(dir.path()), black_box(&baseline)).unwrap())
+        b.iter(|| changed_files(black_box(dir.path()), black_box(&baseline)).unwrap());
     });
 
     g.bench_function("changed_files_all_changes", |b| {
         let empty = std::collections::HashMap::new();
-        b.iter(|| changed_files(black_box(dir.path()), black_box(&empty)).unwrap())
+        b.iter(|| changed_files(black_box(dir.path()), black_box(&empty)).unwrap());
     });
 
     let partial: std::collections::HashMap<_, _> = baseline
@@ -622,7 +622,7 @@ fn bench_run(c: &mut Criterion) {
         .map(|(_, (k, v))| (k.clone(), *v))
         .collect();
     g.bench_function("changed_files_half_changes", |b| {
-        b.iter(|| changed_files(black_box(dir.path()), black_box(&partial)).unwrap())
+        b.iter(|| changed_files(black_box(dir.path()), black_box(&partial)).unwrap());
     });
 
     g.finish();

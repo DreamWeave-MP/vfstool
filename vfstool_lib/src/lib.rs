@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #![deny(missing_docs)]
-//! Virtual file system library for OpenMW modding tools.
+//! Virtual file system library for `OpenMW` modding tools.
 /// Conflict analysis: per-source override and overridden-by sets.
 pub mod conflict;
 /// Higher-level analysis APIs: provenance, semantic conflicts, lock manifests, and simulations.
@@ -48,6 +48,7 @@ use std::{
 pub type DisplayTree = BTreeMap<PathBuf, DirectoryNode>;
 
 /// Output format for [`serialize_value`] and [`VFS::serialize_from_tree`].
+#[derive(Debug, Clone, Copy)]
 pub enum SerializeType {
     /// Serialize as JSON.
     Json,
@@ -59,6 +60,10 @@ pub enum SerializeType {
 
 /// Serialize any `serde::Serialize` value to JSON, YAML, or TOML.
 #[cfg(feature = "serialize")]
+///
+/// # Errors
+///
+/// Returns an error if serialization to the requested format fails.
 pub fn serialize_value<T: serde::Serialize>(
     value: &T,
     write_type: SerializeType,
@@ -109,7 +114,7 @@ pub fn normalize_path_in_place(path: &mut PathBuf) {
         return;
     }
     let mut bytes = mem::take(path).into_os_string().into_encoded_bytes();
-    for byte in bytes.iter_mut() {
+    for byte in &mut bytes {
         match *byte {
             b'\\' => *byte = b'/',
             b'A'..=b'Z' => *byte += 32,
@@ -194,11 +199,13 @@ pub mod archives {
 
     impl StoredArchive {
         /// Returns the typed archive handle.
+        #[must_use] 
         pub fn handle(&self) -> &TypedArchive {
             &self.archive
         }
 
         /// Returns the absolute path to the archive file on disk.
+        #[must_use] 
         pub fn path(&self) -> &Path {
             &self.path
         }
@@ -208,6 +215,7 @@ pub mod archives {
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
     /// Open every archive named in `archive_list` that can be resolved through `file_map`.
+    #[must_use] 
     pub fn from_set(file_map: &AHashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
         archive_list
             .iter()
@@ -215,12 +223,9 @@ pub mod archives {
             .filter_map(|archive| {
                 let archive_path = PathBuf::from(archive.to_ascii_lowercase());
 
-                let valid_archive = match file_map.get(&archive_path) {
-                    Some(f) => f,
-                    None => {
-                        eprintln!("vfstool: warning: archive '{archive}' not found in any data directory, skipping");
-                        return None;
-                    }
+                let Some(valid_archive) = file_map.get(&archive_path) else {
+                    eprintln!("vfstool: warning: archive '{archive}' not found in any data directory, skipping");
+                    return None;
                 };
 
                 open_archive(valid_archive.path())
@@ -267,12 +272,9 @@ pub mod archives {
                     return None;
                 }
             };
-            let format = match ba2::guess_format(&mut file_handle) {
-                Some(f) => f,
-                None => {
-                    eprintln!("vfstool: warning: could not determine format of archive '{}', skipping", path.display());
-                    return None;
-                }
+            let Some(format) = ba2::guess_format(&mut file_handle) else {
+                eprintln!("vfstool: warning: could not determine format of archive '{}', skipping", path.display());
+                return None;
             };
             return match format {
                 ba2::FileFormat::TES3 => match TES3Archive::read(&file_handle) {
@@ -322,6 +324,7 @@ pub mod archives {
     ///
     /// Used by [`VFS::from_directories_with_conflict_index`] to enumerate archive
     /// contents without re-opening the archive from disk.
+    #[must_use] 
     pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
         match &stored.archive {
             #[cfg(feature = "bsa")]
@@ -373,7 +376,8 @@ pub mod archives {
     }
 
     /// Build a normalized-path → [`VfsFile`] map from an [`ArchiveList`].
-    pub fn file_map(archives: ArchiveList) -> AHashMap<PathBuf, VfsFile> {
+    #[must_use] 
+    pub fn file_map(archives: &ArchiveList) -> AHashMap<PathBuf, VfsFile> {
         archives
             .iter()
             .flat_map(|stored_archive| {

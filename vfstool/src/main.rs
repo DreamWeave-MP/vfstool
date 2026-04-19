@@ -104,7 +104,7 @@ enum Commands {
     },
     /// Extract a given file from the VFS into a given directory
     Extract {
-        /// Full relative path to a VFS file, eg meshes/xbase_anim.nif
+        /// Full relative path to a VFS file, eg `meshes/xbase_anim.nif`
         source_file: PathBuf,
 
         /// Directory to extract the file to
@@ -115,9 +115,9 @@ enum Commands {
         /// Full (relative) VFS Path to query.
         /// Returns the absolute path, of the file referenced by this VFS path. EG:
         ///
-        /// vfstool find-file meshes/xbase_anim.nif
+        /// vfstool find-file `meshes/xbase_anim.nif`
         ///
-        /// C:\Games\Morrowind\Data Files\Meshes\XBase_Anim.nif
+        /// C:\Games\Morrowind\Data `Files\Meshes\XBase_Anim.nif`
         path: PathBuf,
 
         /// If set, only matches files which are NOT inside an archive (BSA/BA2).
@@ -179,7 +179,7 @@ enum Commands {
     },
     /// Given a VFS path, show which source wins and which others also have it
     Which {
-        /// Relative VFS path to query, e.g. textures/tx_bc_mudcrab.dds
+        /// Relative VFS path to query, e.g. `textures/tx_bc_mudcrab.dds`
         path: PathBuf,
     },
     /// Per-source statistics: wins, overrides, overridden file counts
@@ -376,7 +376,7 @@ enum PolicyRuleDoc {
 }
 
 /// Supported output formats
-#[derive(Debug, ValueEnum, Clone)]
+#[derive(Debug, ValueEnum, Clone, Copy)]
 enum OutputFormat {
     Json,
     Yaml,
@@ -533,28 +533,25 @@ fn run_simulation_command(
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
     let dir_metadata = std::fs::metadata(dir);
 
-    match dir_metadata.is_ok() && dir_metadata.unwrap().is_dir() {
-        false => {
-            eprintln!(
-                "[ ERROR ]: The requested openmw.cfg directory '{}' does not exist or is not a directory.",
-                dir.display()
-            );
-        }
-        true => {
-            match fs::read_dir(dir)?
-                .filter_map(|entry| entry.ok())
-                .find(|entry| entry.file_name().eq_ignore_ascii_case("openmw.cfg"))
-                .map(|entry| entry.path())
-            {
-                Some(cfg) => return Ok(cfg),
-                None => {
-                    eprintln!(
-                        "[ ERROR ]: No openmw.cfg found in '{}'.",
-                        dir.display()
-                    );
-                }
+    if dir_metadata.is_ok() && dir_metadata.as_ref().is_ok_and(std::fs::Metadata::is_dir) {
+        match fs::read_dir(dir)?
+            .filter_map(std::result::Result::ok)
+            .find(|entry| entry.file_name().eq_ignore_ascii_case("openmw.cfg"))
+            .map(|entry| entry.path())
+        {
+            Some(cfg) => return Ok(cfg),
+            None => {
+                eprintln!(
+                    "[ ERROR ]: No openmw.cfg found in '{}'.",
+                    dir.display()
+                );
             }
         }
+    } else {
+        eprintln!(
+            "[ ERROR ]: The requested openmw.cfg directory '{}' does not exist or is not a directory.",
+            dir.display()
+        );
     }
 
     Err(std::io::Error::new(
@@ -609,373 +606,415 @@ fn write_serialized_vfs(
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let args = Cli::parse();
-    let config_dir = args.config.unwrap_or(openmw_config::default_config_path());
-
-    let resolved_config_dir = validate_config_dir(&config_dir)?;
-
-    let vfs: VFS = construct_vfs(resolved_config_dir.clone());
-
-    match args.command {
-        Commands::Collapse {
-            collapse_into,
+fn handle_collapse(
+    vfs: &VFS,
+    collapse_into: &Path,
+    allow_copying: bool,
+    extract_archives: bool,
+    symbolic: bool,
+) -> Result<()> {
+    vfs.collapse_into(
+        collapse_into,
+        &CollapseOptions {
             allow_copying,
             extract_archives,
-            symbolic,
-        } => {
-            vfs.collapse_into(
-                &collapse_into,
-                &CollapseOptions { allow_copying, extract_archives, use_symlinks: symbolic },
-            )?;
-        }
-        Commands::Extract {
-            source_file,
-            target_dir,
-        } => {
-            match vfs.extract_file(&source_file, &target_dir)? {
-                None => eprintln!(
-                    "{}Couldn't locate {} in the vfs!",
-                    print::err_prefix(),
-                    print::green(source_file.display()),
-                ),
-                Some(dest) => println!(
-                    "{}Successfully extracted {} to {}",
-                    print::success_prefix(),
-                    print::green(source_file.display()),
-                    print::blue(dest.parent().unwrap_or(&target_dir).display()),
-                ),
-            }
-        }
-        Commands::Find {
-            path,
-            format,
-            output,
-        } => {
-            let path_string = normalize_path(&path).to_string_lossy().to_string();
-            let tree = match vfs.find_by_regex(&path_string, args.use_relative) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("{e}");
-                    std::process::exit(VFSToolExitCode::BadRegex.into());
-                }
-            };
-            write_serialized_vfs(output, format, &tree)?;
-        }
-        Commands::FindFile {
-            path,
-            simple,
-            only_physical,
-        } => {
-            let file = match vfs.get_file(&path) {
-                Some(found_file) => found_file,
-                None => {
-                    if !simple {
-                        eprintln!(
-                            "{}Failed to locate {} in the provided VFS.",
-                            print::err_prefix(),
-                            print::blue(path.display()),
-                        )
-                    }
-                    std::process::exit(VFSToolExitCode::FindFailed.into());
-                }
-            };
+            use_symlinks: symbolic,
+        },
+    )
+}
 
-            let path_display = match file.is_archive() {
-                true => {
-                    if only_physical {
-                        if !simple {
-                            eprintln!(
-                                "{}Failed to locate {} in loose files of the provided VFS.",
-                                print::err_prefix(),
-                                print::blue(path.display()),
-                            )
-                        }
-                        std::process::exit(VFSToolExitCode::FileNotInLooseDirectories.into());
-                    }
-                    PathBuf::from(file.parent_archive_path().unwrap())
-                        .join(&path)
-                        .to_string_lossy()
-                        .to_string()
-                }
-                false => file.path().to_string_lossy().to_string(),
-            };
+fn handle_extract(vfs: &VFS, source_file: &Path, target_dir: &Path) -> Result<()> {
+    match vfs.extract_file(source_file, target_dir)? {
+        None => eprintln!(
+            "{}Couldn't locate {} in the vfs!",
+            print::err_prefix(),
+            print::green(source_file.display()),
+        ),
+        Some(dest) => println!(
+            "{}Successfully extracted {} to {}",
+            print::success_prefix(),
+            print::green(source_file.display()),
+            print::blue(dest.parent().unwrap_or(target_dir).display()),
+        ),
+    }
+    Ok(())
+}
 
-            if simple {
-                print!("{}", path_display);
-            } else {
-                println!(
-                    "{}Successfully found VFS File {} at path {}",
-                    print::success_prefix(),
-                    print::blue(path.display()),
-                    print::green(&path_display),
-                )
-            }
+fn handle_find(
+    vfs: &VFS,
+    path: &PathBuf,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+    use_relative: bool,
+) -> Result<()> {
+    let path_string = normalize_path(&path).to_string_lossy().to_string();
+    let tree = match vfs.find_by_regex(&path_string, use_relative) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(VFSToolExitCode::BadRegex.into());
         }
-        Commands::Remaining {
-            filter_path,
-            replacements_only,
-            format,
-            output,
-        } => {
-            let config = match openmw_config::OpenMWConfiguration::new(Some(resolved_config_dir)) {
-                Err(config_err) => {
-                    eprintln!("Failed to load openmw.cfg for comparison: {config_err}");
-                    std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
-                }
-                Ok(config) => config,
-            };
+    };
+    write_serialized_vfs(output, format, &tree)
+}
 
-            let all_dirs: Vec<PathBuf> = config
-                .data_directories_iter()
-                .map(|dir| dir.parsed().to_owned())
-                .collect();
-
-            let tree = vfs.remaining(&filter_path, replacements_only, &all_dirs, args.use_relative);
-            write_serialized_vfs(output, format, &tree)?;
-        }
-        Commands::Conflicts { format, output } => {
-            let (_, ci) = build_conflict_index(resolved_config_dir);
-            let report = ci.conflicts_report(args.use_relative);
-            write_serialized(output, format, &report)?;
-        }
-        Commands::Shadowed { format, output } => {
-            let (_, ci) = build_conflict_index(resolved_config_dir);
-            let report = ci.shadowed_report(args.use_relative);
-            eprintln!("{} sources have fully shadowed files", report.sources.len());
-            write_serialized(output, format, &report)?;
-        }
-        Commands::Which { path } => {
-            let (vfs, ci) = build_conflict_index(resolved_config_dir);
-            let normalized = normalize_path(&path).into_owned();
-
-            let result = match ci.which(&vfs, &normalized) {
-                Some(r) => r,
-                None => {
-                    eprintln!(
-                        "{}VFS path '{}' not found.",
-                        print::err_prefix(),
-                        path.display()
-                    );
-                    std::process::exit(VFSToolExitCode::FindFailed.into());
-                }
-            };
-
-            println!("VFS path: {}\n", normalized.display());
-            if result.is_unique {
-                println!("  {}  {} (no conflicts — only source)", print::green("WINNER"), result.winner);
-            } else {
-                println!("  {}  {}", print::green("WINNER"), result.winner);
-                for src in &result.also_in {
-                    println!("  also in {} (overridden)", src.display());
-                }
-            }
-        }
-        Commands::Stats => {
-            let (vfs, ci) = build_conflict_index(resolved_config_dir);
-            let report = ci.stats(&vfs);
-
-            let path_width = report
-                .rows
-                .iter()
-                .map(|r| r.source.display().to_string().len())
-                .max()
-                .unwrap_or(6)
-                .max(6);
-
-            println!(
-                "{:<path_width$}  {:>6}  {:>9}  {:>10}",
-                "Source", "Wins", "Overrides", "Overridden"
+fn handle_find_file(vfs: &VFS, path: &PathBuf, simple: bool, only_physical: bool) {
+    let Some(file) = vfs.get_file(path) else {
+        if !simple {
+            eprintln!(
+                "{}Failed to locate {} in the provided VFS.",
+                print::err_prefix(),
+                print::blue(path.display()),
             );
-            for row in &report.rows {
-                println!(
-                    "{:<path_width$}  {:>6}  {:>9}  {:>10}",
-                    row.source.display(),
-                    row.wins,
-                    row.overrides,
-                    row.overridden,
+        }
+        std::process::exit(VFSToolExitCode::FindFailed.into());
+    };
+
+    let path_display = if file.is_archive() {
+        if only_physical {
+            if !simple {
+                eprintln!(
+                    "{}Failed to locate {} in loose files of the provided VFS.",
+                    print::err_prefix(),
+                    print::blue(path.display()),
                 );
             }
+            std::process::exit(VFSToolExitCode::FileNotInLooseDirectories.into());
         }
-        Commands::Diff { source_a, source_b, format, output } => {
-            let (_, ci) = build_conflict_index(resolved_config_dir);
-            let report = ci.diff_report(&source_a, &source_b);
-            write_serialized(output, format, &report)?;
+        PathBuf::from(file.parent_archive_path().unwrap_or_default())
+            .join(path)
+            .to_string_lossy()
+            .to_string()
+    } else {
+        file.path().to_string_lossy().to_string()
+    };
+
+    if simple {
+        print!("{path_display}");
+    } else {
+        println!(
+            "{}Successfully found VFS File {} at path {}",
+            print::success_prefix(),
+            print::blue(path.display()),
+            print::green(&path_display),
+        );
+    }
+}
+
+fn handle_remaining(
+    vfs: &VFS,
+    resolved_config_dir: PathBuf,
+    filter_path: &Path,
+    replacements_only: bool,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+    use_relative: bool,
+) -> Result<()> {
+    let config = match openmw_config::OpenMWConfiguration::new(Some(resolved_config_dir)) {
+        Err(config_err) => {
+            eprintln!("Failed to load openmw.cfg for comparison: {config_err}");
+            std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
         }
-        Commands::Run { merged_dir, command, keep_merged, output, copy, working_dir } => {
-            let cfg = load_openmw_config(resolved_config_dir);
+        Ok(config) => config,
+    };
 
-            let data_local: PathBuf = output.unwrap_or_else(|| {
-                match cfg.data_local() {
-                    Some(dir) => dir.parsed().to_path_buf(),
-                    None => {
-                        eprintln!(
-                            "{}No data-local set in openmw.cfg; use --output to specify a destination.",
-                            print::err_prefix()
-                        );
-                        std::process::exit(1);
-                    }
-                }
-            });
+    let all_dirs: Vec<PathBuf> = config
+        .data_directories_iter()
+        .map(|dir| dir.parsed().to_owned())
+        .collect();
 
-            let merged = merged_dir;
+    let tree = vfs.remaining(filter_path, replacements_only, &all_dirs, use_relative);
+    write_serialized_vfs(output, format, &tree)
+}
 
-            let (inner_result, subprocess_status) = (|| -> (Result<()>, Option<std::process::ExitStatus>) {
-                eprintln!("Dumping VFS to {}...", merged.display());
-                let (count, baseline) = match run_setup(&vfs, &merged, !copy) {
-                    Ok(r) => r,
-                    Err(e) => return (Err(e), None),
-                };
-                eprintln!("Dumped {count} files.");
+fn handle_which(resolved_config_dir: PathBuf, path: &PathBuf) {
+    let (vfs, ci) = build_conflict_index(resolved_config_dir);
+    let normalized = normalize_path(&path).into_owned();
+    let Some(result) = ci.which(&vfs, &normalized) else {
+        eprintln!("{}VFS path '{}' not found.", print::err_prefix(), path.display());
+        std::process::exit(VFSToolExitCode::FindFailed.into());
+    };
 
-                let substituted: Vec<String> = command
-                    .iter()
-                    .map(|arg| {
-                        if arg == "{}" {
-                            merged.to_string_lossy().into_owned()
-                        } else {
-                            arg.clone()
-                        }
-                    })
-                    .collect();
+    println!("VFS path: {}\n", normalized.display());
+    if result.is_unique {
+        println!("  {}  {} (no conflicts — only source)", print::green("WINNER"), result.winner);
+    } else {
+        println!("  {}  {}", print::green("WINNER"), result.winner);
+        for src in &result.also_in {
+            println!("  also in {} (overridden)", src.display());
+        }
+    }
+}
 
-                let mut cmd = std::process::Command::new(&substituted[0]);
-                cmd.args(&substituted[1..]);
-                if let Some(ref dir) = working_dir {
-                    cmd.current_dir(dir);
-                }
-                let status = match cmd.status() {
-                    Ok(s) => s,
-                    Err(e) => return (Err(e), None),
-                };
+fn handle_stats(resolved_config_dir: PathBuf) {
+    let (vfs, ci) = build_conflict_index(resolved_config_dir);
+    let report = ci.stats(&vfs);
+    let path_width = report
+        .rows
+        .iter()
+        .map(|r| r.source.display().to_string().len())
+        .max()
+        .unwrap_or(6)
+        .max(6);
 
-                if !status.success() {
-                    eprintln!("vfstool: subprocess exited with {status}, not capturing files.");
-                    return (Ok(()), Some(status));
-                }
+    println!("{:<path_width$}  {:>6}  {:>9}  {:>10}", "Source", "Wins", "Overrides", "Overridden");
+    for row in &report.rows {
+        println!(
+            "{:<path_width$}  {:>6}  {:>9}  {:>10}",
+            row.source.display(), row.wins, row.overrides, row.overridden,
+        );
+    }
+}
 
-                let copied = match run_finalize(&merged, &baseline, &data_local) {
-                    Ok(c) => c,
-                    Err(e) => return (Err(e), Some(status)),
-                };
+struct RunParams<'a> {
+    merged_dir: PathBuf,
+    command: &'a [String],
+    keep_merged: bool,
+    output: Option<PathBuf>,
+    copy: bool,
+    working_dir: &'a Option<PathBuf>,
+}
 
-                if copied.is_empty() {
-                    eprintln!("No files changed.");
-                } else {
-                    eprintln!(
-                        "Capturing {} changed file(s) to {}...",
-                        copied.len(),
-                        data_local.display()
-                    );
-                    for (rel, dest) in &copied {
-                        println!("{} -> {}", rel.display(), dest.display());
-                    }
-                }
+fn handle_run(
+    vfs: &VFS,
+    resolved_config_dir: PathBuf,
+    params: RunParams<'_>,
+) -> Result<()> {
+    let cfg = load_openmw_config(resolved_config_dir);
+    let data_local: PathBuf = params.output.unwrap_or_else(|| {
+        if let Some(dir) = cfg.data_local() {
+            dir.parsed().clone()
+        } else {
+            eprintln!(
+                "{}No data-local set in openmw.cfg; use --output to specify a destination.",
+                print::err_prefix()
+            );
+            std::process::exit(1);
+        }
+    });
 
-                (Ok(()), Some(status))
-            })();
+    let merged = params.merged_dir;
+    let (inner_result, subprocess_status) = (|| -> (Result<()>, Option<std::process::ExitStatus>) {
+        eprintln!("Dumping VFS to {}...", merged.display());
+        let (count, baseline) = match run_setup(vfs, &merged, !params.copy) {
+            Ok(r) => r,
+            Err(e) => return (Err(e), None),
+        };
+        eprintln!("Dumped {count} files.");
 
-            if !keep_merged {
-                let _ = fs::remove_dir_all(&merged);
+        let substituted: Vec<String> = params.command
+            .iter()
+            .map(|arg| if arg == "{}" { merged.to_string_lossy().into_owned() } else { arg.clone() })
+            .collect();
+
+        let mut cmd = std::process::Command::new(&substituted[0]);
+        cmd.args(&substituted[1..]);
+        if let Some(dir) = params.working_dir {
+            cmd.current_dir(dir);
+        }
+        let status = match cmd.status() {
+            Ok(s) => s,
+            Err(e) => return (Err(e), None),
+        };
+
+        if !status.success() {
+            eprintln!("vfstool: subprocess exited with {status}, not capturing files.");
+            return (Ok(()), Some(status));
+        }
+
+        let copied = match run_finalize(&merged, &baseline, &data_local) {
+            Ok(c) => c,
+            Err(e) => return (Err(e), Some(status)),
+        };
+
+        if copied.is_empty() {
+            eprintln!("No files changed.");
+        } else {
+            eprintln!("Capturing {} changed file(s) to {}...", copied.len(), data_local.display());
+            for (rel, dest) in &copied {
+                println!("{} -> {}", rel.display(), dest.display());
             }
+        }
+        (Ok(()), Some(status))
+    })();
 
-            inner_result?;
-            std::process::exit(subprocess_status.and_then(|s| s.code()).unwrap_or(1));
+    if !params.keep_merged {
+        let _ = fs::remove_dir_all(&merged);
+    }
+    inner_result?;
+    std::process::exit(subprocess_status.and_then(|s| s.code()).unwrap_or(1));
+}
+
+fn handle_provenance(
+    resolved_config_dir: PathBuf,
+    path: &PathBuf,
+    hashes: bool,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let normalized = normalize_path(&path).into_owned();
+    let Some(chain) = layer.provenance(&vfs, &normalized, hashes)? else {
+        eprintln!("{}VFS path '{}' not found.", print::err_prefix(), path.display());
+        std::process::exit(VFSToolExitCode::FindFailed.into());
+    };
+    write_serialized(output, format, &chain)
+}
+
+fn handle_conflicts(resolved_config_dir: PathBuf, use_relative: bool, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    let (_, ci) = build_conflict_index(resolved_config_dir);
+    let report = ci.conflicts_report(use_relative);
+    write_serialized(output, format, &report)
+}
+
+fn handle_shadowed(resolved_config_dir: PathBuf, use_relative: bool, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    let (_, ci) = build_conflict_index(resolved_config_dir);
+    let report = ci.shadowed_report(use_relative);
+    eprintln!("{} sources have fully shadowed files", report.sources.len());
+    write_serialized(output, format, &report)
+}
+
+fn handle_diff(resolved_config_dir: PathBuf, source_a: &Path, source_b: &Path, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    let (_, ci) = build_conflict_index(resolved_config_dir);
+    let report = ci.diff_report(source_a, source_b);
+    write_serialized(output, format, &report)
+}
+
+fn handle_semantic(resolved_config_dir: PathBuf, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let report = layer.semantic_conflicts(&vfs)?;
+    write_serialized(output, format, &report)
+}
+
+fn handle_lock(resolved_config_dir: PathBuf, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let lock = layer.lock_manifest(&vfs)?;
+    write_serialized(output, format, &lock)
+}
+
+fn handle_verify(resolved_config_dir: PathBuf, policy: &PathBuf, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let policy = parse_policy(policy)?;
+    let result = policy.evaluate(&layer, &vfs)?;
+    let has_violations = !result.violations.is_empty();
+    write_serialized(output, format, &result)?;
+    if has_violations {
+        std::process::exit(3);
+    }
+    Ok(())
+}
+
+fn handle_drift(
+    resolved_config_dir: PathBuf,
+    lock_file: &Path,
+    fail_on_drift: bool,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let lock = parse_lock_file(lock_file)?;
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let report = layer.diff_against_lock(&vfs, &lock)?;
+    let has_drift = !report.entries.is_empty();
+    write_serialized(output, format, &report)?;
+    if has_drift && fail_on_drift {
+        std::process::exit(4);
+    }
+    Ok(())
+}
+
+fn handle_plan_candidate(
+    resolved_config_dir: PathBuf,
+    candidate_dir: &Path,
+    no_semantic: bool,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let plan = layer.plan_candidate_directory(
+        &vfs,
+        candidate_dir,
+        CandidatePlanOpts {
+            include_semantic: !no_semantic,
+        },
+    )?;
+    write_serialized(output, format, &plan)
+}
+
+fn run_command(
+    command: Commands,
+    use_relative: bool,
+    resolved_config_dir: PathBuf,
+    vfs: &VFS,
+) -> Result<()> {
+    match command {
+        Commands::Collapse { collapse_into, allow_copying, extract_archives, symbolic } =>
+            handle_collapse(vfs, collapse_into.as_path(), allow_copying, extract_archives, symbolic),
+        Commands::Extract { source_file, target_dir } =>
+            handle_extract(vfs, source_file.as_path(), target_dir.as_path()),
+        Commands::Find { path, format, output } =>
+            handle_find(vfs, &path, format, output, use_relative),
+        Commands::FindFile { path, simple, only_physical } => {
+            handle_find_file(vfs, &path, simple, only_physical);
+            Ok(())
         }
-        Commands::Provenance { path, hashes, format, output } => {
-            let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let normalized = normalize_path(&path).into_owned();
-            let chain = match layer.provenance(&vfs, &normalized, hashes)? {
-                Some(c) => c,
-                None => {
-                    eprintln!(
-                        "{}VFS path '{}' not found.",
-                        print::err_prefix(),
-                        path.display()
-                    );
-                    std::process::exit(VFSToolExitCode::FindFailed.into());
-                }
-            };
-            write_serialized(output, format, &chain)?;
+        Commands::Remaining { filter_path, replacements_only, format, output } =>
+            handle_remaining(vfs, resolved_config_dir, filter_path.as_path(), replacements_only, format, output, use_relative),
+        Commands::Conflicts { format, output } =>
+            handle_conflicts(resolved_config_dir, use_relative, format, output),
+        Commands::Shadowed { format, output } =>
+            handle_shadowed(resolved_config_dir, use_relative, format, output),
+        Commands::Which { path } => {
+            handle_which(resolved_config_dir, &path);
+            Ok(())
         }
-        Commands::SemanticConflicts { format, output } => {
-            let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let report = layer.semantic_conflicts(&vfs)?;
-            write_serialized(output, format, &report)?;
+        Commands::Stats => {
+            handle_stats(resolved_config_dir);
+            Ok(())
         }
-        Commands::Lock { format, output } => {
-            let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let lock = layer.lock_manifest(&vfs)?;
-            write_serialized(output, format, &lock)?;
-        }
-        Commands::Verify { policy, format, output } => {
-            let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let policy = parse_policy(&policy)?;
-            let result = policy.evaluate(&layer, &vfs)?;
-            let has_violations = !result.violations.is_empty();
-            write_serialized(output, format, &result)?;
-            if has_violations {
-                std::process::exit(3);
-            }
-        }
-        Commands::SimulateSwap {
-            source_a,
-            source_b,
-            buckets,
-            sample_limit,
-            format,
-            output,
-        } => {
-            run_simulation_command(
-                resolved_config_dir,
-                ReorderOp::Swap(source_a, source_b),
-                buckets,
-                sample_limit,
-                format,
+        Commands::Diff { source_a, source_b, format, output } =>
+            handle_diff(resolved_config_dir, source_a.as_path(), source_b.as_path(), format, output),
+        Commands::Run { merged_dir, command, keep_merged, output, copy, working_dir } =>
+            handle_run(vfs, resolved_config_dir, RunParams {
+                merged_dir,
+                command: &command,
+                keep_merged,
                 output,
-            )?;
-        }
-        Commands::SimulateMoveBefore {
-            source,
-            before,
+                copy,
+                working_dir: &working_dir,
+            }),
+        Commands::Provenance { path, hashes, format, output } =>
+            handle_provenance(resolved_config_dir, &path, hashes, format, output),
+        Commands::SemanticConflicts { format, output } =>
+            handle_semantic(resolved_config_dir, format, output),
+        Commands::Lock { format, output } =>
+            handle_lock(resolved_config_dir, format, output),
+        Commands::Verify { policy, format, output } =>
+            handle_verify(resolved_config_dir, &policy, format, output),
+        Commands::SimulateSwap { source_a, source_b, buckets, sample_limit, format, output } => run_simulation_command(
+            resolved_config_dir,
+            ReorderOp::Swap(source_a, source_b),
             buckets,
             sample_limit,
             format,
             output,
-        } => {
-            run_simulation_command(
-                resolved_config_dir,
-                ReorderOp::MoveBefore { source, before },
-                buckets,
-                sample_limit,
-                format,
-                output,
-            )?;
-        }
-        Commands::SimulateMoveAfter {
-            source,
-            after,
+        ),
+        Commands::SimulateMoveBefore { source, before, buckets, sample_limit, format, output } => run_simulation_command(
+            resolved_config_dir,
+            ReorderOp::MoveBefore { source, before },
             buckets,
             sample_limit,
             format,
             output,
-        } => {
-            run_simulation_command(
-                resolved_config_dir,
-                ReorderOp::MoveAfter { source, after },
-                buckets,
-                sample_limit,
-                format,
-                output,
-            )?;
-        }
-        Commands::SimulateFullOrder {
-            order_file,
+        ),
+        Commands::SimulateMoveAfter { source, after, buckets, sample_limit, format, output } => run_simulation_command(
+            resolved_config_dir,
+            ReorderOp::MoveAfter { source, after },
             buckets,
             sample_limit,
             format,
             output,
-        } => {
+        ),
+        Commands::SimulateFullOrder { order_file, buckets, sample_limit, format, output } => {
             let order = parse_order_file(&order_file)?;
             run_simulation_command(
                 resolved_config_dir,
@@ -984,30 +1023,19 @@ fn main() -> Result<()> {
                 sample_limit,
                 format,
                 output,
-            )?;
+            )
         }
-        Commands::Drift { lock_file, fail_on_drift, format, output } => {
-            let lock = parse_lock_file(&lock_file)?;
-            let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let report = layer.diff_against_lock(&vfs, &lock)?;
-            let has_drift = !report.entries.is_empty();
-            write_serialized(output, format, &report)?;
-            if has_drift && fail_on_drift {
-                std::process::exit(4);
-            }
-        }
-        Commands::PlanCandidate { candidate_dir, no_semantic, format, output } => {
-            let (vfs, layer) = build_layer_index(resolved_config_dir);
-            let plan = layer.plan_candidate_directory(
-                &vfs,
-                &candidate_dir,
-                CandidatePlanOpts {
-                    include_semantic: !no_semantic,
-                },
-            )?;
-            write_serialized(output, format, &plan)?;
-        }
+        Commands::Drift { lock_file, fail_on_drift, format, output } =>
+            handle_drift(resolved_config_dir, lock_file.as_path(), fail_on_drift, format, output),
+        Commands::PlanCandidate { candidate_dir, no_semantic, format, output } =>
+            handle_plan_candidate(resolved_config_dir, candidate_dir.as_path(), no_semantic, format, output),
     }
+}
 
-    Ok(())
+fn main() -> Result<()> {
+    let args = Cli::parse();
+    let config_dir = args.config.unwrap_or(openmw_config::default_config_path());
+    let resolved_config_dir = validate_config_dir(&config_dir)?;
+    let vfs = construct_vfs(resolved_config_dir.clone());
+    run_command(args.command, args.use_relative, resolved_config_dir, &vfs)
 }

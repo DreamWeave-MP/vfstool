@@ -37,10 +37,11 @@ pub struct Fo4FileReader<'a> {
 /// This allows to seamlessly call read on them as we do for other all other file types
 impl<'a> Fo4FileReader<'a> {
     /// Creates a [`Fo4FileReader`] that streams chunks from `file` in order.
+    #[must_use] 
     pub fn new(file: &'a Fo4File) -> Self {
         let mut chunks = file
             .iter()
-            .map(|chunk| chunk.as_bytes())
+            .map(ba2::fo4::Chunk::as_bytes)
             .collect::<Vec<_>>()
             .into_iter();
         let current_chunk = chunks.next();
@@ -97,6 +98,10 @@ impl TES4FileReader {
     /// Creates a new `TES4FileReader` for a TES4 file.
     ///
     /// If the file is compressed, it will be decompressed before being wrapped in the reader.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if decompression fails.
     pub fn new(file: &Tes4File) -> io::Result<Self> {
         let data = if file.is_compressed() {
             file.decompress(&Tes4CompressionOptions::default())
@@ -131,6 +136,10 @@ pub struct ArchiveReference {
 #[cfg(feature = "bsa")]
 impl ArchiveReference {
     /// Decompose a normalized VFS path into a TES4 directory key and file key pair.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the path has no parent directory or file name.
     pub fn tes4_keys(path: &Path) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
         let dir_key: Tes4ArchiveKey = path
             .parent()
@@ -170,7 +179,7 @@ pub enum FileType {
 /// path to ensure correct file operations. Paths should only be normalized when **retrieved**,
 /// not when constructing the file, as normalization may affect OS file resolution.
 ///
-/// Files in the VFS should be **unique** and stored in a HashMap inside the `VFS` struct.
+/// Files in the VFS should be **unique** and stored in a `HashMap` inside the `VFS` struct.
 /// They are typically wrapped in `Arc<VfsFile>` for safe concurrent access.
 #[derive(Debug)]
 pub struct VfsFile {
@@ -195,7 +204,7 @@ impl VfsFile {
     /// # Notes
     ///
     /// - Paths **must not be normalized** at creation time to avoid potential file lookup issues.
-    /// - VfsFile does not, itself, verify that the provided path exists at creation time;
+    /// - `VfsFile` does not, itself, verify that the provided path exists at creation time;
     ///   this responsibility is left up to its constructor (typically, the VFS struct)
     ///
     /// # Examples
@@ -231,6 +240,7 @@ impl VfsFile {
     }
 
     /// Returns `true` if this file is a loose file on the real filesystem.
+    #[must_use] 
     pub fn is_loose(&self) -> bool {
         match self.file {
             FileType::Loose(_) => true,
@@ -240,6 +250,7 @@ impl VfsFile {
     }
 
     /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, or PK3 archive.
+    #[must_use] 
     pub fn is_archive(&self) -> bool {
         match self.file {
             FileType::Loose(_) => false,
@@ -249,6 +260,7 @@ impl VfsFile {
     }
 
     /// Returns the absolute path to the parent archive as a string, or `None` for loose files.
+    #[must_use] 
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
@@ -266,6 +278,7 @@ impl VfsFile {
     }
 
     /// Returns just the file name of the parent archive (e.g. `"Morrowind.bsa"`), or `None` for loose files.
+    #[must_use] 
     pub fn parent_archive_name(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
@@ -286,6 +299,10 @@ impl VfsFile {
 
     /// Returns an `Arc` clone of the parent archive handle, or an error for loose files.
     #[cfg(any(feature = "bsa", feature = "zip"))]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when called on a loose-file-backed `VfsFile`.
     pub fn parent_archive_handle(&self) -> Result<Arc<StoredArchive>, Error> {
         match &self.file {
             FileType::Loose(_) => Err(Error::new(
@@ -302,6 +319,10 @@ impl VfsFile {
     ///
     /// * `Ok(StdFile)` - If the file exists and can be opened.
     /// * `Err(io::Error)` - If the file does not exist or cannot be opened.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if opening or reading archive/loose file data fails.
     ///
     /// # Examples
     ///
@@ -413,6 +434,7 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some(std::ffi::OsStr::new("Morrowind.esm")));
     /// ```
+    #[must_use] 
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_name(),
@@ -444,6 +466,7 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_stem(), Some(std::ffi::OsStr::new("Morrowind")));
     /// ```
+    #[must_use] 
     pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_stem(),
@@ -469,6 +492,7 @@ impl VfsFile {
     /// let file = VfsFile::from(path);
     /// assert_eq!(file.path(), PathBuf::from(path));
     /// ```
+    #[must_use] 
     pub fn path(&self) -> &Path {
         match &self.file {
             FileType::Loose(path) => path.as_path(),
@@ -525,11 +549,11 @@ Plenty of time, my sweet. Plenty of time.
 
 END OF ACT IV, SCENE III";
 
-    /// The VFSFile itself is *not* responsible for normalization
+    /// The `VFSFile` itself is *not* responsible for normalization
     /// It contains a reference to the real path, and some helpers to interact with it
-    /// Its parent struct, VFSFiles, uses the normalized path as a HashMap key to refer to the
-    /// VFSFile
-    /// Thus, we should ensure that the path contained in the VFSFile is not already normalized
+    /// Its parent struct, `VFSFiles`, uses the normalized path as a `HashMap` key to refer to the
+    /// `VFSFile`
+    /// Thus, we should ensure that the path contained in the `VFSFile` is not already normalized
     /// but instead refers to the literal path on the user's system
     #[test]
     fn path_must_not_be_normalized() {
@@ -594,7 +618,7 @@ END OF ACT IV, SCENE III";
 
         let mut fd = File::create(test_path)?;
 
-        write!(fd, "{}", TEST_DATA)?;
+        write!(fd, "{TEST_DATA}")?;
 
         let vfs_file = VfsFile::from(test_path);
 
@@ -614,7 +638,7 @@ END OF ACT IV, SCENE III";
     fn test_concurrent_reading() {
         let path_str = "test.txt";
         let mut test_file_content = File::create(path_str).unwrap();
-        let _ = write!(test_file_content, "{}", TEST_DATA);
+        let _ = write!(test_file_content, "{TEST_DATA}");
 
         let vfs_file = Arc::new(VfsFile::from(path_str));
 
@@ -706,7 +730,7 @@ END OF ACT IV, SCENE III";
                     {
                         Ok(f) => f,
                         Err(e) => {
-                            eprintln!("Thread {} failed to open file: {}", i, e);
+                            eprintln!("Thread {i} failed to open file: {e}");
                             return;
                         }
                     };

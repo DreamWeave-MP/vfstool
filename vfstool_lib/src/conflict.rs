@@ -31,11 +31,13 @@ pub struct SourceConflicts {
 
 impl SourceConflicts {
     /// True if this source overrides at least one file from an earlier source.
+    #[must_use] 
     pub fn has_overrides(&self) -> bool {
         !self.overrides.is_empty()
     }
 
     /// True if at least one of this source's files is overridden by a later source.
+    #[must_use] 
     pub fn is_overridden(&self) -> bool {
         !self.overridden_by.is_empty()
     }
@@ -48,11 +50,11 @@ impl SourceConflicts {
 ///
 /// # Priority ordering
 ///
-/// Matches OpenMW's `data=` semantics: later sources in the list have higher
+/// Matches `OpenMW`'s `data=` semantics: later sources in the list have higher
 /// priority and win on collision. `sources[N-1]` is the highest-priority source.
 /// When archives are included via [`ConflictIndex::from_directories_with_archives`],
 /// they occupy the lowest-priority positions (before all directories), matching
-/// OpenMW's rule that loose files always beat archive files.
+/// `OpenMW`'s rule that loose files always beat archive files.
 ///
 /// # Example
 ///
@@ -188,8 +190,7 @@ impl ConflictIndex {
         normalize_path_in_place(&mut normalized);
         self.path_to_sources
             .get(&normalized)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+            .map_or(&[], Vec::as_slice)
     }
 
     /// For a given source index and a conflicting path, returns the index of
@@ -197,6 +198,7 @@ impl ConflictIndex {
     /// i.e., the next-lower-priority source that also has this path.
     ///
     /// Returns `None` if `source_index` does not override anything for this path.
+    #[must_use] 
     pub fn displaced_by(&self, source_index: usize, path: &Path) -> Option<usize> {
         let indices = self.sources_containing(path);
         let pos = indices.iter().position(|&i| i == source_index)?;
@@ -211,6 +213,7 @@ impl ConflictIndex {
     /// i.e., the next-higher-priority source that also has this path.
     ///
     /// Returns `None` if nothing later in the load order overrides this path.
+    #[must_use] 
     pub fn overridden_by_dir(&self, source_index: usize, path: &Path) -> Option<usize> {
         let indices = self.sources_containing(path);
         let pos = indices.iter().position(|&i| i == source_index)?;
@@ -226,6 +229,7 @@ impl ConflictIndex {
     ///
     /// When `use_relative` is `true`, paths are relative VFS keys; otherwise
     /// they are joined with the source directory to form absolute paths.
+    #[must_use] 
     pub fn conflicts_report(&self, use_relative: bool) -> ConflictsReport {
         let sources = self
             .sources
@@ -251,6 +255,7 @@ impl ConflictIndex {
     ///
     /// A source is "shadowed" when `is_overridden()` is true — at least one of its
     /// files is superseded by a higher-priority source.
+    #[must_use] 
     pub fn shadowed_report(&self, use_relative: bool) -> ShadowedReport {
         let sources = self
             .sources
@@ -276,6 +281,7 @@ impl ConflictIndex {
     ///
     /// Returns `None` if `path` is not in the VFS at all. When the file exists
     /// in only one source, `also_in` is empty and `is_unique` is `true`.
+    #[must_use] 
     pub fn which(&self, vfs: &VFS, path: &Path) -> Option<WhichResult> {
         let winner = vfs.get_file(path)?;
 
@@ -313,6 +319,7 @@ impl ConflictIndex {
     /// "Wins" is the number of VFS files served from that source (i.e., it has
     /// the highest priority for those files). "Overrides" and "overridden" come
     /// directly from the conflict sets.
+    #[must_use] 
     pub fn stats(&self, vfs: &VFS) -> StatsReport {
         let mut wins: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         for (_, file) in vfs.iter() {
@@ -347,6 +354,7 @@ impl ConflictIndex {
 
     /// Compare two data directories: which files are shared, unique to each,
     /// and which has higher load-order priority.
+    #[must_use] 
     pub fn diff_report(&self, source_a: &Path, source_b: &Path) -> DiffReport {
         let vfs_a = VFS::from_directories([source_a], None);
         let vfs_b = VFS::from_directories([source_b], None);
@@ -383,6 +391,125 @@ impl ConflictIndex {
 
 #[cfg(any(feature = "bsa", feature = "zip"))]
 impl ConflictIndex {
+    #[cfg(feature = "zip")]
+    fn zip_paths(path: &Path) -> Vec<PathBuf> {
+        use std::fs::File;
+
+        let file = match File::open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!(
+                    "vfstool: warning: failed to open archive '{}': {e}",
+                    path.display()
+                );
+                return Vec::new();
+            }
+        };
+
+        match zip::ZipArchive::new(file) {
+            Ok(archive) => archive
+                .file_names()
+                .filter(|name| !name.ends_with('/'))
+                .map(|name| {
+                    let mut p = PathBuf::from(name);
+                    normalize_path_in_place(&mut p);
+                    p
+                })
+                .collect(),
+            Err(e) => {
+                eprintln!(
+                    "vfstool: warning: failed to read ZIP archive '{}': {e}",
+                    path.display()
+                );
+                Vec::new()
+            }
+        }
+    }
+
+    #[cfg(feature = "bsa")]
+    fn bsa_paths(path: &Path) -> Vec<PathBuf> {
+        use ba2::prelude::*;
+        use std::fs::File;
+
+        let mut file = match File::open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!(
+                    "vfstool: warning: failed to open archive '{}': {e}",
+                    path.display()
+                );
+                return Vec::new();
+            }
+        };
+
+        let Some(format) = ba2::guess_format(&mut file) else {
+            eprintln!(
+                "vfstool: warning: could not determine format of archive '{}', skipping",
+                path.display()
+            );
+            return Vec::new();
+        };
+
+        match format {
+            ba2::FileFormat::TES3 => match ba2::tes3::Archive::read(&file) {
+                Ok(archive) => archive
+                    .iter()
+                    .map(|(key, _)| {
+                        let mut p = PathBuf::from(key.name().to_string());
+                        normalize_path_in_place(&mut p);
+                        p
+                    })
+                    .collect(),
+                Err(e) => {
+                    eprintln!(
+                        "vfstool: warning: failed to read TES3 archive '{}': {e}",
+                        path.display()
+                    );
+                    Vec::new()
+                }
+            },
+            ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file) {
+                Ok((archive, _)) => archive
+                    .iter()
+                    .flat_map(|(dir_key, dir)| {
+                        let dir_str = dir_key.name().to_string();
+                        dir.iter()
+                            .map(move |(key, _)| {
+                                let mut p = PathBuf::from(format!("{}\\{}", dir_str, key.name()));
+                                normalize_path_in_place(&mut p);
+                                p
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect(),
+                Err(e) => {
+                    eprintln!(
+                        "vfstool: warning: failed to read TES4 archive '{}': {e}",
+                        path.display()
+                    );
+                    Vec::new()
+                }
+            },
+            ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file) {
+                Ok((archive, _)) => archive
+                    .iter()
+                    .map(|(key, _)| {
+                        let mut p = PathBuf::from(key.name().to_string());
+                        normalize_path_in_place(&mut p);
+                        p
+                    })
+                    .collect(),
+                Err(e) => {
+                    eprintln!(
+                        "vfstool: warning: failed to read FO4 archive '{}': {e}",
+                        path.display()
+                    );
+                    Vec::new()
+                }
+            },
+        }
+    }
+
     /// Extract normalized VFS paths from an archive (BSA, BA2, ZIP, or PK3).
     ///
     /// Logs a warning and returns an empty list on any failure (missing file,
@@ -390,126 +517,13 @@ impl ConflictIndex {
     /// treats bad archives.
     #[allow(unreachable_code)]
     fn paths_from_archive(path: &Path) -> Vec<PathBuf> {
-        use std::fs::File;
-
         #[cfg(feature = "zip")]
         if crate::is_zip_or_pk3(path) {
-            let file = match File::open(path) {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to open archive '{}': {e}",
-                        path.display()
-                    );
-                    return Vec::new();
-                }
-            };
-            return match zip::ZipArchive::new(file) {
-                Ok(archive) => archive
-                    .file_names()
-                    .filter(|name| !name.ends_with('/'))
-                    .map(|name| {
-                        let mut p = PathBuf::from(name);
-                        normalize_path_in_place(&mut p);
-                        p
-                    })
-                    .collect(),
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to read ZIP archive '{}': {e}",
-                        path.display()
-                    );
-                    Vec::new()
-                }
-            };
+            return Self::zip_paths(path);
         }
 
         #[cfg(feature = "bsa")]
-        {
-            use ba2::prelude::*;
-
-            let mut file = match File::open(path) {
-                Ok(f) => f,
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to open archive '{}': {e}",
-                        path.display()
-                    );
-                    return Vec::new();
-                }
-            };
-
-            let format = match ba2::guess_format(&mut file) {
-                Some(f) => f,
-                None => {
-                    eprintln!(
-                        "vfstool: warning: could not determine format of archive '{}', skipping",
-                        path.display()
-                    );
-                    return Vec::new();
-                }
-            };
-
-            return match format {
-                ba2::FileFormat::TES3 => match ba2::tes3::Archive::read(&file) {
-                    Ok(archive) => archive
-                        .iter()
-                        .map(|(key, _)| {
-                            let mut p = PathBuf::from(key.name().to_string());
-                            normalize_path_in_place(&mut p);
-                            p
-                        })
-                        .collect(),
-                    Err(e) => {
-                        eprintln!(
-                            "vfstool: warning: failed to read TES3 archive '{}': {e}",
-                            path.display()
-                        );
-                        Vec::new()
-                    }
-                },
-                ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file) {
-                    Ok((archive, _)) => archive
-                        .iter()
-                        .flat_map(|(dir_key, dir)| {
-                            let dir_str = dir_key.name().to_string();
-                            dir.iter()
-                                .map(move |(key, _)| {
-                                    let mut p =
-                                        PathBuf::from(format!("{}\\{}", dir_str, key.name()));
-                                    normalize_path_in_place(&mut p);
-                                    p
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .collect(),
-                    Err(e) => {
-                        eprintln!(
-                            "vfstool: warning: failed to read TES4 archive '{}': {e}",
-                            path.display()
-                        );
-                        Vec::new()
-                    }
-                },
-                ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file) {
-                    Ok((archive, _)) => archive
-                        .iter()
-                        .map(|(key, _)| {
-                            let mut p = PathBuf::from(key.name().to_string());
-                            normalize_path_in_place(&mut p);
-                            p
-                        })
-                        .collect(),
-                    Err(e) => {
-                        eprintln!(
-                            "vfstool: warning: failed to read FO4 archive '{}': {e}",
-                            path.display()
-                        );
-                        Vec::new()
-                    }
-                },
-            };
-        }
+        return Self::bsa_paths(path);
 
         eprintln!(
             "vfstool: warning: '{}' is not a recognized archive format, skipping",
@@ -521,7 +535,7 @@ impl ConflictIndex {
     /// Analyse an ordered set of directories and archives for VFS conflicts.
     ///
     /// Archives occupy the lowest-priority positions in the index (inserted
-    /// before all directories), matching OpenMW's rule that loose files always
+    /// before all directories), matching `OpenMW`'s rule that loose files always
     /// beat archive files. Within the archive list, order is preserved —
     /// `archive_paths[0]` is the lowest-priority archive.
     ///

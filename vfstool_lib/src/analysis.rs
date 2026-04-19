@@ -363,7 +363,12 @@ struct ContentFingerprint {
 
 impl ContentFingerprint {
     fn digest_hex(&self) -> String {
-        self.digest.iter().map(|b| format!("{b:02x}")).collect()
+        use std::fmt::Write;
+        let mut output = String::with_capacity(self.digest.len() * 2);
+        for byte in &self.digest {
+            let _ = write!(&mut output, "{byte:02x}");
+        }
+        output
     }
 }
 
@@ -389,6 +394,7 @@ impl LayerIndex {
     }
 
     /// Returns all normalized keys in sorted order.
+    #[must_use] 
     pub fn keys(&self) -> Vec<PathBuf> {
         let mut keys: Vec<PathBuf> = self.path_to_sources.keys().cloned().collect();
         keys.sort();
@@ -401,11 +407,14 @@ impl LayerIndex {
         normalize_path_in_place(&mut normalized);
         self.path_to_sources
             .get(&normalized)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+            .map_or(&[], Vec::as_slice)
     }
 
     /// Return the full source chain for one key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when content hashing is requested and file reads fail.
     pub fn provenance(
         &self,
         vfs: &VFS,
@@ -420,7 +429,9 @@ impl LayerIndex {
             return Ok(None);
         }
 
-        let winner_idx = *provider_indices.last().expect("providers are non-empty");
+        let Some(winner_idx) = provider_indices.last().copied() else {
+            return Ok(None);
+        };
         let winner = self.sources[winner_idx].clone();
         let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> = AHashMap::new();
 
@@ -454,11 +465,19 @@ impl LayerIndex {
     }
 
     /// Build semantic conflicts for all paths with multiple providers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when content hashing for any provider fails.
     pub fn semantic_conflicts(&self, vfs: &VFS) -> io::Result<SemanticConflictReport> {
         self.semantic_conflicts_with_opts(vfs, SemanticOpts::default())
     }
 
     /// Build semantic conflicts for all paths with multiple providers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when content hashing for any provider fails.
     pub fn semantic_conflicts_with_opts(
         &self,
         vfs: &VFS,
@@ -486,7 +505,9 @@ impl LayerIndex {
                 continue;
             }
 
-            let winner_idx = *provider_indices.last().expect("providers are non-empty");
+            let Some(winner_idx) = provider_indices.last().copied() else {
+                continue;
+            };
             let winner_source = self.sources[winner_idx].clone();
             let winner_fp = self.fingerprint_for_provider(
                 vfs,

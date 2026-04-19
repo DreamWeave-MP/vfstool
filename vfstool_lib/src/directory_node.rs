@@ -41,6 +41,7 @@ pub struct DirectoryNode {
 
 impl DirectoryNode {
     /// Creates an empty [`DirectoryNode`].
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -51,7 +52,7 @@ impl DirectoryNode {
     /// Useful when serializing or displaying directory contents.
     pub fn sort(&mut self) {
         self.files.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
-        self.subdirs.values_mut().for_each(|dir| dir.sort());
+        self.subdirs.values_mut().for_each(DirectoryNode::sort);
     }
 
     /// Filters the directory's files based on a predicate and removes empty subdirectories.
@@ -95,7 +96,7 @@ impl Serialize for DirectoryNode {
         S: Serializer,
     {
         let mut map = serializer.serialize_map(Some(
-            self.subdirs.len() + if self.files.is_empty() { 0 } else { 1 },
+            self.subdirs.len() + usize::from(!self.files.is_empty()),
         ))?;
 
         if !self.files.is_empty() {
@@ -136,7 +137,7 @@ mod tests {
             for j in 1..=3 {
                 subdir
                     .files
-                    .push(VfsFile::from(format!("file{}_{}.txt", i, j)));
+                    .push(VfsFile::from(format!("file{i}_{j}.txt")));
             }
 
             // Create a child subdirectory inside this subdir
@@ -144,14 +145,14 @@ mod tests {
             for k in 1..=3 {
                 child_subdir
                     .files
-                    .push(VfsFile::from(format!("nested_file{}_{}.txt", i, k)));
+                    .push(VfsFile::from(format!("nested_file{i}_{k}.txt")));
             }
 
             subdir
                 .subdirs
-                .insert(format!("child_subdir{}", i).into(), child_subdir);
+                .insert(format!("child_subdir{i}").into(), child_subdir);
 
-            root.subdirs.insert(format!("subdir{}", i).into(), subdir);
+            root.subdirs.insert(format!("subdir{i}").into(), subdir);
         }
 
         root
@@ -289,8 +290,8 @@ mod tests {
             "Each subdirectory should have at least one file with the number 2 in its root"
         );
 
-        let subdirs = ["subdir1", "subdir2", "subdir3"];
-        for &subdir in &subdirs {
+        let expected_subdirs = ["subdir1", "subdir2", "subdir3"];
+        for &subdir in &expected_subdirs {
             assert!(
                 root.subdirs.contains_key(&PathBuf::from(&subdir)),
                 "{subdir} should still be present"
@@ -298,17 +299,17 @@ mod tests {
         }
 
         // Validate subdir1
-        let subdir1 = root
+        let subdir_one = root
             .subdirs
             .get(&PathBuf::from("subdir1"))
             .expect("subdir1 should exist");
         assert_eq!(
-            subdir1.files.len(),
+            subdir_one.files.len(),
             1,
             "subdir1 should have exactly one file."
         );
 
-        let child_subdir1 = subdir1
+        let child_subdir1 = subdir_one
             .subdirs
             .get(&PathBuf::from("child_subdir1"))
             .expect("child_subdir1 should still exist");
@@ -319,17 +320,17 @@ mod tests {
         );
 
         // Validate subdir2
-        let subdir2 = root
+        let subdir_two = root
             .subdirs
             .get(&PathBuf::from("subdir2"))
             .expect("subdir2 should exist");
         assert_eq!(
-            subdir2.files.len(),
+            subdir_two.files.len(),
             3,
             "subdir2 should have exactly three files with '2' in their names."
         );
 
-        let child_subdir2 = subdir2
+        let child_subdir2 = subdir_two
             .subdirs
             .get(&PathBuf::from("child_subdir2"))
             .expect("child_subdir2 should still exist");
@@ -340,17 +341,17 @@ mod tests {
         );
 
         // Validate subdir3
-        let subdir3 = root
+        let subdir_three = root
             .subdirs
             .get(&PathBuf::from("subdir3"))
             .expect("subdir3 should exist");
         assert_eq!(
-            subdir3.files.len(),
+            subdir_three.files.len(),
             1,
             "subdir3 should have exactly one file."
         );
 
-        let child_subdir3 = subdir3
+        let child_subdir3 = subdir_three
             .subdirs
             .get(&PathBuf::from("child_subdir3"))
             .expect("child_subdir3 should still exist");

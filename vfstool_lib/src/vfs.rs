@@ -51,7 +51,7 @@ pub struct DirectoryDiff<'vfs> {
 /// Virtual file system built from an ordered list of data directories and optional archives.
 ///
 /// Keys are normalized (lowercase, forward-slash) relative paths. Later directories and loose
-/// files have higher priority, matching OpenMW's `data=` semantics.
+/// files have higher priority, matching `OpenMW`'s `data=` semantics.
 pub struct VFS {
     file_map: VFSFiles,
 }
@@ -73,11 +73,11 @@ impl VFS {
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile<'_> {
         let p = path.as_ref();
         let bytes = p.as_os_str().as_encoded_bytes();
-        if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
-            self.file_map.get(p)
-        } else {
+        if bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
             let normalized = normalize_path(p);
             self.file_map.get(&*normalized)
+        } else {
+            self.file_map.get(p)
         }
     }
 
@@ -87,6 +87,7 @@ impl VFS {
     }
 
     /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.
+    #[must_use] 
     pub fn par_iter(&self) -> impl ParallelIterator<Item = (&PathBuf, &VfsFile)> {
         self.file_map.par_iter()
     }
@@ -98,6 +99,11 @@ impl VFS {
     /// Archive files are always streamed via [`VfsFile::open`] regardless of mode.
     /// The destination directory must already exist. Returns the number of
     /// files successfully written.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for hardlink/copy/write failures not explicitly handled
+    /// as skippable cases.
     pub fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize> {
         let written: std::io::Result<Vec<bool>> = self
             .file_map
@@ -169,12 +175,19 @@ impl VFS {
     /// Per-file errors are reported via `eprintln!` rather than aborting —
     /// this matches the original CLI behavior of continuing past individual
     /// link/copy failures.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if creating the destination root directory fails.
     pub fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()> {
         std::fs::create_dir_all(dest)?;
 
         self.file_map.iter().for_each(|(relative_path, file)| {
             let merged_path = dest.join(relative_path);
-            let merged_dir = merged_path.parent().unwrap();
+            let Some(merged_dir) = merged_path.parent() else {
+                eprintln!("vfstool: failed to resolve parent dir for {}", merged_path.display());
+                return;
+            };
 
             if let Err(e) = std::fs::create_dir_all(merged_dir) {
                 eprintln!(
@@ -213,7 +226,7 @@ impl VFS {
                     {
                         eprintln!(
                             "vfstool: skipping archive {}",
-                            file.file_name().unwrap().to_string_lossy()
+                            file.file_name().unwrap_or_default().to_string_lossy()
                         );
                         return;
                     }
@@ -300,10 +313,13 @@ impl VFS {
     ///
     /// Returns the path of the extracted file on success. Returns `None` if
     /// `vfs_path` is not found in the VFS.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if destination creation, source reading, or destination writing fails.
     pub fn extract_file(&self, vfs_path: &Path, dest_dir: &Path) -> io::Result<Option<PathBuf>> {
-        let file = match self.get_file(vfs_path) {
-            Some(f) => f,
-            None => return Ok(None),
+        let Some(file) = self.get_file(vfs_path) else {
+            return Ok(None);
         };
 
         std::fs::create_dir_all(dest_dir)?;
@@ -335,6 +351,7 @@ impl VFS {
     /// When `replacements_only` is `false`: files still served from `filter_path`.
     /// When `replacements_only` is `true`: files where `filter_path` has a copy
     /// but the full VFS serves them from a different (higher-priority) source.
+    #[must_use] 
     pub fn remaining(
         &self,
         filter_path: &Path,
@@ -406,7 +423,7 @@ impl VFS {
         normalize_path(s.as_ref()).to_string_lossy().into_owned()
     }
 
-    /// Returns a parallel iterator meant to be fed into par_extend
+    /// Returns a parallel iterator meant to be fed into `par_extend`
     /// Only used when appending a directory or set of directories into the file map
     fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
         dir: I,
@@ -434,7 +451,7 @@ impl VFS {
 
     /// Build a [`VFS`] from an ordered list of directories and an optional archive list.
     ///
-    /// Later entries in `search_dirs` override earlier ones (OpenMW `data=` semantics).
+    /// Later entries in `search_dirs` override earlier ones (`OpenMW` `data=` semantics).
     /// If `archive_list` is provided and the `bsa` or `zip` feature is enabled, archives are
     /// loaded at lower priority than all loose files.
     pub fn from_directories(
@@ -458,7 +475,7 @@ impl VFS {
                 .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
                 .collect();
             let archive_handles = archives::from_set(&loose_lookup, &list);
-            vfs.file_map.extend(archives::file_map(archive_handles));
+            vfs.file_map.extend(archives::file_map(&archive_handles));
         }
 
         // Merge directories in order: later directories override earlier ones,
@@ -480,7 +497,7 @@ impl VFS {
     ///
     /// # Priority ordering
     ///
-    /// Matches OpenMW's `data=` semantics: later entries in `search_dirs` have
+    /// Matches `OpenMW`'s `data=` semantics: later entries in `search_dirs` have
     /// higher priority. Archive sources appear before all directory sources in the
     /// `ConflictIndex` — index 0 is the lowest-priority archive (if any).
     pub fn from_directories_with_conflict_index(
@@ -523,7 +540,7 @@ impl VFS {
                     .iter()
                     .map(|stored| (stored.path().to_path_buf(), archives::archive_paths(stored)))
                     .collect();
-                vfs.file_map.extend(archives::file_map(archive_handles));
+                vfs.file_map.extend(archives::file_map(&archive_handles));
                 sources
             } else {
                 Vec::new()
@@ -600,7 +617,7 @@ impl VFS {
                         )
                     })
                     .collect();
-                vfs.file_map.extend(archives::file_map(archive_handles));
+                vfs.file_map.extend(archives::file_map(&archive_handles));
                 sources
             } else {
                 Vec::new()
@@ -634,10 +651,10 @@ impl VFS {
     /// are O(1) per file. This is the primitive for mod conflict analysis: call
     /// it once per candidate directory to get the full picture of what that mod
     /// installs, overrides, and adds.
-    pub fn diff_directory<'vfs, P: AsRef<Path> + Sync>(
-        &'vfs self,
+    pub fn diff_directory<P: AsRef<Path> + Sync>(
+        &self,
         dir: P,
-    ) -> DirectoryDiff<'vfs> {
+    ) -> DirectoryDiff<'_> {
         let dir = dir.as_ref().to_path_buf();
 
         // Walk the directory in parallel — I/O is the bottleneck here.
@@ -650,8 +667,7 @@ impl VFS {
                 let mut normalized = entry
                     .path()
                     .strip_prefix(&dir)
-                    .expect("entry path must be prefixed by scan directory")
-                    .to_path_buf();
+                    .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
                 normalize_path_in_place(&mut normalized);
                 (normalized, VfsFile::from(entry.path()))
             })
@@ -676,19 +692,21 @@ impl VFS {
     /// `key` is a normalized relative VFS path (e.g. `"textures/foo.dds"`).
     /// The path is normalized before lookup, so case and separator variants
     /// are accepted. Already-normalized keys skip the allocation.
+    #[must_use] 
     pub fn contains(&self, key: &Path) -> bool {
         let bytes = key.as_os_str().as_encoded_bytes();
-        if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
-            self.file_map.contains_key(key)
-        } else {
+        if bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
             let normalized = normalize_path(key);
             self.file_map.contains_key(&*normalized)
+        } else {
+            self.file_map.contains_key(key)
         }
     }
 
     /// Returns a sorted version of the VFS contents as a binary tree.
+    #[must_use] 
     pub fn tree(&self, relative: bool) -> DisplayTree {
-        self.build_tree(relative, None::<fn(&Path, &VfsFile) -> bool>)
+        self.build_tree(relative, None::<&fn(&Path, &VfsFile) -> bool>)
     }
 
     /// Returns a sorted tree containing only files accepted by `file_filter`.
@@ -707,13 +725,13 @@ impl VFS {
         relative: bool,
         file_filter: impl Fn(&Path, &VfsFile) -> bool,
     ) -> DisplayTree {
-        self.build_tree(relative, Some(file_filter))
+        self.build_tree(relative, Some(&file_filter))
     }
 
     fn build_tree<F: Fn(&Path, &VfsFile) -> bool>(
         &self,
         relative: bool,
-        file_filter: Option<F>,
+        file_filter: Option<&F>,
     ) -> DisplayTree {
         let mut tree: DisplayTree = BTreeMap::new();
         let root_path: PathBuf = if relative { "Data Files" } else { "/" }.into();
@@ -803,6 +821,10 @@ impl VFS {
     }
 
     /// Returns the formatted file tree for a filtered subset
+    ///
+    /// # Panics
+    ///
+    /// Panics only if formatting a `String` fails, which should not occur.
     pub fn display_filtered(
         &self,
         relative: bool,
@@ -810,12 +832,16 @@ impl VFS {
     ) -> String {
         let tree = self.tree_filtered(relative, file_filter);
         let mut output = String::new();
-        write_tree(&tree, &mut output).expect("String fmt::Write cannot fail");
+        let _ = write_tree(&tree, &mut output);
         output
     }
 
     /// Serializes the result of `tree` or `display_filtered` functions to JSON, YAML, or TOML
     #[cfg(feature = "serialize")]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if serialization fails.
     pub fn serialize_from_tree(tree: &DisplayTree, write_type: SerializeType) -> Result<String> {
         fn to_io_error<E: std::fmt::Display>(err: E) -> Error {
             Error::new(ErrorKind::InvalidData, err.to_string())
@@ -900,7 +926,7 @@ mod loose_tests {
         }
     }
 
-    /// Recursively collect all file names from a DirectoryNode tree.
+    /// Recursively collect all file names from a `DirectoryNode` tree.
     fn collect_all_filenames(node: &DirectoryNode) -> Vec<String> {
         let mut names: Vec<String> = node
             .files
@@ -1009,7 +1035,7 @@ mod loose_tests {
     // ---- priority / collision ----
 
     /// Core invariant: later directory in the list overrides earlier one.
-    /// This mirrors OpenMW's data= ordering semantics.
+    /// This mirrors `OpenMW`'s data= ordering semantics.
     #[test]
     fn later_dir_wins_over_earlier_for_same_file() {
         let dir1 = TempDir::new("vfsprio_later_wins_dir1");
@@ -1304,7 +1330,7 @@ mod loose_tests {
         assert_eq!(diff.additions[0].1.path(), addition);
     }
 
-    /// diff_directory against an empty VFS: everything is an addition.
+    /// `diff_directory` against an empty VFS: everything is an addition.
     #[test]
     fn diff_dir_against_empty_vfs_yields_all_additions() {
         let empty_base = TempDir::new("vfsdiff_emptyvfs_base");
@@ -1415,7 +1441,14 @@ mod loose_tests {
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
         let all = collect_all_filenames(root);
 
-        assert!(all.iter().all(|f| f.ends_with(".dds")), "only .dds files should survive the filter");
+        assert!(
+            all.iter().all(|f| {
+                Path::new(f)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("dds"))
+            }),
+            "only .dds files should survive the filter"
+        );
         assert!(!all.is_empty());
     }
 
@@ -1432,10 +1465,6 @@ mod loose_tests {
         });
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
 
-        fn contains_nif(node: &DirectoryNode) -> bool {
-            node.files.iter().any(|f| f.path().extension().is_some_and(|e| e == "nif"))
-                || node.subdirs.values().any(contains_nif)
-        }
         assert!(!contains_nif(root), "empty subdirs should be pruned after filtering");
     }
 
@@ -1476,6 +1505,13 @@ mod loose_tests {
             node.files.len() + node.subdirs.values().map(count).sum::<usize>()
         }
         tree.values().map(count).sum()
+    }
+
+    fn contains_nif(node: &DirectoryNode) -> bool {
+        node.files
+            .iter()
+            .any(|f| f.path().extension().is_some_and(|e| e == "nif"))
+            || node.subdirs.values().any(contains_nif)
     }
 
     #[test]
@@ -1586,7 +1622,7 @@ mod loose_tests {
         dir2.write("only_dir2.txt", b"dir2 only");
 
         let all_dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
-        let vfs = VFS::from_directories(all_dirs.iter().map(|p| p.as_path()), None);
+        let vfs = VFS::from_directories(all_dirs.iter().map(std::path::PathBuf::as_path), None);
 
         // replacements_only=false: files still served FROM dir1
         let tree = vfs.remaining(dir1.path(), false, &all_dirs, true);
@@ -1606,7 +1642,7 @@ mod loose_tests {
         dir2.write("shared.txt", b"dir2 version");
 
         let all_dirs = vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()];
-        let vfs = VFS::from_directories(all_dirs.iter().map(|p| p.as_path()), None);
+        let vfs = VFS::from_directories(all_dirs.iter().map(std::path::PathBuf::as_path), None);
 
         // replacements_only=true: files that dir1 has but a higher-priority dir wins
         let tree = vfs.remaining(dir1.path(), true, &all_dirs, true);
@@ -2040,12 +2076,12 @@ END OF ACT IV, SCENE III";
     }
 
     fn clean_up_test_files(search_dirs: &[PathBuf]) {
-        search_dirs
-            .iter()
-            .for_each(|dir| fs::remove_dir_all(dir).unwrap());
-        TEST_DATA
-            .iter()
-            .for_each(|test_file| fs::remove_file(test_file).unwrap());
+        for dir in search_dirs {
+            fs::remove_dir_all(dir).unwrap();
+        }
+        for test_file in TEST_DATA {
+            fs::remove_file(test_file).unwrap();
+        }
     }
 }
 

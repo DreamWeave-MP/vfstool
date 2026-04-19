@@ -2,6 +2,7 @@
 use crate::vfs::VFS;
 use std::{
     collections::HashMap,
+    hash::BuildHasher,
     io::{self, BufReader, Read},
     path::{Path, PathBuf},
 };
@@ -16,6 +17,10 @@ pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 /// Returns the number of files dumped and the snapshot for use with
 /// [`run_finalize`]. The caller is responsible for executing the subprocess
 /// between these two calls.
+///
+/// # Errors
+///
+/// Returns an error if writing merged files or hashing baseline files fails.
 pub fn run_setup(vfs: &VFS, merged_dir: &Path, use_hardlinks: bool) -> io::Result<(usize, Snapshot)> {
     std::fs::create_dir_all(merged_dir)?;
     let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
@@ -28,6 +33,10 @@ pub fn run_setup(vfs: &VFS, merged_dir: &Path, use_hardlinks: bool) -> io::Resul
 /// Returns a list of `(relative_path, destination_path)` pairs for every file
 /// that was copied. The caller should call this only after the subprocess
 /// succeeds.
+///
+/// # Errors
+///
+/// Returns an error if hashing changed files or copying outputs fails.
 pub fn run_finalize(
     merged_dir: &Path,
     baseline: &Snapshot,
@@ -50,11 +59,15 @@ pub fn run_finalize(
 
 /// Compute the BLAKE3 hash of a file's contents.
 /// Uses a 64 KiB stack buffer — avoids loading the whole file into memory.
+///
+/// # Errors
+///
+/// Returns an error if opening or reading the file fails.
 pub fn hash_file(path: &Path) -> io::Result<[u8; 32]> {
     let file = std::fs::File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut hasher = blake3::Hasher::new();
-    let mut buf = [0u8; 65536];
+    let mut buf = vec![0u8; 65536];
     loop {
         let n = reader.read(&mut buf)?;
         if n == 0 {
@@ -67,41 +80,46 @@ pub fn hash_file(path: &Path) -> io::Result<[u8; 32]> {
 
 /// Hash every file under `dir` in parallel.
 /// Returns a map from relative path to its BLAKE3 digest.
-pub fn snapshot_directory(dir: &Path) -> io::Result<HashMap<PathBuf, [u8; 32]>> {
+///
+/// # Errors
+///
+/// Returns an error if directory traversal or hashing fails.
+pub fn snapshot_directory(dir: &Path) -> io::Result<Snapshot> {
     WalkDir::new(dir)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .par_bridge()
         .map(|entry| {
-            let rel = entry
-                .path()
-                .strip_prefix(dir)
-                .expect("walkdir entry should be under root")
-                .to_path_buf();
+            let rel = entry.path().strip_prefix(dir).map_err(|_| {
+                io::Error::other("walkdir entry should be under root")
+            })?.to_path_buf();
             let hash = hash_file(entry.path())?;
             Ok((rel, hash))
         })
-        .collect::<io::Result<HashMap<_, _>>>()
+        .collect::<io::Result<Snapshot>>()
 }
 
 /// Walk `dir` and return relative paths of files whose content differs from `baseline`.
 /// Files in `baseline` that no longer exist in `dir` are silently ignored.
-pub fn changed_files(
+///
+/// # Errors
+///
+/// Returns an error if directory traversal or hashing fails.
+pub fn changed_files<S: BuildHasher + Sync>(
     dir: &Path,
-    baseline: &HashMap<PathBuf, [u8; 32]>,
+    baseline: &HashMap<PathBuf, [u8; 32], S>,
 ) -> io::Result<Vec<PathBuf>> {
     WalkDir::new(dir)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
         .par_bridge()
         .filter_map(|entry| {
-            let rel = entry
-                .path()
-                .strip_prefix(dir)
-                .expect("walkdir entry should be under root")
-                .to_path_buf();
+            let rel = match entry.path().strip_prefix(dir) {
+                Ok(path) => path.to_path_buf(),
+                Err(_) => return Some(Err(io::Error::other("walkdir entry should be under root"))),
+            };
             let hash = match hash_file(entry.path()) {
                 Ok(h) => h,
                 Err(e) => return Some(Err(e)),
