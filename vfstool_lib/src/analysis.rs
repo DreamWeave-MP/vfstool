@@ -284,6 +284,77 @@ pub struct DriftReport {
     pub counts: BTreeMap<DriftKind, usize>,
 }
 
+/// Optional risk level for candidate planning workflows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub enum RiskLevel {
+    /// Lowest risk.
+    Low,
+    /// Medium risk.
+    Medium,
+    /// High risk.
+    High,
+    /// Highest risk.
+    Critical,
+}
+
+/// Candidate planning options.
+#[derive(Debug, Clone, Copy)]
+pub struct CandidatePlanOpts {
+    /// Include semantic equality checks for conflicting files.
+    pub include_semantic: bool,
+}
+
+impl Default for CandidatePlanOpts {
+    fn default() -> Self {
+        Self {
+            include_semantic: true,
+        }
+    }
+}
+
+/// One conflict row in a candidate preflight plan.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct CandidateConflict {
+    /// Normalized key.
+    pub key: PathBuf,
+    /// Current winner source path.
+    pub current_winner_source: PathBuf,
+    /// Candidate file path.
+    pub candidate_file: PathBuf,
+    /// Whether candidate content differs from current winner.
+    pub semantic_differs: Option<bool>,
+    /// Optional risk level placeholder.
+    pub risk: Option<RiskLevel>,
+}
+
+/// Candidate planner summary metrics.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct CandidatePlanSummary {
+    /// Count of net-new files.
+    pub additions: usize,
+    /// Count of path conflicts.
+    pub conflicts: usize,
+    /// Count of keys whose winner would be displaced.
+    pub displaced_winners: usize,
+}
+
+/// Candidate preflight plan.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct CandidatePlan {
+    /// Normalized keys that would be newly added.
+    pub additions: Vec<PathBuf>,
+    /// Conflicting keys and metadata.
+    pub conflicts: Vec<CandidateConflict>,
+    /// Keys whose current winners would be replaced by candidate content.
+    pub displaced_winners: Vec<PathBuf>,
+    /// Summary counters.
+    pub summary: CandidatePlanSummary,
+}
+
 #[derive(Clone)]
 struct ContentFingerprint {
     digest: [u8; 32],
@@ -676,6 +747,69 @@ impl LayerIndex {
         }
 
         Ok(DriftReport { entries, counts })
+    }
+
+    /// Build a preflight plan for adding one candidate directory on top of current VFS.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when candidate or winner file hashing fails.
+    pub fn plan_candidate_directory(
+        &self,
+        vfs: &VFS,
+        candidate_dir: &Path,
+        opts: CandidatePlanOpts,
+    ) -> io::Result<CandidatePlan> {
+        let diff = vfs.diff_directory(candidate_dir);
+
+        let mut additions = diff
+            .additions
+            .into_iter()
+            .map(|(key, _incoming)| key)
+            .collect::<Vec<_>>();
+        additions.sort();
+
+        let mut conflicts = Vec::new();
+        let mut displaced_winners = Vec::new();
+
+        for (key, incoming, existing) in diff.conflicts {
+            let providers = self.sources_containing(&key);
+            let current_winner_source = self
+                .current_winner_source_idx(vfs, &key, providers)
+                .map(|idx| self.sources[idx].path.clone())
+                .unwrap_or_default();
+
+            let semantic_differs = if opts.include_semantic {
+                let incoming_fp = hash_reader(std::fs::File::open(incoming.path())?)?;
+                let existing_fp = hash_reader(existing.open()?)?;
+                Some(incoming_fp.digest != existing_fp.digest)
+            } else {
+                None
+            };
+
+            displaced_winners.push(key.clone());
+            conflicts.push(CandidateConflict {
+                key,
+                current_winner_source,
+                candidate_file: incoming.path().to_path_buf(),
+                semantic_differs,
+                risk: None,
+            });
+        }
+
+        conflicts.sort_by(|a, b| a.key.cmp(&b.key));
+        displaced_winners.sort();
+
+        Ok(CandidatePlan {
+            summary: CandidatePlanSummary {
+                additions: additions.len(),
+                conflicts: conflicts.len(),
+                displaced_winners: displaced_winners.len(),
+            },
+            additions,
+            conflicts,
+            displaced_winners,
+        })
     }
 
     fn reordered_indices(&self, op: ReorderOp) -> io::Result<Vec<usize>> {
@@ -1110,5 +1244,53 @@ mod tests {
             .entries
             .iter()
             .any(|entry| entry.kind == DriftKind::WinnerHashChanged));
+    }
+
+    #[test]
+    fn candidate_plan_reports_additions_and_conflicts() {
+        let low = TempDir::new("analysis_plan_low");
+        let high = TempDir::new("analysis_plan_high");
+        let candidate = TempDir::new("analysis_plan_candidate");
+
+        low.write("textures/a.dds", b"low");
+        high.write("textures/a.dds", b"high");
+        high.write("textures/b.dds", b"b");
+
+        candidate.write("textures/a.dds", b"candidate-new");
+        candidate.write("textures/c.dds", b"c");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        let plan = index
+            .plan_candidate_directory(&vfs, candidate.path(), CandidatePlanOpts::default())
+            .expect("candidate plan should succeed");
+
+        assert_eq!(plan.summary.additions, 1);
+        assert_eq!(plan.summary.conflicts, 1);
+        assert_eq!(plan.summary.displaced_winners, 1);
+        assert_eq!(plan.additions[0], PathBuf::from("textures/c.dds"));
+        assert_eq!(plan.conflicts[0].key, PathBuf::from("textures/a.dds"));
+        assert_eq!(plan.conflicts[0].semantic_differs, Some(true));
+    }
+
+    #[test]
+    fn candidate_plan_semantic_can_be_disabled() {
+        let base = TempDir::new("analysis_plan_semantic_base");
+        let candidate = TempDir::new("analysis_plan_semantic_candidate");
+        base.write("textures/a.dds", b"same");
+        candidate.write("textures/a.dds", b"same");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([base.path()], None);
+        let plan = index
+            .plan_candidate_directory(
+                &vfs,
+                candidate.path(),
+                CandidatePlanOpts {
+                    include_semantic: false,
+                },
+            )
+            .expect("candidate plan should succeed");
+
+        assert_eq!(plan.conflicts.len(), 1);
+        assert_eq!(plan.conflicts[0].semantic_differs, None);
     }
 }
