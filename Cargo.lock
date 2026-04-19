@@ -1276,6 +1276,7 @@ dependencies = [
  "clap",
  "openmw-config",
  "serde",
+ "serde_yaml",
  "vfstool_lib",
 ]
 

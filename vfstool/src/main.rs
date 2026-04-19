@@ -6,8 +6,8 @@ use std::{
     path::PathBuf,
 };
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, SerializeType, normalize_path, run_finalize, run_setup,
-    serialize_value, vfs::VFS,
+    CollapseOptions, ConflictIndex, LayerIndex, Policy, ReorderOp, Rule, SerializeType,
+    SourceKind, normalize_path, run_finalize, run_setup, serialize_value, vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
@@ -226,6 +226,70 @@ enum Commands {
         #[arg(long)]
         working_dir: Option<PathBuf>,
     },
+    /// Show full provider chain for one VFS path.
+    Provenance {
+        /// Relative VFS path to query.
+        path: PathBuf,
+        /// Include content hashes where available.
+        #[arg(long)]
+        hashes: bool,
+        /// Output format when serializing as text.
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        /// Optional path to save the output.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Report semantic (content-aware) conflicts.
+    SemanticConflicts {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Emit deterministic lock manifest for current winners.
+    Lock {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Evaluate a YAML policy document against the current VFS.
+    Verify {
+        /// Path to YAML policy file.
+        policy: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Simulate swapping two sources in load order.
+    SimulateSwap {
+        /// Source path A.
+        source_a: PathBuf,
+        /// Source path B.
+        source_b: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
+#[derive(serde::Deserialize)]
+struct PolicyDoc {
+    rules: Vec<PolicyRuleDoc>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum PolicyRuleDoc {
+    WinnerMustMatch { path_glob: String, source_glob: String },
+    WinnerMustNotMatch { path_glob: String, source_glob: String },
+    MustExist { path_glob: String },
+    MustBeUnique { path_glob: String },
+    WinnerKindMustBe { path_glob: String, kind: String },
+    MaxOverrideDepth { path_glob: String, max: usize },
 }
 
 /// Supported output formats
@@ -274,6 +338,55 @@ fn build_conflict_index(config_path: PathBuf) -> (VFS, ConflictIndex) {
         .map(|a| a.value().as_str())
         .collect();
     VFS::from_directories_with_conflict_index(data_paths, Some(archives))
+}
+
+fn build_layer_index(config_path: PathBuf) -> (VFS, LayerIndex) {
+    let cfg = load_openmw_config(config_path);
+    let data_paths = cfg.data_directories();
+    let archives: Vec<&str> = cfg
+        .fallback_archives_iter()
+        .map(|a| a.value().as_str())
+        .collect();
+    VFS::from_directories_with_layer_index(data_paths, Some(archives))
+}
+
+fn parse_policy(path: &PathBuf) -> io::Result<Policy> {
+    let text = std::fs::read_to_string(path)?;
+    let doc: PolicyDoc = serde_yaml::from_str(&text)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("invalid policy yaml: {e}")))?;
+
+    let mut rules = Vec::with_capacity(doc.rules.len());
+    for rule in doc.rules {
+        let mapped = match rule {
+            PolicyRuleDoc::WinnerMustMatch { path_glob, source_glob } => {
+                Rule::WinnerMustMatch { path_glob, source_glob }
+            }
+            PolicyRuleDoc::WinnerMustNotMatch { path_glob, source_glob } => {
+                Rule::WinnerMustNotMatch { path_glob, source_glob }
+            }
+            PolicyRuleDoc::MustExist { path_glob } => Rule::MustExist { path_glob },
+            PolicyRuleDoc::MustBeUnique { path_glob } => Rule::MustBeUnique { path_glob },
+            PolicyRuleDoc::WinnerKindMustBe { path_glob, kind } => {
+                let kind = match kind.as_str() {
+                    "loose_dir" => SourceKind::LooseDir,
+                    "archive" => SourceKind::Archive,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("invalid winner kind '{kind}', expected 'loose_dir' or 'archive'"),
+                        ));
+                    }
+                };
+                Rule::WinnerKindMustBe { path_glob, kind }
+            }
+            PolicyRuleDoc::MaxOverrideDepth { path_glob, max } => {
+                Rule::MaxOverrideDepth { path_glob, max }
+            }
+        };
+        rules.push(mapped);
+    }
+
+    Ok(Policy { rules })
 }
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
@@ -627,6 +740,47 @@ fn main() -> Result<()> {
 
             inner_result?;
             std::process::exit(subprocess_status.and_then(|s| s.code()).unwrap_or(1));
+        }
+        Commands::Provenance { path, hashes, format, output } => {
+            let (vfs, layer) = build_layer_index(resolved_config_dir);
+            let normalized = normalize_path(&path).into_owned();
+            let chain = match layer.provenance(&vfs, &normalized, hashes)? {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "{}VFS path '{}' not found.",
+                        print::err_prefix(),
+                        path.display()
+                    );
+                    std::process::exit(VFSToolExitCode::FindFailed.into());
+                }
+            };
+            write_serialized(output, format, &chain)?;
+        }
+        Commands::SemanticConflicts { format, output } => {
+            let (vfs, layer) = build_layer_index(resolved_config_dir);
+            let report = layer.semantic_conflicts(&vfs)?;
+            write_serialized(output, format, &report)?;
+        }
+        Commands::Lock { format, output } => {
+            let (vfs, layer) = build_layer_index(resolved_config_dir);
+            let lock = layer.lock_manifest(&vfs)?;
+            write_serialized(output, format, &lock)?;
+        }
+        Commands::Verify { policy, format, output } => {
+            let (vfs, layer) = build_layer_index(resolved_config_dir);
+            let policy = parse_policy(&policy)?;
+            let result = policy.evaluate(&layer, &vfs)?;
+            let has_violations = !result.violations.is_empty();
+            write_serialized(output, format, &result)?;
+            if has_violations {
+                std::process::exit(3);
+            }
+        }
+        Commands::SimulateSwap { source_a, source_b, format, output } => {
+            let (vfs, layer) = build_layer_index(resolved_config_dir);
+            let delta = layer.simulate(&vfs, ReorderOp::Swap(source_a, source_b))?;
+            write_serialized(output, format, &delta)?;
         }
     }
 

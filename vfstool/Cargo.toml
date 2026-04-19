@@ -16,6 +16,7 @@ vfstool_lib = { path = "../vfstool_lib", version = "1.0", features = [
     "bsa",
 ] }
 serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9.34-deprecated"
 
 [dependencies.openmw-config]
 version = "0.1.92"
