@@ -3,8 +3,12 @@
 //! Virtual file system library for OpenMW modding tools.
 /// Conflict analysis: per-source override and overridden-by sets.
 pub mod conflict;
+/// Higher-level analysis APIs: provenance, semantic conflicts, lock manifests, and simulations.
+pub mod analysis;
 /// Tree node used for display and serialization of VFS directory structure.
 pub mod directory_node;
+/// Declarative policy rules and evaluation against VFS/layer state.
+pub mod policy;
 /// Report types returned by conflict, shadowed, which, stats, and diff subcommands.
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
@@ -15,7 +19,13 @@ pub mod vfs;
 pub mod vfs_file;
 
 pub(crate) use directory_node::DirectoryNode;
+pub use analysis::{
+    LayerIndex, ProviderRecord, ProvenanceChain, ReorderOp, SemanticConflict, SemanticConflictReport,
+    SemanticProvider, SemanticRelation, SimulationDelta, SourceDelta, SourceKind, SourceMeta,
+    VfsLock, VfsLockEntry,
+};
 pub use conflict::{ConflictIndex, SourceConflicts};
+pub use policy::{Policy, PolicyResult, Rule, Severity, Violation};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource, StatsReport, StatsRow, WhichResult,
