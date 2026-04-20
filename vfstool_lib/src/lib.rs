@@ -17,6 +17,8 @@ pub mod policy;
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
+/// Asset-class semantic analyzers and deltas.
+pub mod semantic;
 /// Constraint-based load-order solving.
 pub mod solve;
 /// Core [`VFS`] struct and directory-construction logic.
@@ -41,6 +43,7 @@ pub use reports::{
     ShadowedSource, StatsReport, StatsRow, WhichResult,
 };
 pub use run::{Snapshot, changed_files, run_finalize, run_setup, snapshot_directory};
+pub use semantic::{AssetClass, SemanticDelta, analyze_pair};
 pub use solve::{
     ConstraintViolation, OrderConstraint, SolveDiagnostics, SolveObjective, SolveRequest,
     SolveResult, SolveStatus,

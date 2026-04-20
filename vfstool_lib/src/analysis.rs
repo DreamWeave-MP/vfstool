@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::{
-    ContentDigest, NormalizedKey, SourceId, VFS, normalize_path_in_place, path_glob_matches,
+    AssetClass, ContentDigest, NormalizedKey, SemanticDelta, SourceId, VFS, analyze_pair,
+    normalize_path_in_place, path_glob_matches,
 };
 use ahash::{AHashMap, AHashSet};
 use std::{
@@ -88,6 +89,8 @@ pub struct SemanticProvider {
     pub hash_blake3: Option<String>,
     /// Optional size.
     pub size: Option<u64>,
+    /// Optional semantic delta compared to winner content.
+    pub semantic_delta_to_winner: Option<SemanticDelta>,
 }
 
 /// Semantic conflict for one key with multiple providers.
@@ -100,6 +103,8 @@ pub struct SemanticConflict {
     pub winner: SourceMeta,
     /// Providers in low -> high priority order.
     pub providers: Vec<SemanticProvider>,
+    /// Inferred asset class.
+    pub asset_class: AssetClass,
     /// True if every available hash equals the winner hash.
     pub all_identical: bool,
     /// Count of unique available content hashes.
@@ -134,12 +139,15 @@ pub enum ArchiveHashMode {
 pub struct SemanticOpts {
     /// Archive hashing behavior.
     pub archive_hash_mode: ArchiveHashMode,
+    /// Include semantic analyzer deltas where possible.
+    pub include_semantic_deltas: bool,
 }
 
 impl Default for SemanticOpts {
     fn default() -> Self {
         Self {
             archive_hash_mode: ArchiveHashMode::WinnerOnly,
+            include_semantic_deltas: false,
         }
     }
 }
@@ -515,7 +523,6 @@ impl LayerIndex {
         vfs: &VFS,
         opts: SemanticOpts,
     ) -> io::Result<SemanticConflictReport> {
-        let mut entries = Vec::new();
         let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
             AHashMap::new();
 
@@ -532,81 +539,109 @@ impl LayerIndex {
             .collect();
         keys.sort();
 
+        let mut entries = Vec::new();
         for key in keys {
-            let provider_indices = self.sources_containing(&key);
-            if provider_indices.is_empty() {
-                continue;
+            if let Some(entry) = self.semantic_conflict_for_key(vfs, &key, opts, &mut hash_cache)? {
+                entries.push(entry);
             }
-
-            let Some(winner_idx) = provider_indices.last().copied() else {
-                continue;
-            };
-            let winner_source = self.sources[winner_idx].clone();
-            let winner_fp = self.fingerprint_for_provider(
-                vfs,
-                winner_idx,
-                &key,
-                &mut hash_cache,
-                opts.archive_hash_mode,
-            )?;
-
-            let mut seen_hashes = AHashSet::<String>::new();
-            let mut providers = Vec::with_capacity(provider_indices.len());
-
-            for &idx in provider_indices {
-                let src = self.sources[idx].clone();
-                let current = self.fingerprint_for_provider(
-                    vfs,
-                    idx,
-                    &key,
-                    &mut hash_cache,
-                    opts.archive_hash_mode,
-                )?;
-
-                let (relation, hash_blake3, size) = match (&winner_fp, &current) {
-                    (Some(w), Some(c)) => {
-                        let rel = if w.digest == c.digest {
-                            SemanticRelation::IdenticalToWinner
-                        } else {
-                            SemanticRelation::DifferentFromWinner
-                        };
-                        let digest = c.to_digest();
-                        seen_hashes.insert(digest.hex.clone());
-                        (rel, Some(digest.hex), Some(digest.size))
-                    }
-                    (_, Some(c)) => {
-                        let digest = c.to_digest();
-                        seen_hashes.insert(digest.hex.clone());
-                        (
-                            SemanticRelation::Unknown,
-                            Some(digest.hex),
-                            Some(digest.size),
-                        )
-                    }
-                    (_, None) => (SemanticRelation::Unknown, None, None),
-                };
-
-                providers.push(SemanticProvider {
-                    source: src,
-                    relation,
-                    hash_blake3,
-                    size,
-                });
-            }
-
-            let all_identical = !seen_hashes.is_empty() && seen_hashes.len() == 1;
-            let distinct_versions = seen_hashes.len();
-
-            entries.push(SemanticConflict {
-                key,
-                winner: winner_source,
-                providers,
-                all_identical,
-                distinct_versions,
-            });
         }
 
         Ok(SemanticConflictReport { entries })
+    }
+
+    fn semantic_conflict_for_key(
+        &self,
+        vfs: &VFS,
+        key: &Path,
+        opts: SemanticOpts,
+        hash_cache: &mut AHashMap<(usize, PathBuf), Option<ContentFingerprint>>,
+    ) -> io::Result<Option<SemanticConflict>> {
+        let provider_indices = self.sources_containing(key);
+        if provider_indices.len() < 2 {
+            return Ok(None);
+        }
+
+        let Some(winner_idx) = provider_indices.last().copied() else {
+            return Ok(None);
+        };
+
+        let winner_source = self.sources[winner_idx].clone();
+        let winner_fp = self.fingerprint_for_provider(
+            vfs,
+            winner_idx,
+            key,
+            hash_cache,
+            opts.archive_hash_mode,
+        )?;
+        let winner_bytes = if opts.include_semantic_deltas {
+            self.read_provider_bytes(vfs, winner_idx, key)
+        } else {
+            Ok(None)
+        }?;
+
+        let mut seen_hashes = AHashSet::<String>::new();
+        let mut providers = Vec::with_capacity(provider_indices.len());
+        let mut inferred_asset_class = AssetClass::Unknown;
+
+        for &idx in provider_indices {
+            let src = self.sources[idx].clone();
+            let current =
+                self.fingerprint_for_provider(vfs, idx, key, hash_cache, opts.archive_hash_mode)?;
+
+            let semantic_delta_to_winner = if opts.include_semantic_deltas {
+                let current_bytes = self.read_provider_bytes(vfs, idx, key)?;
+                match (&winner_bytes, &current_bytes) {
+                    (Some(winner), Some(current)) => {
+                        let (asset_class, delta) = analyze_pair(key, current, winner);
+                        inferred_asset_class = asset_class;
+                        Some(delta)
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            let (relation, hash_blake3, size) = match (&winner_fp, &current) {
+                (Some(w), Some(c)) => {
+                    let rel = if w.digest == c.digest {
+                        SemanticRelation::IdenticalToWinner
+                    } else {
+                        SemanticRelation::DifferentFromWinner
+                    };
+                    let digest = c.to_digest();
+                    seen_hashes.insert(digest.hex.clone());
+                    (rel, Some(digest.hex), Some(digest.size))
+                }
+                (_, Some(c)) => {
+                    let digest = c.to_digest();
+                    seen_hashes.insert(digest.hex.clone());
+                    (
+                        SemanticRelation::Unknown,
+                        Some(digest.hex),
+                        Some(digest.size),
+                    )
+                }
+                (_, None) => (SemanticRelation::Unknown, None, None),
+            };
+
+            providers.push(SemanticProvider {
+                source: src,
+                relation,
+                hash_blake3,
+                size,
+                semantic_delta_to_winner,
+            });
+        }
+
+        Ok(Some(SemanticConflict {
+            key: key.to_path_buf(),
+            winner: winner_source,
+            providers,
+            asset_class: inferred_asset_class,
+            all_identical: !seen_hashes.is_empty() && seen_hashes.len() == 1,
+            distinct_versions: seen_hashes.len(),
+        }))
     }
 
     /// Build deterministic lock manifest from current winners.
@@ -1045,6 +1080,43 @@ impl LayerIndex {
         cache.insert(cache_key, fp.clone());
         Ok(fp)
     }
+
+    fn read_provider_bytes(
+        &self,
+        vfs: &VFS,
+        source_idx: usize,
+        key: &Path,
+    ) -> io::Result<Option<Vec<u8>>> {
+        let src = &self.sources[source_idx];
+        let mut out = Vec::new();
+
+        match src.kind {
+            SourceKind::LooseDir => {
+                let path = src.path.join(key);
+                if !path.exists() {
+                    return Ok(None);
+                }
+                let mut file = std::fs::File::open(path)?;
+                file.read_to_end(&mut out)?;
+                Ok(Some(out))
+            }
+            SourceKind::Archive => {
+                let Some(winner) = vfs.get_file(key) else {
+                    return Ok(None);
+                };
+                let Some(parent) = winner.parent_archive_path() else {
+                    return Ok(None);
+                };
+                if parent != src.path.to_string_lossy() {
+                    return Ok(None);
+                }
+
+                let mut reader = winner.open()?;
+                reader.read_to_end(&mut out)?;
+                Ok(Some(out))
+            }
+        }
+    }
 }
 
 fn hash_reader(mut reader: impl Read) -> io::Result<ContentFingerprint> {
@@ -1353,5 +1425,42 @@ mod tests {
 
         assert_eq!(plan.conflicts.len(), 1);
         assert_eq!(plan.conflicts[0].semantic_differs, None);
+    }
+
+    #[test]
+    fn semantic_conflicts_enrich_adds_asset_class_and_delta() {
+        let low = TempDir::new("analysis_semantic_enrich_low");
+        let high = TempDir::new("analysis_semantic_enrich_high");
+
+        low.write("config/example.ini", b"[sec]\na=1\nb=2\n");
+        high.write("config/example.ini", b"# comment\n[sec]\nb=2\na=1\n");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        let report = index
+            .semantic_conflicts_with_opts(
+                &vfs,
+                SemanticOpts {
+                    include_semantic_deltas: true,
+                    ..SemanticOpts::default()
+                },
+            )
+            .expect("semantic enrich should succeed");
+
+        let entry = report
+            .entries
+            .iter()
+            .find(|entry| entry.key == Path::new("config/example.ini"))
+            .expect("expected example.ini conflict entry");
+
+        assert_eq!(entry.asset_class, AssetClass::Ini);
+        assert!(
+            entry
+                .providers
+                .iter()
+                .all(|provider| provider.semantic_delta_to_winner.is_some())
+        );
+        assert!(entry.providers.iter().any(|provider| {
+            provider.semantic_delta_to_winner == Some(SemanticDelta::CosmeticOnly)
+        }));
     }
 }

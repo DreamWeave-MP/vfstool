@@ -7,8 +7,9 @@ use std::{
 };
 use vfstool_lib::{
     CandidatePlanOpts, CollapseOptions, ConflictIndex, LayerIndex, OrderConstraint, Policy,
-    ReorderOp, Rule, SerializeType, SimOpts, SolveObjective, SolveRequest, SolveStatus, SourceKind,
-    VfsLock, normalize_path, run_finalize, run_setup, serialize_value, vfs::VFS,
+    ReorderOp, Rule, SemanticOpts, SerializeType, SimOpts, SolveObjective, SolveRequest,
+    SolveStatus, SourceKind, VfsLock, normalize_path, run_finalize, run_setup, serialize_value,
+    vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
@@ -243,6 +244,9 @@ enum Commands {
     },
     /// Report semantic (content-aware) conflicts.
     SemanticConflicts {
+        /// Include semantic analyzer deltas where possible.
+        #[arg(long)]
+        enrich: bool,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -1028,11 +1032,18 @@ fn handle_diff(
 
 fn handle_semantic(
     resolved_config_dir: PathBuf,
+    enrich: bool,
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> Result<()> {
     let (vfs, layer) = build_layer_index(resolved_config_dir);
-    let report = layer.semantic_conflicts(&vfs)?;
+    let report = layer.semantic_conflicts_with_opts(
+        &vfs,
+        SemanticOpts {
+            include_semantic_deltas: enrich,
+            ..SemanticOpts::default()
+        },
+    )?;
     write_serialized(output, format, &report)
 }
 
@@ -1272,9 +1283,11 @@ fn run_analysis_command(
             format,
             output,
         } => handle_provenance(resolved_config_dir, &path, hashes, format, output),
-        Commands::SemanticConflicts { format, output } => {
-            handle_semantic(resolved_config_dir, format, output)
-        }
+        Commands::SemanticConflicts {
+            enrich,
+            format,
+            output,
+        } => handle_semantic(resolved_config_dir, enrich, format, output),
         Commands::Lock { format, output } => handle_lock(resolved_config_dir, format, output),
         Commands::Verify {
             policy,
