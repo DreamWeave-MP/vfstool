@@ -181,6 +181,7 @@ pub struct VfsLockEntry {
 }
 
 /// Reorder operation for what-if simulations.
+#[derive(Debug, Clone)]
 pub enum ReorderOp {
     /// Swap two sources by exact path.
     Swap(PathBuf, PathBuf),
@@ -209,6 +210,75 @@ pub struct SimOpts {
     pub sample_limit: usize,
     /// Optional impact bucket globs (e.g. `textures/**`, `meshes/**`).
     pub impact_buckets: Vec<String>,
+}
+
+/// Condition under which an impact rule applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
+pub enum HeuristicCondition {
+    /// Applies whenever the winner changed for the key.
+    WinnerChanged,
+    /// Applies only when winner changed and semantic analysis marks behavior change.
+    WinnerChangedAndSemanticBehaviorChanging,
+}
+
+/// One weighted impact heuristic.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImpactHeuristic {
+    /// Rule name used in diagnostics.
+    pub name: String,
+    /// Path glob for rule scope.
+    pub path_glob: String,
+    /// Rule weight added to total score when matched.
+    pub weight: f32,
+    /// Match condition for this rule.
+    pub condition: HeuristicCondition,
+}
+
+/// Impact scoring profile.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImpactProfile {
+    /// Ordered list of weighted heuristics.
+    pub heuristics: Vec<ImpactHeuristic>,
+}
+
+/// One risky changed key row.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct RiskyChange {
+    /// Changed key.
+    pub key: PathBuf,
+    /// Accumulated impact score.
+    pub score: f32,
+    /// Names of matched heuristic rules.
+    pub reasons: Vec<String>,
+}
+
+/// Impact score aggregate per bucket glob.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct BucketImpact {
+    /// Bucket glob.
+    pub bucket: String,
+    /// Summed score for changed keys in this bucket.
+    pub score: f32,
+}
+
+/// Impact scoring result.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct ImpactReport {
+    /// Total accumulated score across changed keys.
+    pub overall_score: f32,
+    /// Coarse risk level derived from total score.
+    pub risk_level: RiskLevel,
+    /// Per-bucket impact summaries.
+    pub by_bucket: Vec<BucketImpact>,
+    /// Top changed keys ranked by impact score.
+    pub top_risky_changes: Vec<RiskyChange>,
 }
 
 impl Default for SimOpts {
@@ -296,7 +366,7 @@ pub struct DriftReport {
 
 /// Optional risk level for candidate planning workflows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub enum RiskLevel {
     /// Lowest risk.
     Low,
@@ -769,6 +839,111 @@ impl LayerIndex {
             by_source_gain_loss: rows,
             by_bucket: bucket_rows,
             changed_keys_sample: changed.into_iter().take(opts.sample_limit).collect(),
+        })
+    }
+
+    /// Simulate a reordering operation and compute heuristic impact scores.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when simulation or semantic analysis fails.
+    pub fn simulate_impact(
+        &self,
+        vfs: &VFS,
+        op: ReorderOp,
+        opts: &SimOpts,
+        profile: &ImpactProfile,
+    ) -> io::Result<ImpactReport> {
+        let mut all_opts = opts.clone();
+        all_opts.sample_limit = usize::MAX;
+        let delta = self.simulate_with_opts(vfs, op, &all_opts)?;
+
+        let semantic = self.semantic_conflicts_with_opts(
+            vfs,
+            SemanticOpts {
+                include_semantic_deltas: true,
+                ..SemanticOpts::default()
+            },
+        )?;
+        let behavior_changing: AHashSet<PathBuf> = semantic
+            .entries
+            .into_iter()
+            .filter_map(|entry| {
+                let has_behavior_change = entry.providers.iter().any(|provider| {
+                    matches!(
+                        provider.semantic_delta_to_winner,
+                        Some(SemanticDelta::BehaviorChanging { .. })
+                    )
+                });
+                if has_behavior_change {
+                    Some(entry.key)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut scored = Vec::<RiskyChange>::new();
+        for key in delta.changed_keys_sample {
+            let mut score = 0.0_f32;
+            let mut reasons = Vec::new();
+
+            for heuristic in &profile.heuristics {
+                if !path_glob_matches(&heuristic.path_glob, &key) {
+                    continue;
+                }
+                let condition_matches = match heuristic.condition {
+                    HeuristicCondition::WinnerChanged => true,
+                    HeuristicCondition::WinnerChangedAndSemanticBehaviorChanging => {
+                        behavior_changing.contains(&key)
+                    }
+                };
+                if condition_matches {
+                    score += heuristic.weight;
+                    reasons.push(heuristic.name.clone());
+                }
+            }
+
+            if score > 0.0 {
+                scored.push(RiskyChange {
+                    key,
+                    score,
+                    reasons,
+                });
+            }
+        }
+
+        scored.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.key.cmp(&b.key)));
+
+        let by_bucket = opts
+            .impact_buckets
+            .iter()
+            .map(|bucket| BucketImpact {
+                bucket: bucket.clone(),
+                score: scored
+                    .iter()
+                    .filter(|change| path_glob_matches(bucket, &change.key))
+                    .map(|change| change.score)
+                    .sum(),
+            })
+            .collect();
+
+        let overall_score: f32 = scored.iter().map(|change| change.score).sum();
+        let risk_level = if overall_score == 0.0 {
+            RiskLevel::Low
+        } else if overall_score < 5.0 {
+            RiskLevel::Medium
+        } else if overall_score < 15.0 {
+            RiskLevel::High
+        } else {
+            RiskLevel::Critical
+        };
+
+        Ok(ImpactReport {
+            overall_score,
+            risk_level,
+            by_bucket,
+            top_risky_changes: scored.into_iter().take(100).collect(),
         })
     }
 
@@ -1344,6 +1519,41 @@ mod tests {
         assert_eq!(delta.by_bucket.len(), 2);
         assert_eq!(delta.by_bucket[0].changed_winners, 1);
         assert_eq!(delta.by_bucket[1].changed_winners, 1);
+    }
+
+    #[test]
+    fn simulate_impact_scores_with_profile() {
+        let low = TempDir::new("analysis_impact_low");
+        let high = TempDir::new("analysis_impact_high");
+        low.write("scripts/x.lua", b"print('a')\n");
+        high.write("scripts/x.lua", b"print('b')\n");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        let opts = SimOpts {
+            sample_limit: 50,
+            impact_buckets: vec!["scripts/**".into()],
+        };
+        let profile = ImpactProfile {
+            heuristics: vec![ImpactHeuristic {
+                name: "scripts-change".into(),
+                path_glob: "scripts/**".into(),
+                weight: 3.0,
+                condition: HeuristicCondition::WinnerChanged,
+            }],
+        };
+
+        let report = index
+            .simulate_impact(
+                &vfs,
+                ReorderOp::Swap(low.path().to_path_buf(), high.path().to_path_buf()),
+                &opts,
+                &profile,
+            )
+            .expect("simulate impact should succeed");
+
+        assert!(report.overall_score > 0.0);
+        assert!(!report.top_risky_changes.is_empty());
+        assert_eq!(report.by_bucket.len(), 1);
     }
 
     #[test]

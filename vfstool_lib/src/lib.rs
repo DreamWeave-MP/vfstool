@@ -28,10 +28,11 @@ pub mod vfs_file;
 
 pub use analysis::{
     ArchiveHashMode, BucketDelta, CandidateConflict, CandidatePlan, CandidatePlanOpts,
-    CandidatePlanSummary, DriftEntry, DriftKind, DriftReport, LayerIndex, ProvenanceChain,
-    ProviderRecord, ReorderOp, RiskLevel, SemanticConflict, SemanticConflictReport, SemanticOpts,
-    SemanticProvider, SemanticRelation, SimOpts, SimulationDelta, SourceDelta, SourceKind,
-    SourceMeta, VfsLock, VfsLockEntry,
+    CandidatePlanSummary, DriftEntry, DriftKind, DriftReport, HeuristicCondition, ImpactHeuristic,
+    ImpactProfile, ImpactReport, LayerIndex, ProvenanceChain, ProviderRecord, ReorderOp, RiskLevel,
+    RiskyChange, SemanticConflict, SemanticConflictReport, SemanticOpts, SemanticProvider,
+    SemanticRelation, SimOpts, SimulationDelta, SourceDelta, SourceKind, SourceMeta, VfsLock,
+    VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;

@@ -6,10 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    CandidatePlanOpts, CollapseOptions, ConflictIndex, LayerIndex, OrderConstraint, Policy,
-    ReorderOp, Rule, SemanticOpts, SerializeType, SimOpts, SolveObjective, SolveRequest,
-    SolveStatus, SourceKind, VfsLock, normalize_path, run_finalize, run_setup, serialize_value,
-    vfs::VFS,
+    CandidatePlanOpts, CollapseOptions, ConflictIndex, ImpactProfile, LayerIndex, OrderConstraint,
+    Policy, ReorderOp, Rule, SemanticOpts, SerializeType, SimOpts, SimulationDelta, SolveObjective,
+    SolveRequest, SolveStatus, SourceKind, VfsLock, normalize_path, run_finalize, run_setup,
+    serialize_value, vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
@@ -280,6 +280,9 @@ enum Commands {
         /// Maximum number of changed keys included in output sample.
         #[arg(long, default_value_t = 100)]
         sample_limit: usize,
+        /// Optional impact profile YAML for weighted risk scoring.
+        #[arg(long)]
+        impact_profile: Option<PathBuf>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -297,6 +300,9 @@ enum Commands {
         /// Maximum number of changed keys included in output sample.
         #[arg(long, default_value_t = 100)]
         sample_limit: usize,
+        /// Optional impact profile YAML for weighted risk scoring.
+        #[arg(long)]
+        impact_profile: Option<PathBuf>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -314,6 +320,9 @@ enum Commands {
         /// Maximum number of changed keys included in output sample.
         #[arg(long, default_value_t = 100)]
         sample_limit: usize,
+        /// Optional impact profile YAML for weighted risk scoring.
+        #[arg(long)]
+        impact_profile: Option<PathBuf>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -332,6 +341,9 @@ enum Commands {
         /// Maximum number of changed keys included in output sample.
         #[arg(long, default_value_t = 100)]
         sample_limit: usize,
+        /// Optional impact profile YAML for weighted risk scoring.
+        #[arg(long)]
+        impact_profile: Option<PathBuf>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -617,11 +629,28 @@ fn parse_lock_file(path: &Path) -> io::Result<VfsLock> {
     }
 }
 
+fn parse_impact_profile(path: &Path) -> io::Result<ImpactProfile> {
+    let content = fs::read_to_string(path)?;
+    serde_yaml::from_str(&content).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid impact profile yaml '{}': {e}", path.display()),
+        )
+    })
+}
+
+#[derive(serde::Serialize)]
+struct SimulationOutput {
+    simulation: SimulationDelta,
+    impact: Option<vfstool_lib::ImpactReport>,
+}
+
 fn run_simulation_command(
     resolved_config_dir: PathBuf,
     op: ReorderOp,
     buckets: Vec<String>,
     sample_limit: usize,
+    impact_profile: Option<PathBuf>,
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> io::Result<()> {
@@ -631,8 +660,30 @@ fn run_simulation_command(
         impact_buckets: buckets,
     };
 
-    match layer.simulate_with_opts(&vfs, op, &opts) {
-        Ok(delta) => write_serialized(output, format, &delta),
+    match layer.simulate_with_opts(&vfs, op.clone(), &opts) {
+        Ok(delta) => {
+            if let Some(profile_path) = impact_profile {
+                let profile = parse_impact_profile(&profile_path)?;
+                let impact = layer.simulate_impact(&vfs, op, &opts, &profile)?;
+                write_serialized(
+                    output,
+                    format,
+                    &SimulationOutput {
+                        simulation: delta,
+                        impact: Some(impact),
+                    },
+                )
+            } else {
+                write_serialized(
+                    output,
+                    format,
+                    &SimulationOutput {
+                        simulation: delta,
+                        impact: None,
+                    },
+                )
+            }
+        }
         Err(err) if err.kind() == io::ErrorKind::InvalidInput => {
             eprintln!("{}{}", print::err_prefix(), err);
             std::process::exit(2);
@@ -1363,6 +1414,7 @@ fn run_command(
             source_b,
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         } => run_simulation_command(
@@ -1370,6 +1422,7 @@ fn run_command(
             ReorderOp::Swap(source_a, source_b),
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         ),
@@ -1378,6 +1431,7 @@ fn run_command(
             before,
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         } => run_simulation_command(
@@ -1385,6 +1439,7 @@ fn run_command(
             ReorderOp::MoveBefore { source, before },
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         ),
@@ -1393,6 +1448,7 @@ fn run_command(
             after,
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         } => run_simulation_command(
@@ -1400,6 +1456,7 @@ fn run_command(
             ReorderOp::MoveAfter { source, after },
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         ),
@@ -1407,6 +1464,7 @@ fn run_command(
             order_file,
             buckets,
             sample_limit,
+            impact_profile,
             format,
             output,
         } => {
@@ -1416,6 +1474,7 @@ fn run_command(
                 ReorderOp::FullOrder(order),
                 buckets,
                 sample_limit,
+                impact_profile,
                 format,
                 output,
             )
