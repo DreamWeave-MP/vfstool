@@ -17,8 +17,13 @@ use vfstool_lib::{
 pub enum VFSToolExitCode {
     FindFailed = 1,
     FileNotInLooseDirectories = 2,
-    BadRegex = 254,
-    FailedToLoadOpenMWConfig = 255,
+    VerifyFailed = 3,
+    DriftDetected = 4,
+    SolveUnsatisfiable = 5,
+    BadRegex = 6,
+    FailedToLoadOpenMWConfig = 7,
+    InvalidInput = 8,
+    RuntimeFailure = 9,
 }
 
 impl From<VFSToolExitCode> for i32 {
@@ -26,8 +31,13 @@ impl From<VFSToolExitCode> for i32 {
         match value {
             VFSToolExitCode::FindFailed => 1,
             VFSToolExitCode::FileNotInLooseDirectories => 2,
-            VFSToolExitCode::BadRegex => 254,
-            VFSToolExitCode::FailedToLoadOpenMWConfig => 255,
+            VFSToolExitCode::VerifyFailed => 3,
+            VFSToolExitCode::DriftDetected => 4,
+            VFSToolExitCode::SolveUnsatisfiable => 5,
+            VFSToolExitCode::BadRegex => 6,
+            VFSToolExitCode::FailedToLoadOpenMWConfig => 7,
+            VFSToolExitCode::InvalidInput => 8,
+            VFSToolExitCode::RuntimeFailure => 9,
         }
     }
 }
@@ -778,7 +788,7 @@ fn run_simulation_command(
         }
         Err(err) if err.kind() == io::ErrorKind::InvalidInput => {
             eprintln!("{}{}", print::err_prefix(), err);
-            std::process::exit(2);
+            std::process::exit(VFSToolExitCode::InvalidInput.into());
         }
         Err(err) => Err(err),
     }
@@ -1050,7 +1060,7 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
                 "{}No data-local set in openmw.cfg; use --output to specify a destination.",
                 print::err_prefix()
             );
-            std::process::exit(1);
+            std::process::exit(VFSToolExitCode::InvalidInput.into());
         }
     });
 
@@ -1115,7 +1125,11 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
         let _ = fs::remove_dir_all(&merged);
     }
     inner_result?;
-    std::process::exit(subprocess_status.and_then(|s| s.code()).unwrap_or(1));
+    std::process::exit(
+        subprocess_status
+            .and_then(|s| s.code())
+            .unwrap_or(VFSToolExitCode::RuntimeFailure.into()),
+    );
 }
 
 fn handle_provenance(
@@ -1212,7 +1226,7 @@ fn handle_verify(
     let has_violations = !result.violations.is_empty();
     write_serialized(output, format, &result)?;
     if has_violations {
-        std::process::exit(3);
+        std::process::exit(VFSToolExitCode::VerifyFailed.into());
     }
     Ok(())
 }
@@ -1230,7 +1244,7 @@ fn handle_drift(
     let has_drift = !report.entries.is_empty();
     write_serialized(output, format, &report)?;
     if has_drift && fail_on_drift {
-        std::process::exit(4);
+        std::process::exit(VFSToolExitCode::DriftDetected.into());
     }
     Ok(())
 }
@@ -1331,7 +1345,7 @@ fn handle_solve(
 
     write_serialized(output, format, &result)?;
     if result.status == SolveStatus::Unsatisfiable {
-        std::process::exit(5);
+        std::process::exit(VFSToolExitCode::SolveUnsatisfiable.into());
     }
     Ok(())
 }
