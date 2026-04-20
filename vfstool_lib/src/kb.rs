@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+use crate::SemanticConflictReport;
+use std::{io, path::PathBuf};
+
+/// Stable conflict fingerprint key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConflictFingerprint {
+    /// Lower-priority source path.
+    pub low_source: PathBuf,
+    /// Higher-priority source path.
+    pub high_source: PathBuf,
+    /// Key pattern or exact key text.
+    pub key_pattern: String,
+    /// Optional lower provider hash.
+    pub low_hash: Option<String>,
+    /// Optional higher provider hash.
+    pub high_hash: Option<String>,
+}
+
+/// Known outcome class for a fingerprint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
+pub enum KnownOutcome {
+    /// Known harmless conflict.
+    SafeNoOp,
+    /// Known override is intentional and acceptable.
+    SafeIntentionalOverride,
+    /// Human patching is required.
+    RequiresManualPatch,
+    /// Known breakage pattern.
+    KnownBreakage,
+}
+
+/// One persisted knowledge entry.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+pub struct KnowledgeEntry {
+    /// Conflict fingerprint key.
+    pub fingerprint: ConflictFingerprint,
+    /// Outcome class.
+    pub outcome: KnownOutcome,
+    /// Confidence score in [0.0, 1.0].
+    pub confidence: f32,
+    /// Optional notes.
+    pub notes: String,
+}
+
+/// Knowledge lookup and persistence interface.
+pub trait KnowledgeStore {
+    /// Return entries matching `fingerprint`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying store cannot be read.
+    fn lookup(&self, fingerprint: &ConflictFingerprint) -> io::Result<Vec<KnowledgeEntry>>;
+    /// Insert or replace one entry by fingerprint key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying store cannot be written.
+    fn upsert(&mut self, entry: KnowledgeEntry) -> io::Result<()>;
+    /// Return all entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying store cannot be read.
+    fn all(&self) -> io::Result<Vec<KnowledgeEntry>>;
+}
+
+/// File-backed local knowledge store (YAML).
+pub struct LocalKnowledgeStore {
+    path: PathBuf,
+}
+
+impl LocalKnowledgeStore {
+    /// Create a local store at `path`.
+    #[must_use]
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    fn load_entries(&self) -> io::Result<Vec<KnowledgeEntry>> {
+        if !self.path.exists() {
+            return Ok(Vec::new());
+        }
+        let content = std::fs::read_to_string(&self.path)?;
+        let mut out = Vec::new();
+        for (line_no, line) in content.lines().enumerate() {
+            if line.trim().is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 8 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "invalid knowledge line {} in '{}': expected 8 columns",
+                        line_no + 1,
+                        self.path.display()
+                    ),
+                ));
+            }
+            out.push(KnowledgeEntry {
+                fingerprint: ConflictFingerprint {
+                    low_source: PathBuf::from(parts[0]),
+                    high_source: PathBuf::from(parts[1]),
+                    key_pattern: parts[2].to_string(),
+                    low_hash: (!parts[3].is_empty()).then(|| parts[3].to_string()),
+                    high_hash: (!parts[4].is_empty()).then(|| parts[4].to_string()),
+                },
+                outcome: parse_outcome(parts[5])?,
+                confidence: parts[6].parse::<f32>().map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("invalid confidence on line {}: {e}", line_no + 1),
+                    )
+                })?,
+                notes: parts[7].replace("\\t", "\t"),
+            });
+        }
+        Ok(out)
+    }
+
+    fn save_entries(&self, entries: &[KnowledgeEntry]) -> io::Result<()> {
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let text = entries
+            .iter()
+            .map(|entry| {
+                format!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    entry.fingerprint.low_source.display(),
+                    entry.fingerprint.high_source.display(),
+                    entry.fingerprint.key_pattern,
+                    entry.fingerprint.low_hash.clone().unwrap_or_default(),
+                    entry.fingerprint.high_hash.clone().unwrap_or_default(),
+                    outcome_to_str(&entry.outcome),
+                    entry.confidence,
+                    entry.notes.replace('\t', "\\t")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&self.path, format!("{text}\n"))
+    }
+}
+
+fn outcome_to_str(outcome: &KnownOutcome) -> &'static str {
+    match outcome {
+        KnownOutcome::SafeNoOp => "safe_no_op",
+        KnownOutcome::SafeIntentionalOverride => "safe_intentional_override",
+        KnownOutcome::RequiresManualPatch => "requires_manual_patch",
+        KnownOutcome::KnownBreakage => "known_breakage",
+    }
+}
+
+fn parse_outcome(raw: &str) -> io::Result<KnownOutcome> {
+    match raw {
+        "safe_no_op" => Ok(KnownOutcome::SafeNoOp),
+        "safe_intentional_override" => Ok(KnownOutcome::SafeIntentionalOverride),
+        "requires_manual_patch" => Ok(KnownOutcome::RequiresManualPatch),
+        "known_breakage" => Ok(KnownOutcome::KnownBreakage),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unknown outcome '{raw}'"),
+        )),
+    }
+}
+
+impl KnowledgeStore for LocalKnowledgeStore {
+    fn lookup(&self, fingerprint: &ConflictFingerprint) -> io::Result<Vec<KnowledgeEntry>> {
+        Ok(self
+            .load_entries()?
+            .into_iter()
+            .filter(|entry| entry.fingerprint == *fingerprint)
+            .collect())
+    }
+
+    fn upsert(&mut self, entry: KnowledgeEntry) -> io::Result<()> {
+        let mut entries = self.load_entries()?;
+        if let Some(idx) = entries
+            .iter()
+            .position(|existing| existing.fingerprint == entry.fingerprint)
+        {
+            entries[idx] = entry;
+        } else {
+            entries.push(entry);
+        }
+        entries.sort_by(|a, b| {
+            a.fingerprint
+                .low_source
+                .cmp(&b.fingerprint.low_source)
+                .then(a.fingerprint.high_source.cmp(&b.fingerprint.high_source))
+                .then(a.fingerprint.key_pattern.cmp(&b.fingerprint.key_pattern))
+        });
+        self.save_entries(&entries)
+    }
+
+    fn all(&self) -> io::Result<Vec<KnowledgeEntry>> {
+        self.load_entries()
+    }
+}
+
+/// Derive conflict fingerprints from semantic conflict output.
+#[must_use]
+pub fn conflict_fingerprints_from_report(
+    report: &SemanticConflictReport,
+) -> Vec<ConflictFingerprint> {
+    let mut out = Vec::new();
+    for entry in &report.entries {
+        if let Some(winner) = entry.providers.last() {
+            for provider in entry
+                .providers
+                .iter()
+                .take(entry.providers.len().saturating_sub(1))
+            {
+                out.push(ConflictFingerprint {
+                    low_source: provider.source.path.clone(),
+                    high_source: winner.source.path.clone(),
+                    key_pattern: entry.key.display().to_string(),
+                    low_hash: provider.hash_blake3.clone(),
+                    high_hash: winner.hash_blake3.clone(),
+                });
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{SourceKind, analysis::SourceMeta};
+
+    #[test]
+    fn upsert_replaces_matching_fingerprint() {
+        let path = std::env::temp_dir().join("kb_upsert_replaces.yaml");
+        let _ = std::fs::remove_file(&path);
+        let mut store = LocalKnowledgeStore::new(path.clone());
+
+        let fp = ConflictFingerprint {
+            low_source: PathBuf::from("/a"),
+            high_source: PathBuf::from("/b"),
+            key_pattern: "x.dds".into(),
+            low_hash: None,
+            high_hash: None,
+        };
+        store
+            .upsert(KnowledgeEntry {
+                fingerprint: fp.clone(),
+                outcome: KnownOutcome::SafeNoOp,
+                confidence: 0.5,
+                notes: "a".into(),
+            })
+            .expect("first upsert should succeed");
+        store
+            .upsert(KnowledgeEntry {
+                fingerprint: fp,
+                outcome: KnownOutcome::KnownBreakage,
+                confidence: 1.0,
+                notes: "b".into(),
+            })
+            .expect("second upsert should succeed");
+
+        let all = store.all().expect("load all should succeed");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].outcome, KnownOutcome::KnownBreakage);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn fingerprint_generation_pairs_loser_with_winner() {
+        let _layer = crate::LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: PathBuf::from("/a"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("textures/a.dds")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("/b"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("textures/a.dds")],
+            ),
+        ]);
+
+        let report = SemanticConflictReport {
+            entries: vec![crate::SemanticConflict {
+                key: PathBuf::from("textures/a.dds"),
+                winner: SourceMeta {
+                    path: PathBuf::from("/b"),
+                    kind: SourceKind::LooseDir,
+                },
+                providers: vec![
+                    crate::SemanticProvider {
+                        source: SourceMeta {
+                            path: PathBuf::from("/a"),
+                            kind: SourceKind::LooseDir,
+                        },
+                        relation: crate::SemanticRelation::DifferentFromWinner,
+                        hash_blake3: Some("aa".into()),
+                        size: Some(1),
+                        semantic_delta_to_winner: None,
+                    },
+                    crate::SemanticProvider {
+                        source: SourceMeta {
+                            path: PathBuf::from("/b"),
+                            kind: SourceKind::LooseDir,
+                        },
+                        relation: crate::SemanticRelation::IdenticalToWinner,
+                        hash_blake3: Some("bb".into()),
+                        size: Some(1),
+                        semantic_delta_to_winner: None,
+                    },
+                ],
+                asset_class: crate::AssetClass::Binary,
+                all_identical: false,
+                distinct_versions: 2,
+            }],
+        };
+
+        let fps = conflict_fingerprints_from_report(&report);
+        assert_eq!(fps.len(), 1);
+        assert_eq!(fps[0].low_source, PathBuf::from("/a"));
+        assert_eq!(fps[0].high_source, PathBuf::from("/b"));
+    }
+}

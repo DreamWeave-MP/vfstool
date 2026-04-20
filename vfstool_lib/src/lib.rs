@@ -9,6 +9,8 @@ pub mod conflict;
 pub mod directory_node;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
+/// Conflict fingerprint knowledge base types and storage.
+pub mod kb;
 /// Shared glob/path matching utilities.
 pub mod matchers;
 /// Declarative policy rules and evaluation against VFS/layer state.
@@ -37,6 +39,10 @@ pub use analysis::{
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
+pub use kb::{
+    ConflictFingerprint, KnowledgeEntry, KnowledgeStore, KnownOutcome, LocalKnowledgeStore,
+    conflict_fingerprints_from_report,
+};
 pub use matchers::{path_glob_matches, source_glob_matches};
 pub use policy::{Policy, PolicyResult, Rule, Severity, Violation};
 pub use reports::{

@@ -22,7 +22,7 @@ pub enum SourceKind {
 
 /// A source entry in load-order position.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SourceMeta {
     /// Absolute path to the source.
     pub path: PathBuf,
@@ -67,7 +67,7 @@ pub struct ProvenanceChain {
 
 /// Per-provider relation to winner content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub enum SemanticRelation {
     /// Byte-identical to winner.
     IdenticalToWinner,
@@ -79,7 +79,7 @@ pub enum SemanticRelation {
 
 /// Semantic info for one provider.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemanticProvider {
     /// Source metadata.
     pub source: SourceMeta,
@@ -95,7 +95,7 @@ pub struct SemanticProvider {
 
 /// Semantic conflict for one key with multiple providers.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemanticConflict {
     /// Normalized key.
     pub key: PathBuf,
@@ -113,7 +113,7 @@ pub struct SemanticConflict {
 
 /// Semantic conflicts across the load order.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemanticConflictReport {
     /// One entry per conflicting key.
     pub entries: Vec<SemanticConflict>,

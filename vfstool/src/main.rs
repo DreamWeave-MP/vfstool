@@ -6,10 +6,12 @@ use std::{
     path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    CandidatePlanOpts, CollapseOptions, ConflictIndex, ImpactProfile, LayerIndex, OrderConstraint,
-    Policy, ReorderOp, Rule, SemanticOpts, SerializeType, SimOpts, SimulationDelta, SolveObjective,
-    SolveRequest, SolveStatus, SourceKind, VfsLock, normalize_path, run_finalize, run_setup,
-    serialize_value, vfs::VFS,
+    CandidatePlanOpts, CollapseOptions, ConflictFingerprint, ConflictIndex, ImpactProfile,
+    KnowledgeEntry, KnowledgeStore, KnownOutcome, LayerIndex, LocalKnowledgeStore, OrderConstraint,
+    Policy, ReorderOp, Rule, SemanticConflictReport, SemanticOpts, SerializeType, SimOpts,
+    SimulationDelta, SolveObjective, SolveRequest, SolveStatus, SourceKind, VfsLock,
+    conflict_fingerprints_from_report, normalize_path, run_finalize, run_setup, serialize_value,
+    vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
@@ -388,6 +390,47 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Lookup known outcomes for conflict fingerprints.
+    KbLookup {
+        /// Path to local knowledge store TSV file.
+        store: PathBuf,
+        /// Path to semantic conflict report (yaml/json/toml).
+        conflicts: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Add or update one knowledge-base entry.
+    KbAdd {
+        /// Path to local knowledge store TSV file.
+        store: PathBuf,
+        /// Lower-priority source path.
+        low_source: PathBuf,
+        /// Higher-priority source path.
+        high_source: PathBuf,
+        /// Key pattern or exact key.
+        key_pattern: String,
+        /// Optional lower hash.
+        #[arg(long)]
+        low_hash: Option<String>,
+        /// Optional higher hash.
+        #[arg(long)]
+        high_hash: Option<String>,
+        /// Known outcome class.
+        #[arg(long, value_enum)]
+        outcome: KnownOutcomeArg,
+        /// Confidence in [0.0, 1.0].
+        #[arg(long, default_value_t = 1.0)]
+        confidence: f32,
+        /// Optional notes.
+        #[arg(long, default_value = "")]
+        notes: String,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(serde::Deserialize)]
@@ -462,6 +505,26 @@ impl From<SolveObjectiveArg> for SolveObjective {
     fn from(value: SolveObjectiveArg) -> Self {
         match value {
             SolveObjectiveArg::MinMoves => SolveObjective::MinMovesFromCurrent,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "snake_case")]
+enum KnownOutcomeArg {
+    SafeNoOp,
+    SafeIntentionalOverride,
+    RequiresManualPatch,
+    KnownBreakage,
+}
+
+impl From<KnownOutcomeArg> for KnownOutcome {
+    fn from(value: KnownOutcomeArg) -> Self {
+        match value {
+            KnownOutcomeArg::SafeNoOp => KnownOutcome::SafeNoOp,
+            KnownOutcomeArg::SafeIntentionalOverride => KnownOutcome::SafeIntentionalOverride,
+            KnownOutcomeArg::RequiresManualPatch => KnownOutcome::RequiresManualPatch,
+            KnownOutcomeArg::KnownBreakage => KnownOutcome::KnownBreakage,
         }
     }
 }
@@ -637,6 +700,35 @@ fn parse_impact_profile(path: &Path) -> io::Result<ImpactProfile> {
             format!("invalid impact profile yaml '{}': {e}", path.display()),
         )
     })
+}
+
+fn parse_semantic_report(path: &Path) -> io::Result<SemanticConflictReport> {
+    let content = fs::read_to_string(path)?;
+    match path.extension().and_then(std::ffi::OsStr::to_str) {
+        Some("json") => serde_json::from_str(&content).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid JSON semantic report '{}': {e}", path.display()),
+            )
+        }),
+        Some("toml") => toml::from_str(&content).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid TOML semantic report '{}': {e}", path.display()),
+            )
+        }),
+        _ => serde_yaml::from_str(&content).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid YAML semantic report '{}': {e}", path.display()),
+            )
+        }),
+    }
+}
+
+#[derive(serde::Serialize)]
+struct KbLookupResult {
+    matches: Vec<KnowledgeEntry>,
 }
 
 #[derive(serde::Serialize)]
@@ -1161,6 +1253,42 @@ fn handle_plan_candidate(
     write_serialized(output, format, &plan)
 }
 
+fn handle_kb_lookup(
+    store_path: &Path,
+    conflicts_path: &Path,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let report = parse_semantic_report(conflicts_path)?;
+    let store = LocalKnowledgeStore::new(store_path.to_path_buf());
+    let mut matches = Vec::new();
+    for fingerprint in conflict_fingerprints_from_report(&report) {
+        matches.extend(store.lookup(&fingerprint)?);
+    }
+    write_serialized(output, format, &KbLookupResult { matches })
+}
+
+fn handle_kb_add(
+    store_path: &Path,
+    fingerprint: ConflictFingerprint,
+    outcome: KnownOutcome,
+    confidence: f32,
+    notes: String,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let mut store = LocalKnowledgeStore::new(store_path.to_path_buf());
+    let entry = KnowledgeEntry {
+        fingerprint,
+        outcome,
+        confidence,
+        notes,
+    };
+    store.upsert(entry)?;
+    let entries = store.all()?;
+    write_serialized(output, format, &entries)
+}
+
 fn write_order_file(path: &Path, order: &[PathBuf]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -1296,25 +1424,27 @@ fn run_core_vfs_command(
     }
 }
 
-fn run_analysis_command(
+fn run_analysis_primary(
     command: Commands,
     use_relative: bool,
     resolved_config_dir: PathBuf,
-) -> Result<()> {
+) -> Result<Option<Commands>> {
     match command {
         Commands::Conflicts { format, output } => {
-            handle_conflicts(resolved_config_dir, use_relative, format, output)
+            handle_conflicts(resolved_config_dir, use_relative, format, output)?;
+            Ok(None)
         }
         Commands::Shadowed { format, output } => {
-            handle_shadowed(resolved_config_dir, use_relative, format, output)
+            handle_shadowed(resolved_config_dir, use_relative, format, output)?;
+            Ok(None)
         }
         Commands::Which { path } => {
             handle_which(resolved_config_dir, &path);
-            Ok(())
+            Ok(None)
         }
         Commands::Stats => {
             handle_stats(resolved_config_dir);
-            Ok(())
+            Ok(None)
         }
         Commands::Diff {
             source_a,
@@ -1327,24 +1457,27 @@ fn run_analysis_command(
             source_b.as_path(),
             format,
             output,
-        ),
+        )
+        .map(|()| None),
         Commands::Provenance {
             path,
             hashes,
             format,
             output,
-        } => handle_provenance(resolved_config_dir, &path, hashes, format, output),
+        } => handle_provenance(resolved_config_dir, &path, hashes, format, output).map(|()| None),
         Commands::SemanticConflicts {
             enrich,
             format,
             output,
-        } => handle_semantic(resolved_config_dir, enrich, format, output),
-        Commands::Lock { format, output } => handle_lock(resolved_config_dir, format, output),
+        } => handle_semantic(resolved_config_dir, enrich, format, output).map(|()| None),
+        Commands::Lock { format, output } => {
+            handle_lock(resolved_config_dir, format, output).map(|()| None)
+        }
         Commands::Verify {
             policy,
             format,
             output,
-        } => handle_verify(resolved_config_dir, &policy, format, output),
+        } => handle_verify(resolved_config_dir, &policy, format, output).map(|()| None),
         Commands::Drift {
             lock_file,
             fail_on_drift,
@@ -1356,7 +1489,8 @@ fn run_analysis_command(
             fail_on_drift,
             format,
             output,
-        ),
+        )
+        .map(|()| None),
         Commands::PlanCandidate {
             candidate_dir,
             no_semantic,
@@ -1366,6 +1500,46 @@ fn run_analysis_command(
             resolved_config_dir,
             candidate_dir.as_path(),
             no_semantic,
+            format,
+            output,
+        )
+        .map(|()| None),
+        other => Ok(Some(other)),
+    }
+}
+
+fn run_analysis_secondary(command: Commands, resolved_config_dir: PathBuf) -> Result<()> {
+    match command {
+        Commands::KbLookup {
+            store,
+            conflicts,
+            format,
+            output,
+        } => handle_kb_lookup(store.as_path(), conflicts.as_path(), format, output),
+        Commands::KbAdd {
+            store,
+            low_source,
+            high_source,
+            key_pattern,
+            low_hash,
+            high_hash,
+            outcome,
+            confidence,
+            notes,
+            format,
+            output,
+        } => handle_kb_add(
+            store.as_path(),
+            ConflictFingerprint {
+                low_source,
+                high_source,
+                key_pattern,
+                low_hash,
+                high_hash,
+            },
+            outcome.into(),
+            confidence,
+            notes,
             format,
             output,
         ),
@@ -1383,17 +1557,20 @@ fn run_analysis_command(
             format,
             output,
         ),
-        Commands::Collapse { .. }
-        | Commands::Extract { .. }
-        | Commands::Find { .. }
-        | Commands::FindFile { .. }
-        | Commands::Remaining { .. }
-        | Commands::Run { .. }
-        | Commands::SimulateSwap { .. }
-        | Commands::SimulateMoveBefore { .. }
-        | Commands::SimulateMoveAfter { .. }
-        | Commands::SimulateFullOrder { .. } => Ok(()),
+        _ => Ok(()),
     }
+}
+
+fn run_analysis_command(
+    command: Commands,
+    use_relative: bool,
+    resolved_config_dir: PathBuf,
+) -> Result<()> {
+    let Some(command) = run_analysis_primary(command, use_relative, resolved_config_dir.clone())?
+    else {
+        return Ok(());
+    };
+    run_analysis_secondary(command, resolved_config_dir)
 }
 
 fn run_command(
