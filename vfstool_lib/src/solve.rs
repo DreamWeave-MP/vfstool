@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{analysis::LayerIndex, path_glob_matches, source_glob_matches};
+use crate::{analysis::LayerIndex, normalize_path};
+use ahash::AHashMap;
+use regex::Regex;
 use std::{cmp::Ordering, io, path::PathBuf};
 
 /// Optimization objective for solver output ranking.
@@ -95,6 +97,31 @@ pub struct SolveResult {
     pub diagnostics: SolveDiagnostics,
 }
 
+#[derive(Debug, Clone)]
+enum CompiledConstraint {
+    SourceBefore {
+        constraint_index: usize,
+        a_idx: usize,
+        b_idx: usize,
+        a: PathBuf,
+        b: PathBuf,
+    },
+    SourceAfter {
+        constraint_index: usize,
+        a_idx: usize,
+        b_idx: usize,
+        a: PathBuf,
+        b: PathBuf,
+    },
+    WinnerMustBe {
+        constraint_index: usize,
+        path_glob: String,
+        source_glob: String,
+        matched_key_indices: Vec<usize>,
+        allowed_sources: Vec<bool>,
+    },
+}
+
 impl LayerIndex {
     /// Solve constraints and suggest an improved load order.
     ///
@@ -106,8 +133,16 @@ impl LayerIndex {
             SolveObjective::MinMovesFromCurrent => {}
         }
 
-        let current = resolve_current_order(self, &request.current_order)?;
-        let precedence_edges = build_precedence_edges(self, &request.constraints)?;
+        let source_lookup = source_lookup(self);
+        let current = resolve_current_order(self, &request.current_order, &source_lookup)?;
+        let keys = self.keys();
+        let providers_by_key: Vec<&[usize]> = keys
+            .iter()
+            .map(|key| self.sources_containing(key))
+            .collect();
+        let compiled_constraints =
+            compile_constraints(self, &request.constraints, &keys, &source_lookup)?;
+        let precedence_edges = precedence_edges(&compiled_constraints);
 
         let Some(mut candidate) =
             stable_topological_sort(&current, self.sources.len(), &precedence_edges)
@@ -123,21 +158,37 @@ impl LayerIndex {
             });
         };
 
-        let mut violations = evaluate_constraints(self, &candidate, &request.constraints);
-        if !violations.is_empty() {
+        let mut violations = evaluate_constraints(
+            self.sources.len(),
+            &candidate,
+            &compiled_constraints,
+            &keys,
+            &providers_by_key,
+        );
+        if !violations.is_empty()
+            && !has_unavoidable_unsat(self.sources.len(), &compiled_constraints, &providers_by_key)
+        {
             let max_iters = self.sources.len().saturating_mul(self.sources.len()).max(1);
             for _ in 0..max_iters {
                 let Some(next) = best_neighbor(
-                    self,
                     &current,
                     &candidate,
+                    self.sources.len(),
                     &precedence_edges,
-                    &request.constraints,
+                    &compiled_constraints,
+                    &keys,
+                    &providers_by_key,
                 ) else {
                     break;
                 };
 
-                let next_violations = evaluate_constraints(self, &next, &request.constraints);
+                let next_violations = evaluate_constraints(
+                    self.sources.len(),
+                    &next,
+                    &compiled_constraints,
+                    &keys,
+                    &providers_by_key,
+                );
                 if compare_solution_quality(
                     &next_violations,
                     &next,
@@ -155,7 +206,8 @@ impl LayerIndex {
         }
 
         let move_count = move_count(&current, &candidate);
-        let changed_winners = changed_winner_count(self, &current, &candidate);
+        let changed_winners =
+            changed_winner_count(self.sources.len(), &providers_by_key, &current, &candidate);
 
         let status = if violations.is_empty() {
             SolveStatus::Satisfiable
@@ -181,7 +233,20 @@ impl LayerIndex {
     }
 }
 
-fn resolve_current_order(layer: &LayerIndex, current_order: &[PathBuf]) -> io::Result<Vec<usize>> {
+fn source_lookup(layer: &LayerIndex) -> AHashMap<PathBuf, usize> {
+    layer
+        .sources
+        .iter()
+        .enumerate()
+        .map(|(idx, source)| (source.path.clone(), idx))
+        .collect()
+}
+
+fn resolve_current_order(
+    layer: &LayerIndex,
+    current_order: &[PathBuf],
+    source_lookup: &AHashMap<PathBuf, usize>,
+) -> io::Result<Vec<usize>> {
     if current_order.is_empty() {
         return Ok((0..layer.sources.len()).collect());
     }
@@ -196,16 +261,12 @@ fn resolve_current_order(layer: &LayerIndex, current_order: &[PathBuf]) -> io::R
     let mut seen = vec![false; layer.sources.len()];
     let mut indices = Vec::with_capacity(current_order.len());
     for path in current_order {
-        let idx = layer
-            .sources
-            .iter()
-            .position(|source| source.path == *path)
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("unknown source in current_order: {}", path.display()),
-                )
-            })?;
+        let idx = source_lookup.get(path).copied().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("unknown source in current_order: {}", path.display()),
+            )
+        })?;
 
         if seen[idx] {
             return Err(io::Error::new(
@@ -220,39 +281,122 @@ fn resolve_current_order(layer: &LayerIndex, current_order: &[PathBuf]) -> io::R
     Ok(indices)
 }
 
-fn build_precedence_edges(
-    layer: &LayerIndex,
-    constraints: &[OrderConstraint],
-) -> io::Result<Vec<(usize, usize)>> {
-    let mut edges = Vec::new();
-    for constraint in constraints {
-        let maybe_edge = match constraint {
-            OrderConstraint::SourceBefore { a, b } => {
-                Some((source_index(layer, a)?, source_index(layer, b)?))
-            }
-            OrderConstraint::SourceAfter { a, b } => {
-                Some((source_index(layer, b)?, source_index(layer, a)?))
-            }
-            OrderConstraint::WinnerMustBe { .. } => None,
-        };
-        if let Some(edge) = maybe_edge {
-            edges.push(edge);
-        }
-    }
-    Ok(edges)
+fn precedence_edges(constraints: &[CompiledConstraint]) -> Vec<(usize, usize)> {
+    constraints
+        .iter()
+        .filter_map(|constraint| match constraint {
+            CompiledConstraint::SourceBefore { a_idx, b_idx, .. } => Some((*a_idx, *b_idx)),
+            CompiledConstraint::SourceAfter { a_idx, b_idx, .. } => Some((*b_idx, *a_idx)),
+            CompiledConstraint::WinnerMustBe { .. } => None,
+        })
+        .collect()
 }
 
-fn source_index(layer: &LayerIndex, path: &PathBuf) -> io::Result<usize> {
-    layer
-        .sources
-        .iter()
-        .position(|source| source.path == *path)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("unknown source in constraint: {}", path.display()),
-            )
-        })
+fn compile_constraints(
+    layer: &LayerIndex,
+    constraints: &[OrderConstraint],
+    keys: &[PathBuf],
+    source_lookup: &AHashMap<PathBuf, usize>,
+) -> io::Result<Vec<CompiledConstraint>> {
+    let mut compiled = Vec::with_capacity(constraints.len());
+    for (constraint_index, constraint) in constraints.iter().enumerate() {
+        let item = match constraint {
+            OrderConstraint::SourceBefore { a, b } => CompiledConstraint::SourceBefore {
+                constraint_index,
+                a_idx: source_index(source_lookup, a)?,
+                b_idx: source_index(source_lookup, b)?,
+                a: a.clone(),
+                b: b.clone(),
+            },
+            OrderConstraint::SourceAfter { a, b } => CompiledConstraint::SourceAfter {
+                constraint_index,
+                a_idx: source_index(source_lookup, a)?,
+                b_idx: source_index(source_lookup, b)?,
+                a: a.clone(),
+                b: b.clone(),
+            },
+            OrderConstraint::WinnerMustBe {
+                path_glob,
+                source_glob,
+            } => {
+                let path_glob_re = compile_glob_regex(path_glob);
+                let matched_key_indices = keys
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(key_idx, key)| {
+                        if path_glob_re
+                            .as_ref()
+                            .is_some_and(|glob| glob.is_match(&key.to_string_lossy()))
+                        {
+                            Some(key_idx)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                let source_glob_re = compile_glob_regex(source_glob);
+                let allowed_sources = layer
+                    .sources
+                    .iter()
+                    .map(|source| {
+                        source_glob_re.as_ref().is_some_and(|glob| {
+                            glob.is_match(&normalize_path(&source.path).to_string_lossy())
+                        })
+                    })
+                    .collect();
+
+                CompiledConstraint::WinnerMustBe {
+                    constraint_index,
+                    path_glob: path_glob.clone(),
+                    source_glob: source_glob.clone(),
+                    matched_key_indices,
+                    allowed_sources,
+                }
+            }
+        };
+        compiled.push(item);
+    }
+    Ok(compiled)
+}
+
+fn source_index(source_lookup: &AHashMap<PathBuf, usize>, path: &PathBuf) -> io::Result<usize> {
+    source_lookup.get(path).copied().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("unknown source in constraint: {}", path.display()),
+        )
+    })
+}
+
+fn compile_glob_regex(glob: &str) -> Option<Regex> {
+    let mut regex_pattern = String::from("^");
+
+    let chars: Vec<char> = glob.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        match chars[i] {
+            '*' => {
+                if i + 1 < chars.len() && chars[i + 1] == '*' {
+                    regex_pattern.push_str(".*");
+                    i += 2;
+                } else {
+                    regex_pattern.push_str("[^/]*");
+                    i += 1;
+                }
+            }
+            '?' => {
+                regex_pattern.push('.');
+                i += 1;
+            }
+            c => {
+                regex_pattern.push_str(&regex::escape(&c.to_string()));
+                i += 1;
+            }
+        }
+    }
+
+    regex_pattern.push('$');
+    Regex::new(&regex_pattern).ok()
 }
 
 fn stable_topological_sort(
@@ -303,28 +447,30 @@ fn stable_topological_sort(
 }
 
 fn evaluate_constraints(
-    layer: &LayerIndex,
+    source_count: usize,
     order: &[usize],
-    constraints: &[OrderConstraint],
+    constraints: &[CompiledConstraint],
+    keys: &[PathBuf],
+    providers_by_key: &[&[usize]],
 ) -> Vec<ConstraintViolation> {
     let mut violations = Vec::new();
-    let mut rank = vec![0usize; layer.sources.len()];
+    let mut rank = vec![0usize; source_count];
     for (pos, source_idx) in order.iter().copied().enumerate() {
         rank[source_idx] = pos;
     }
 
-    for (idx, constraint) in constraints.iter().enumerate() {
+    for constraint in constraints {
         match constraint {
-            OrderConstraint::SourceBefore { a, b } => {
-                let Some(ai) = layer.sources.iter().position(|s| s.path == *a) else {
-                    continue;
-                };
-                let Some(bi) = layer.sources.iter().position(|s| s.path == *b) else {
-                    continue;
-                };
-                if rank[ai] >= rank[bi] {
+            CompiledConstraint::SourceBefore {
+                constraint_index,
+                a_idx,
+                b_idx,
+                a,
+                b,
+            } => {
+                if rank[*a_idx] >= rank[*b_idx] {
                     violations.push(ConstraintViolation {
-                        constraint_index: idx,
+                        constraint_index: *constraint_index,
                         message: format!(
                             "source '{}' is not before '{}'",
                             a.display(),
@@ -334,55 +480,52 @@ fn evaluate_constraints(
                     });
                 }
             }
-            OrderConstraint::SourceAfter { a, b } => {
-                let Some(ai) = layer.sources.iter().position(|s| s.path == *a) else {
-                    continue;
-                };
-                let Some(bi) = layer.sources.iter().position(|s| s.path == *b) else {
-                    continue;
-                };
-                if rank[ai] <= rank[bi] {
+            CompiledConstraint::SourceAfter {
+                constraint_index,
+                a_idx,
+                b_idx,
+                a,
+                b,
+            } => {
+                if rank[*a_idx] <= rank[*b_idx] {
                     violations.push(ConstraintViolation {
-                        constraint_index: idx,
+                        constraint_index: *constraint_index,
                         message: format!("source '{}' is not after '{}'", a.display(), b.display()),
                         sample_key: None,
                     });
                 }
             }
-            OrderConstraint::WinnerMustBe {
+            CompiledConstraint::WinnerMustBe {
+                constraint_index,
                 path_glob,
                 source_glob,
+                matched_key_indices,
+                allowed_sources,
             } => {
-                let mut matched_keys = 0usize;
+                let matched_keys = matched_key_indices.len();
                 let mut failing_key = None;
-                for key in layer.keys() {
-                    if !path_glob_matches(path_glob, &key) {
-                        continue;
-                    }
-                    matched_keys += 1;
-
-                    let providers = layer.sources_containing(&key);
+                for key_index in matched_key_indices {
+                    let providers = providers_by_key[*key_index];
                     let winner_idx = providers.iter().copied().max_by_key(|src| rank[*src]);
                     let Some(winner_idx) = winner_idx else {
                         continue;
                     };
 
-                    let winner = &layer.sources[winner_idx];
-                    if !source_glob_matches(source_glob, &winner.path) {
-                        failing_key = Some(key);
+                    if !allowed_sources[winner_idx] {
+                        failing_key = Some(keys[*key_index].clone());
                         break;
                     }
                 }
 
                 if matched_keys == 0 {
                     violations.push(ConstraintViolation {
-                        constraint_index: idx,
+                        constraint_index: *constraint_index,
                         message: format!("winner_must_be matched no keys for glob '{path_glob}'"),
                         sample_key: None,
                     });
                 } else if let Some(sample_key) = failing_key {
                     violations.push(ConstraintViolation {
-                        constraint_index: idx,
+                        constraint_index: *constraint_index,
                         message: format!(
                             "winner for matching keys does not satisfy source glob '{source_glob}'"
                         ),
@@ -413,14 +556,77 @@ fn precedence_cycle_violations(constraints: &[OrderConstraint]) -> Vec<Constrain
         .collect()
 }
 
+fn has_unavoidable_unsat(
+    source_count: usize,
+    constraints: &[CompiledConstraint],
+    providers_by_key: &[&[usize]],
+) -> bool {
+    let winner_constraints: Vec<(&Vec<usize>, &Vec<bool>)> = constraints
+        .iter()
+        .filter_map(|constraint| match constraint {
+            CompiledConstraint::WinnerMustBe {
+                matched_key_indices,
+                allowed_sources,
+                ..
+            } => Some((matched_key_indices, allowed_sources)),
+            CompiledConstraint::SourceBefore { .. } | CompiledConstraint::SourceAfter { .. } => {
+                None
+            }
+        })
+        .collect();
+
+    for (matched_keys, allowed_sources) in &winner_constraints {
+        if matched_keys.is_empty() {
+            return true;
+        }
+        for key_index in *matched_keys {
+            let providers = providers_by_key[*key_index];
+            if providers
+                .iter()
+                .all(|source_idx| !allowed_sources[*source_idx])
+            {
+                return true;
+            }
+        }
+    }
+
+    let mut combined_allowed = vec![true; source_count];
+    for (key_index, providers) in providers_by_key.iter().enumerate() {
+        let mut relevant = false;
+        combined_allowed.fill(true);
+
+        for (matched_keys, allowed_sources) in &winner_constraints {
+            if matched_keys.binary_search(&key_index).is_ok() {
+                relevant = true;
+                for source_idx in 0..source_count {
+                    combined_allowed[source_idx] &= allowed_sources[source_idx];
+                }
+            }
+        }
+
+        if relevant
+            && providers
+                .iter()
+                .all(|source_idx| !combined_allowed[*source_idx])
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn best_neighbor(
-    layer: &LayerIndex,
     current: &[usize],
     order: &[usize],
+    source_count: usize,
     precedence_edges: &[(usize, usize)],
-    constraints: &[OrderConstraint],
+    constraints: &[CompiledConstraint],
+    keys: &[PathBuf],
+    providers_by_key: &[&[usize]],
 ) -> Option<Vec<usize>> {
-    let baseline_violations = evaluate_constraints(layer, order, constraints);
+    let baseline_violations =
+        evaluate_constraints(source_count, order, constraints, keys, providers_by_key);
     let mut best = None;
     let mut best_violations = baseline_violations;
 
@@ -433,7 +639,13 @@ fn best_neighbor(
             if !satisfies_precedence(&candidate, precedence_edges) {
                 continue;
             }
-            let candidate_violations = evaluate_constraints(layer, &candidate, constraints);
+            let candidate_violations = evaluate_constraints(
+                source_count,
+                &candidate,
+                constraints,
+                keys,
+                providers_by_key,
+            );
             if compare_solution_quality(
                 &candidate_violations,
                 &candidate,
@@ -487,19 +699,23 @@ fn move_count(current: &[usize], solved: &[usize]) -> usize {
         .count()
 }
 
-fn changed_winner_count(layer: &LayerIndex, current: &[usize], solved: &[usize]) -> usize {
-    let mut current_rank = vec![0usize; layer.sources.len()];
+fn changed_winner_count(
+    source_count: usize,
+    providers_by_key: &[&[usize]],
+    current: &[usize],
+    solved: &[usize],
+) -> usize {
+    let mut current_rank = vec![0usize; source_count];
     for (pos, source) in current.iter().copied().enumerate() {
         current_rank[source] = pos;
     }
-    let mut solved_rank = vec![0usize; layer.sources.len()];
+    let mut solved_rank = vec![0usize; source_count];
     for (pos, source) in solved.iter().copied().enumerate() {
         solved_rank[source] = pos;
     }
 
     let mut changed = 0usize;
-    for key in layer.keys() {
-        let providers = layer.sources_containing(&key);
+    for providers in providers_by_key {
         let current_winner = providers
             .iter()
             .copied()
@@ -657,5 +873,84 @@ mod tests {
         assert_eq!(result.status, SolveStatus::Unsatisfiable);
         assert!(result.order.is_none());
         assert!(!result.diagnostics.violated_constraints.is_empty());
+    }
+
+    #[test]
+    fn solve_unknown_source_in_constraint_errors() {
+        let layer = sample_layer();
+        let err = layer
+            .solve_order(&SolveRequest {
+                current_order: vec![],
+                constraints: vec![OrderConstraint::SourceBefore {
+                    a: PathBuf::from("/does-not-exist"),
+                    b: PathBuf::from("/a"),
+                }],
+                objective: SolveObjective::MinMovesFromCurrent,
+            })
+            .expect_err("unknown source constraint should error");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("unknown source in constraint"));
+    }
+
+    #[test]
+    fn solve_unknown_source_in_current_order_errors() {
+        let layer = sample_layer();
+        let err = layer
+            .solve_order(&SolveRequest {
+                current_order: vec![
+                    PathBuf::from("/a"),
+                    PathBuf::from("/b"),
+                    PathBuf::from("/missing"),
+                ],
+                constraints: vec![],
+                objective: SolveObjective::MinMovesFromCurrent,
+            })
+            .expect_err("unknown source in current order should error");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("unknown source in current_order"));
+    }
+
+    #[test]
+    fn solve_is_deterministic_across_runs() {
+        let layer = sample_layer();
+        let request = SolveRequest {
+            current_order: vec![
+                PathBuf::from("/a"),
+                PathBuf::from("/b"),
+                PathBuf::from("/c"),
+            ],
+            constraints: vec![
+                OrderConstraint::WinnerMustBe {
+                    path_glob: "scripts/**".into(),
+                    source_glob: "**/a".into(),
+                },
+                OrderConstraint::SourceBefore {
+                    a: PathBuf::from("/b"),
+                    b: PathBuf::from("/a"),
+                },
+            ],
+            objective: SolveObjective::MinMovesFromCurrent,
+        };
+
+        let first = layer
+            .solve_order(&request)
+            .expect("first solve should succeed");
+        let second = layer
+            .solve_order(&request)
+            .expect("second solve should succeed");
+
+        assert_eq!(first.status, second.status);
+        assert_eq!(first.order, second.order);
+        assert_eq!(
+            first.diagnostics.violated_constraints.len(),
+            second.diagnostics.violated_constraints.len()
+        );
+        assert_eq!(first.diagnostics.move_count, second.diagnostics.move_count);
+        assert_eq!(
+            first.diagnostics.changed_winners,
+            second.diagnostics.changed_winners
+        );
     }
 }

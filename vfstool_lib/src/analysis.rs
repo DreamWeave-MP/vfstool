@@ -4,6 +4,7 @@ use crate::{
     normalize_path_in_place, path_glob_matches,
 };
 use ahash::{AHashMap, AHashSet};
+use rayon::prelude::*;
 use std::{
     collections::BTreeMap,
     io::{self, Read},
@@ -593,9 +594,6 @@ impl LayerIndex {
         vfs: &VFS,
         opts: SemanticOpts,
     ) -> io::Result<SemanticConflictReport> {
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
-            AHashMap::new();
-
         let mut keys: Vec<PathBuf> = self
             .path_to_sources
             .iter()
@@ -609,14 +607,27 @@ impl LayerIndex {
             .collect();
         keys.sort();
 
-        let mut entries = Vec::new();
-        for key in keys {
-            if let Some(entry) = self.semantic_conflict_for_key(vfs, &key, opts, &mut hash_cache)? {
-                entries.push(entry);
-            }
-        }
+        let mut entries: Vec<SemanticConflict> = keys
+            .par_iter()
+            .map(|key| self.semantic_conflict_for_key_no_cache(vfs, key, opts))
+            .collect::<io::Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        entries.sort_by(|a, b| a.key.cmp(&b.key));
 
         Ok(SemanticConflictReport { entries })
+    }
+
+    fn semantic_conflict_for_key_no_cache(
+        &self,
+        vfs: &VFS,
+        key: &Path,
+        opts: SemanticOpts,
+    ) -> io::Result<Option<SemanticConflict>> {
+        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
+            AHashMap::new();
+        self.semantic_conflict_for_key(vfs, key, opts, &mut hash_cache)
     }
 
     fn semantic_conflict_for_key(
@@ -720,42 +731,50 @@ impl LayerIndex {
     ///
     /// Returns an error when reading winner file content for hashing fails.
     pub fn lock_manifest(&self, vfs: &VFS) -> io::Result<VfsLock> {
-        let mut entries = Vec::new();
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
-            AHashMap::new();
-
-        for key in self.keys() {
-            let providers = self.sources_containing(&key);
-            if providers.is_empty() {
-                continue;
-            }
-            let Some(winner_idx) = providers.last().copied() else {
-                continue;
-            };
-            let winner_source = &self.sources[winner_idx];
-            let winner_fp = self.fingerprint_for_provider(
-                vfs,
-                winner_idx,
-                &key,
-                &mut hash_cache,
-                ArchiveHashMode::WinnerOnly,
-            )?;
-
-            entries.push(VfsLockEntry {
-                key,
-                winner_source: winner_source.path.clone(),
-                winner_kind: winner_source.kind,
-                winner_hash_blake3: winner_fp.as_ref().map(|f| f.to_digest().hex),
-                winner_size: winner_fp.as_ref().map(|f| f.to_digest().size),
-                provider_count: providers.len(),
-            });
-        }
+        let mut entries: Vec<VfsLockEntry> = self
+            .keys()
+            .par_iter()
+            .map(|key| self.lock_entry_for_key(vfs, key))
+            .collect::<io::Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
 
         entries.sort_by(|a, b| a.key.cmp(&b.key));
         Ok(VfsLock {
             schema_version: 1,
             entries,
         })
+    }
+
+    fn lock_entry_for_key(&self, vfs: &VFS, key: &Path) -> io::Result<Option<VfsLockEntry>> {
+        let providers = self.sources_containing(key);
+        if providers.is_empty() {
+            return Ok(None);
+        }
+
+        let Some(winner_idx) = providers.last().copied() else {
+            return Ok(None);
+        };
+        let winner_source = &self.sources[winner_idx];
+        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
+            AHashMap::new();
+        let winner_fp = self.fingerprint_for_provider(
+            vfs,
+            winner_idx,
+            key,
+            &mut hash_cache,
+            ArchiveHashMode::WinnerOnly,
+        )?;
+
+        Ok(Some(VfsLockEntry {
+            key: key.to_path_buf(),
+            winner_source: winner_source.path.clone(),
+            winner_kind: winner_source.kind,
+            winner_hash_blake3: winner_fp.as_ref().map(|f| f.to_digest().hex),
+            winner_size: winner_fp.as_ref().map(|f| f.to_digest().size),
+            provider_count: providers.len(),
+        }))
     }
 
     /// Simulate a simple load-order edit and report winner deltas.
@@ -1414,6 +1433,54 @@ mod tests {
     }
 
     #[test]
+    fn lock_manifest_is_deterministic_across_runs() {
+        let low = TempDir::new("analysis_lock_deterministic_low");
+        let high = TempDir::new("analysis_lock_deterministic_high");
+        low.write("textures/a.dds", b"aaa");
+        high.write("textures/a.dds", b"bbb");
+        low.write("meshes/m.nif", b"m");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        let first = index
+            .lock_manifest(&vfs)
+            .expect("first lock build should succeed");
+        let second = index
+            .lock_manifest(&vfs)
+            .expect("second lock build should succeed");
+
+        let first_rows = first
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.key.clone(),
+                    entry.winner_source.clone(),
+                    entry.winner_kind,
+                    entry.winner_hash_blake3.clone(),
+                    entry.winner_size,
+                    entry.provider_count,
+                )
+            })
+            .collect::<Vec<_>>();
+        let second_rows = second
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.key.clone(),
+                    entry.winner_source.clone(),
+                    entry.winner_kind,
+                    entry.winner_hash_blake3.clone(),
+                    entry.winner_size,
+                    entry.provider_count,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(first_rows, second_rows);
+    }
+
+    #[test]
     fn simulate_swap_changes_winner() {
         let low = TempDir::new("analysis_sim_low");
         let high = TempDir::new("analysis_sim_high");
@@ -1672,5 +1739,86 @@ mod tests {
         assert!(entry.providers.iter().any(|provider| {
             provider.semantic_delta_to_winner == Some(SemanticDelta::CosmeticOnly)
         }));
+    }
+
+    #[test]
+    fn semantic_conflicts_are_deterministic_across_runs() {
+        let low = TempDir::new("analysis_semantic_deterministic_low");
+        let high = TempDir::new("analysis_semantic_deterministic_high");
+        low.write("scripts/a.lua", b"print('a')\n");
+        high.write("scripts/a.lua", b"print('b')\n");
+        low.write("config/example.ini", b"[sec]\na=1\n");
+        high.write("config/example.ini", b"[sec]\na=2\n");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        let opts = SemanticOpts {
+            include_semantic_deltas: true,
+            ..SemanticOpts::default()
+        };
+        let first = index
+            .semantic_conflicts_with_opts(&vfs, opts)
+            .expect("first semantic report should succeed");
+        let second = index
+            .semantic_conflicts_with_opts(&vfs, opts)
+            .expect("second semantic report should succeed");
+
+        let first_rows = first
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.key.clone(),
+                    entry.winner.path.clone(),
+                    entry.winner.kind,
+                    entry.asset_class,
+                    entry.all_identical,
+                    entry.distinct_versions,
+                    entry
+                        .providers
+                        .iter()
+                        .map(|provider| {
+                            (
+                                provider.source.path.clone(),
+                                provider.source.kind,
+                                provider.relation,
+                                provider.hash_blake3.clone(),
+                                provider.size,
+                                provider.semantic_delta_to_winner.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let second_rows = second
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.key.clone(),
+                    entry.winner.path.clone(),
+                    entry.winner.kind,
+                    entry.asset_class,
+                    entry.all_identical,
+                    entry.distinct_versions,
+                    entry
+                        .providers
+                        .iter()
+                        .map(|provider| {
+                            (
+                                provider.source.path.clone(),
+                                provider.source.kind,
+                                provider.relation,
+                                provider.hash_blake3.clone(),
+                                provider.size,
+                                provider.semantic_delta_to_winner.clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(first_rows, second_rows);
     }
 }
