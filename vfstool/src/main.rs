@@ -6,9 +6,9 @@ use std::{
     path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    CandidatePlanOpts, CollapseOptions, ConflictIndex, LayerIndex, Policy, ReorderOp, Rule,
-    SerializeType, SimOpts, SourceKind, VfsLock, normalize_path, run_finalize, run_setup,
-    serialize_value, vfs::VFS,
+    CandidatePlanOpts, CollapseOptions, ConflictIndex, LayerIndex, OrderConstraint, Policy,
+    ReorderOp, Rule, SerializeType, SimOpts, SolveObjective, SolveRequest, SolveStatus, SourceKind,
+    VfsLock, normalize_path, run_finalize, run_setup, serialize_value, vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
@@ -333,6 +333,21 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Solve load-order constraints and suggest a valid order.
+    Solve {
+        /// Path to YAML constraints file.
+        constraints: PathBuf,
+        /// Optimization objective.
+        #[arg(long, value_enum, default_value = "min_moves")]
+        objective: SolveObjectiveArg,
+        /// Optional path to write solved order (one path per line).
+        #[arg(long)]
+        write_order: Option<PathBuf>,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Compare current VFS state to a lock manifest.
     Drift {
         /// Path to lock manifest (yaml/json/toml; inferred from extension).
@@ -391,12 +406,48 @@ enum PolicyRuleDoc {
     },
 }
 
+#[derive(serde::Deserialize)]
+struct SolveDoc {
+    constraints: Vec<SolveConstraintDoc>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum SolveConstraintDoc {
+    SourceBefore {
+        a: PathBuf,
+        b: PathBuf,
+    },
+    SourceAfter {
+        a: PathBuf,
+        b: PathBuf,
+    },
+    WinnerMustBe {
+        path_glob: String,
+        source_glob: String,
+    },
+}
+
 /// Supported output formats
 #[derive(Debug, ValueEnum, Clone, Copy)]
 enum OutputFormat {
     Json,
     Yaml,
     Toml,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "snake_case")]
+enum SolveObjectiveArg {
+    MinMoves,
+}
+
+impl From<SolveObjectiveArg> for SolveObjective {
+    fn from(value: SolveObjectiveArg) -> Self {
+        match value {
+            SolveObjectiveArg::MinMoves => SolveObjective::MinMovesFromCurrent,
+        }
+    }
 }
 
 // --- Helpers ---
@@ -500,6 +551,32 @@ fn parse_policy(path: &PathBuf) -> io::Result<Policy> {
     }
 
     Ok(Policy { rules })
+}
+
+fn parse_solve_constraints(path: &Path) -> io::Result<Vec<OrderConstraint>> {
+    let text = fs::read_to_string(path)?;
+    let doc: SolveDoc = serde_yaml::from_str(&text).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid constraints yaml: {e}"),
+        )
+    })?;
+
+    Ok(doc
+        .constraints
+        .into_iter()
+        .map(|constraint| match constraint {
+            SolveConstraintDoc::SourceBefore { a, b } => OrderConstraint::SourceBefore { a, b },
+            SolveConstraintDoc::SourceAfter { a, b } => OrderConstraint::SourceAfter { a, b },
+            SolveConstraintDoc::WinnerMustBe {
+                path_glob,
+                source_glob,
+            } => OrderConstraint::WinnerMustBe {
+                path_glob,
+                source_glob,
+            },
+        })
+        .collect())
 }
 
 fn parse_order_file(path: &Path) -> io::Result<Vec<PathBuf>> {
@@ -1022,6 +1099,53 @@ fn handle_plan_candidate(
     write_serialized(output, format, &plan)
 }
 
+fn write_order_file(path: &Path, order: &[PathBuf]) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let content = order
+        .iter()
+        .map(|entry| entry.display().to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(path, format!("{content}\n"))
+}
+
+fn handle_solve(
+    resolved_config_dir: PathBuf,
+    constraints_path: &Path,
+    objective: SolveObjectiveArg,
+    write_order: Option<&PathBuf>,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let (_vfs, layer) = build_layer_index(resolved_config_dir);
+    let constraints = parse_solve_constraints(constraints_path)?;
+    let current_order = layer
+        .sources
+        .iter()
+        .map(|source| source.path.clone())
+        .collect();
+
+    let result = layer.solve_order(&SolveRequest {
+        current_order,
+        constraints,
+        objective: objective.into(),
+    })?;
+
+    if let Some(path) = write_order
+        && let Some(ref order) = result.order
+    {
+        write_order_file(path, order)?;
+    }
+
+    write_serialized(output, format, &result)?;
+    if result.status == SolveStatus::Unsatisfiable {
+        std::process::exit(5);
+    }
+    Ok(())
+}
+
 fn run_core_vfs_command(
     command: Commands,
     vfs: &VFS,
@@ -1178,6 +1302,20 @@ fn run_analysis_command(
             resolved_config_dir,
             candidate_dir.as_path(),
             no_semantic,
+            format,
+            output,
+        ),
+        Commands::Solve {
+            constraints,
+            objective,
+            write_order,
+            format,
+            output,
+        } => handle_solve(
+            resolved_config_dir,
+            constraints.as_path(),
+            objective,
+            write_order.as_ref(),
             format,
             output,
         ),

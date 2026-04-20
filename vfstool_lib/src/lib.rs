@@ -17,6 +17,8 @@ pub mod policy;
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
+/// Constraint-based load-order solving.
+pub mod solve;
 /// Core [`VFS`] struct and directory-construction logic.
 pub mod vfs;
 /// [`VfsFile`] wrapper for loose and archive-backed files.
@@ -39,6 +41,10 @@ pub use reports::{
     ShadowedSource, StatsReport, StatsRow, WhichResult,
 };
 pub use run::{Snapshot, changed_files, run_finalize, run_setup, snapshot_directory};
+pub use solve::{
+    ConstraintViolation, OrderConstraint, SolveDiagnostics, SolveObjective, SolveRequest,
+    SolveResult, SolveStatus,
+};
 pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
