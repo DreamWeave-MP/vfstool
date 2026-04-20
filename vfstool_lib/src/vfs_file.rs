@@ -37,7 +37,7 @@ pub struct Fo4FileReader<'a> {
 /// This allows to seamlessly call read on them as we do for other all other file types
 impl<'a> Fo4FileReader<'a> {
     /// Creates a [`Fo4FileReader`] that streams chunks from `file` in order.
-    #[must_use] 
+    #[must_use]
     pub fn new(file: &'a Fo4File) -> Self {
         let mut chunks = file
             .iter()
@@ -240,7 +240,7 @@ impl VfsFile {
     }
 
     /// Returns `true` if this file is a loose file on the real filesystem.
-    #[must_use] 
+    #[must_use]
     pub fn is_loose(&self) -> bool {
         match self.file {
             FileType::Loose(_) => true,
@@ -250,7 +250,7 @@ impl VfsFile {
     }
 
     /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, or PK3 archive.
-    #[must_use] 
+    #[must_use]
     pub fn is_archive(&self) -> bool {
         match self.file {
             FileType::Loose(_) => false,
@@ -260,7 +260,7 @@ impl VfsFile {
     }
 
     /// Returns the absolute path to the parent archive as a string, or `None` for loose files.
-    #[must_use] 
+    #[must_use]
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
@@ -278,7 +278,7 @@ impl VfsFile {
     }
 
     /// Returns just the file name of the parent archive (e.g. `"Morrowind.bsa"`), or `None` for loose files.
-    #[must_use] 
+    #[must_use]
     pub fn parent_archive_name(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
@@ -385,23 +385,20 @@ impl VfsFile {
                     TypedArchive::Fo4(archive) => {
                         let key: Fo4ArchiveKey = path_string.into();
                         let file: &Fo4File = archive.get(&key).ok_or_else(|| {
-                            io::Error::new(
-                                io::ErrorKind::NotFound,
-                                "File not found in FO4 archive",
-                            )
+                            io::Error::new(io::ErrorKind::NotFound, "File not found in FO4 archive")
                         })?;
                         Ok(Box::new(Fo4FileReader::new(file)))
                     }
 
                     #[cfg(feature = "zip")]
                     TypedArchive::Zip(archive) => {
-                        let mut guard = archive
-                            .lock()
-                            .map_err(|_| io::Error::new(io::ErrorKind::Other, "zip mutex poisoned"))?;
+                        let mut guard = archive.lock().map_err(|_| {
+                            io::Error::new(io::ErrorKind::Other, "zip mutex poisoned")
+                        })?;
                         let buf = {
-                            let mut entry = guard
-                                .by_name(&path_string)
-                                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+                            let mut entry = guard.by_name(&path_string).map_err(|e| {
+                                io::Error::new(io::ErrorKind::NotFound, e.to_string())
+                            })?;
                             let mut buf = Vec::with_capacity(entry.size() as usize);
                             io::copy(&mut entry, &mut buf)?;
                             buf
@@ -434,7 +431,7 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some(std::ffi::OsStr::new("Morrowind.esm")));
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_name(),
@@ -466,7 +463,7 @@ impl VfsFile {
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_stem(), Some(std::ffi::OsStr::new("Morrowind")));
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_stem(),
@@ -492,7 +489,7 @@ impl VfsFile {
     /// let file = VfsFile::from(path);
     /// assert_eq!(file.path(), PathBuf::from(path));
     /// ```
-    #[must_use] 
+    #[must_use]
     pub fn path(&self) -> &Path {
         match &self.file {
             FileType::Loose(path) => path.as_path(),

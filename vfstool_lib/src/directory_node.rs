@@ -41,7 +41,7 @@ pub struct DirectoryNode {
 
 impl DirectoryNode {
     /// Creates an empty [`DirectoryNode`].
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -135,9 +135,7 @@ mod tests {
 
             // Add three files to the subdir
             for j in 1..=3 {
-                subdir
-                    .files
-                    .push(VfsFile::from(format!("file{i}_{j}.txt")));
+                subdir.files.push(VfsFile::from(format!("file{i}_{j}.txt")));
             }
 
             // Create a child subdirectory inside this subdir
@@ -268,8 +266,7 @@ mod tests {
     #[test]
     fn serialize_to_yaml() {
         let node = sample_directory_node();
-        let yaml_output =
-            serde_yaml::to_string(&node).expect("YAML serialization failed");
+        let yaml_output = serde_yaml::to_string(&node).expect("YAML serialization failed");
 
         println!("{}", &yaml_output);
 
@@ -282,7 +279,10 @@ mod tests {
     fn test_directory_node_filter() {
         let mut root = sample_directory_node();
 
-        root.filter(&|file| file.file_name().is_some_and(|name| name.to_string_lossy().contains('2')));
+        root.filter(&|file| {
+            file.file_name()
+                .is_some_and(|name| name.to_string_lossy().contains('2'))
+        });
 
         assert_eq!(
             root.subdirs.len(),
@@ -487,6 +487,9 @@ mod tests {
         root.filter(&|f| f.path().extension().is_some_and(|e| e == "dds"));
 
         // outer had only inner, inner had only a .nif — both should be pruned
-        assert!(root.subdirs.is_empty(), "deeply nested empty subtrees should be pruned");
+        assert!(
+            root.subdirs.is_empty(),
+            "deeply nested empty subtrees should be pruned"
+        );
     }
 }

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{VFS, normalize_path_in_place};
+use crate::{
+    ContentDigest, NormalizedKey, SourceId, VFS, normalize_path_in_place, path_glob_matches,
+};
 use ahash::{AHashMap, AHashSet};
 use std::{
     collections::BTreeMap,
@@ -33,7 +35,7 @@ pub struct SourceMeta {
 pub struct LayerIndex {
     /// Sources in load-order position.
     pub sources: Vec<SourceMeta>,
-    path_to_sources: AHashMap<PathBuf, Vec<usize>>,
+    path_to_sources: AHashMap<NormalizedKey, Vec<usize>>,
 }
 
 /// One provider in a per-key provenance chain.
@@ -362,49 +364,66 @@ struct ContentFingerprint {
 }
 
 impl ContentFingerprint {
-    fn digest_hex(&self) -> String {
-        use std::fmt::Write;
-        let mut output = String::with_capacity(self.digest.len() * 2);
-        for byte in &self.digest {
-            let _ = write!(&mut output, "{byte:02x}");
-        }
-        output
+    fn to_digest(&self) -> ContentDigest {
+        ContentDigest::blake3(self.digest, self.size)
     }
 }
 
 impl LayerIndex {
     /// Build a provider index from ordered `(source_meta, normalized_paths)` pairs.
-    pub fn from_file_lists(
-        sources: impl IntoIterator<Item = (SourceMeta, Vec<PathBuf>)>,
-    ) -> Self {
+    pub fn from_file_lists(sources: impl IntoIterator<Item = (SourceMeta, Vec<PathBuf>)>) -> Self {
         let mut source_paths = Vec::new();
-        let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
+        let mut path_to_sources: AHashMap<NormalizedKey, Vec<usize>> = AHashMap::new();
 
         for (source_meta, files) in sources {
             let idx = source_paths.len();
             source_paths.push(source_meta);
 
-            for mut path in files {
-                normalize_path_in_place(&mut path);
-                path_to_sources.entry(path).or_default().push(idx);
+            for path in files {
+                path_to_sources
+                    .entry(NormalizedKey::new(path))
+                    .or_default()
+                    .push(idx);
             }
         }
 
-        Self { sources: source_paths, path_to_sources }
+        Self {
+            sources: source_paths,
+            path_to_sources,
+        }
     }
 
     /// Returns all normalized keys in sorted order.
-    #[must_use] 
+    #[must_use]
     pub fn keys(&self) -> Vec<PathBuf> {
-        let mut keys: Vec<PathBuf> = self.path_to_sources.keys().cloned().collect();
+        let mut keys: Vec<PathBuf> = self
+            .path_to_sources
+            .keys()
+            .cloned()
+            .map(NormalizedKey::into_path_buf)
+            .collect();
         keys.sort();
         keys
     }
 
+    /// Returns the stable source ID for `path` if present.
+    #[must_use]
+    pub fn source_id_for_path(&self, path: &Path) -> Option<SourceId> {
+        self.sources
+            .iter()
+            .position(|meta| meta.path == path)
+            .map(SourceId::from_index)
+    }
+
+    /// Returns source metadata for a stable source ID.
+    #[must_use]
+    pub fn source_by_id(&self, source_id: SourceId) -> Option<&SourceMeta> {
+        self.sources.get(source_id.as_index())
+    }
+
     /// Returns source indices that provide `path`, in load order.
     pub fn sources_containing(&self, path: &Path) -> &[usize] {
-        let mut normalized = path.to_path_buf();
-        normalize_path_in_place(&mut normalized);
+        let normalized = NormalizedKey::new(path);
         self.path_to_sources
             .get(&normalized)
             .map_or(&[], Vec::as_slice)
@@ -433,7 +452,8 @@ impl LayerIndex {
             return Ok(None);
         };
         let winner = self.sources[winner_idx].clone();
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> = AHashMap::new();
+        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
+            AHashMap::new();
 
         let mut providers = Vec::with_capacity(provider_indices.len());
         for &idx in provider_indices {
@@ -446,7 +466,10 @@ impl LayerIndex {
                     &mut hash_cache,
                     ArchiveHashMode::WinnerOnly,
                 )? {
-                    Some(fp) => (Some(fp.digest_hex()), Some(fp.size)),
+                    Some(fp) => {
+                        let digest = fp.to_digest();
+                        (Some(digest.hex), Some(digest.size))
+                    }
                     None => (None, None),
                 }
             } else {
@@ -458,10 +481,19 @@ impl LayerIndex {
                 SourceKind::Archive => format!("{}::{}", src.path.display(), key.display()),
             };
 
-            providers.push(ProviderRecord { source: src, resolved_path, hash_blake3, size });
+            providers.push(ProviderRecord {
+                source: src,
+                resolved_path,
+                hash_blake3,
+                size,
+            });
         }
 
-        Ok(Some(ProvenanceChain { key, providers, winner }))
+        Ok(Some(ProvenanceChain {
+            key,
+            providers,
+            winner,
+        }))
     }
 
     /// Build semantic conflicts for all paths with multiple providers.
@@ -484,14 +516,15 @@ impl LayerIndex {
         opts: SemanticOpts,
     ) -> io::Result<SemanticConflictReport> {
         let mut entries = Vec::new();
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> = AHashMap::new();
+        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
+            AHashMap::new();
 
         let mut keys: Vec<PathBuf> = self
             .path_to_sources
             .iter()
             .filter_map(|(k, providers)| {
                 if providers.len() > 1 {
-                    Some(k.clone())
+                    Some(k.clone().into_path_buf())
                 } else {
                     None
                 }
@@ -537,14 +570,18 @@ impl LayerIndex {
                         } else {
                             SemanticRelation::DifferentFromWinner
                         };
-                        let hex = c.digest_hex();
-                        seen_hashes.insert(hex.clone());
-                        (rel, Some(hex), Some(c.size))
+                        let digest = c.to_digest();
+                        seen_hashes.insert(digest.hex.clone());
+                        (rel, Some(digest.hex), Some(digest.size))
                     }
                     (_, Some(c)) => {
-                        let hex = c.digest_hex();
-                        seen_hashes.insert(hex.clone());
-                        (SemanticRelation::Unknown, Some(hex), Some(c.size))
+                        let digest = c.to_digest();
+                        seen_hashes.insert(digest.hex.clone());
+                        (
+                            SemanticRelation::Unknown,
+                            Some(digest.hex),
+                            Some(digest.size),
+                        )
                     }
                     (_, None) => (SemanticRelation::Unknown, None, None),
                 };
@@ -579,7 +616,8 @@ impl LayerIndex {
     /// Returns an error when reading winner file content for hashing fails.
     pub fn lock_manifest(&self, vfs: &VFS) -> io::Result<VfsLock> {
         let mut entries = Vec::new();
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> = AHashMap::new();
+        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
+            AHashMap::new();
 
         for key in self.keys() {
             let providers = self.sources_containing(&key);
@@ -602,14 +640,17 @@ impl LayerIndex {
                 key,
                 winner_source: winner_source.path.clone(),
                 winner_kind: winner_source.kind,
-                winner_hash_blake3: winner_fp.as_ref().map(ContentFingerprint::digest_hex),
-                winner_size: winner_fp.as_ref().map(|f| f.size),
+                winner_hash_blake3: winner_fp.as_ref().map(|f| f.to_digest().hex),
+                winner_size: winner_fp.as_ref().map(|f| f.to_digest().size),
                 provider_count: providers.len(),
             });
         }
 
         entries.sort_by(|a, b| a.key.cmp(&b.key));
-        Ok(VfsLock { schema_version: 1, entries })
+        Ok(VfsLock {
+            schema_version: 1,
+            entries,
+        })
     }
 
     /// Simulate a simple load-order edit and report winner deltas.
@@ -682,7 +723,7 @@ impl LayerIndex {
                 bucket: bucket.clone(),
                 changed_winners: changed
                     .iter()
-                    .filter(|key| glob_match_string(bucket, &key.to_string_lossy()))
+                    .filter(|key| path_glob_matches(bucket, key))
                     .count(),
             })
             .collect();
@@ -841,12 +882,16 @@ impl LayerIndex {
                     .sources
                     .iter()
                     .position(|s| s.path == a)
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "swap source A not found"))?;
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "swap source A not found")
+                    })?;
                 let bi = self
                     .sources
                     .iter()
                     .position(|s| s.path == b)
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "swap source B not found"))?;
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "swap source B not found")
+                    })?;
                 order.swap(ai, bi);
             }
             ReorderOp::MoveBefore { source, before } => {
@@ -854,14 +899,22 @@ impl LayerIndex {
                     .sources
                     .iter()
                     .position(|s| s.path == source)
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "move source not found"))?;
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "move source not found")
+                    })?;
                 let dst_idx = self
                     .sources
                     .iter()
                     .position(|s| s.path == before)
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "before source not found"))?;
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "before source not found")
+                    })?;
                 let item = order.remove(src_idx);
-                let insert_at = if src_idx < dst_idx { dst_idx - 1 } else { dst_idx };
+                let insert_at = if src_idx < dst_idx {
+                    dst_idx - 1
+                } else {
+                    dst_idx
+                };
                 order.insert(insert_at, item);
             }
             ReorderOp::MoveAfter { source, after } => {
@@ -869,14 +922,22 @@ impl LayerIndex {
                     .sources
                     .iter()
                     .position(|s| s.path == source)
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "move source not found"))?;
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "move source not found")
+                    })?;
                 let dst_idx = self
                     .sources
                     .iter()
                     .position(|s| s.path == after)
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "after source not found"))?;
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidInput, "after source not found")
+                    })?;
                 let item = order.remove(src_idx);
-                let insert_at = if src_idx < dst_idx { dst_idx } else { dst_idx + 1 };
+                let insert_at = if src_idx < dst_idx {
+                    dst_idx
+                } else {
+                    dst_idx + 1
+                };
                 order.insert(insert_at, item);
             }
             ReorderOp::FullOrder(paths) => {
@@ -921,7 +982,12 @@ impl LayerIndex {
         ranks
     }
 
-    fn current_winner_source_idx(&self, vfs: &VFS, key: &Path, providers: &[usize]) -> Option<usize> {
+    fn current_winner_source_idx(
+        &self,
+        vfs: &VFS,
+        key: &Path,
+        providers: &[usize],
+    ) -> Option<usize> {
         let winner = vfs.get_file(key)?;
         if winner.is_loose() {
             providers.iter().copied().find(|idx| {
@@ -960,60 +1026,25 @@ impl LayerIndex {
                     None
                 }
             }
-            SourceKind::Archive => {
-                match archive_hash_mode {
-                    ArchiveHashMode::Disabled => None,
-                    ArchiveHashMode::WinnerOnly | ArchiveHashMode::AllProviders => {
-                        match vfs.get_file(key) {
-                            Some(current_winner) => match current_winner.parent_archive_path() {
-                                Some(parent) if parent == src.path.to_string_lossy() => {
-                                    Some(hash_reader(current_winner.open()?)?)
-                                }
-                                _ => None,
-                            },
-                            None => None,
-                        }
+            SourceKind::Archive => match archive_hash_mode {
+                ArchiveHashMode::Disabled => None,
+                ArchiveHashMode::WinnerOnly | ArchiveHashMode::AllProviders => {
+                    match vfs.get_file(key) {
+                        Some(current_winner) => match current_winner.parent_archive_path() {
+                            Some(parent) if parent == src.path.to_string_lossy() => {
+                                Some(hash_reader(current_winner.open()?)?)
+                            }
+                            _ => None,
+                        },
+                        None => None,
                     }
                 }
-            }
+            },
         };
 
         cache.insert(cache_key, fp.clone());
         Ok(fp)
     }
-}
-
-fn glob_match_string(glob: &str, text: &str) -> bool {
-    let mut regex_pattern = String::from("^");
-
-    let chars: Vec<char> = glob.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        match chars[i] {
-            '*' => {
-                if i + 1 < chars.len() && chars[i + 1] == '*' {
-                    regex_pattern.push_str(".*");
-                    i += 2;
-                } else {
-                    regex_pattern.push_str("[^/]*");
-                    i += 1;
-                }
-            }
-            '?' => {
-                regex_pattern.push('.');
-                i += 1;
-            }
-            c => {
-                regex_pattern.push_str(&regex::escape(&c.to_string()));
-                i += 1;
-            }
-        }
-    }
-
-    regex_pattern.push('$');
-    regex::Regex::new(&regex_pattern)
-        .map(|re| re.is_match(text))
-        .unwrap_or(false)
 }
 
 fn hash_reader(mut reader: impl Read) -> io::Result<ContentFingerprint> {
@@ -1127,7 +1158,9 @@ mod tests {
         data.write("textures/a.dds", b"a");
 
         let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
-        let lock = index.lock_manifest(&vfs).expect("lock manifest should succeed");
+        let lock = index
+            .lock_manifest(&vfs)
+            .expect("lock manifest should succeed");
         assert_eq!(lock.schema_version, 1);
         assert_eq!(lock.entries[0].key, PathBuf::from("textures/a.dds"));
         assert_eq!(lock.entries[1].key, PathBuf::from("textures/z.dds"));
@@ -1160,7 +1193,8 @@ mod tests {
         b.write("textures/a.dds", b"b");
         c.write("textures/a.dds", b"c");
 
-        let (vfs, index) = VFS::from_directories_with_layer_index([a.path(), b.path(), c.path()], None);
+        let (vfs, index) =
+            VFS::from_directories_with_layer_index([a.path(), b.path(), c.path()], None);
         let delta = index
             .simulate(
                 &vfs,
@@ -1248,7 +1282,9 @@ mod tests {
         high.write("textures/a.dds", b"bbb");
 
         let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
-        let mut lock = index.lock_manifest(&vfs).expect("lock build should succeed");
+        let mut lock = index
+            .lock_manifest(&vfs)
+            .expect("lock build should succeed");
 
         lock.entries[0].winner_source = low.path().to_path_buf();
         lock.entries[0].winner_hash_blake3 = Some("00".repeat(32));
@@ -1257,14 +1293,18 @@ mod tests {
             .diff_against_lock(&vfs, &lock)
             .expect("drift diff should succeed");
 
-        assert!(drift
-            .entries
-            .iter()
-            .any(|entry| entry.kind == DriftKind::WinnerSourceChanged));
-        assert!(drift
-            .entries
-            .iter()
-            .any(|entry| entry.kind == DriftKind::WinnerHashChanged));
+        assert!(
+            drift
+                .entries
+                .iter()
+                .any(|entry| entry.kind == DriftKind::WinnerSourceChanged)
+        );
+        assert!(
+            drift
+                .entries
+                .iter()
+                .any(|entry| entry.kind == DriftKind::WinnerHashChanged)
+        );
     }
 
     #[test]

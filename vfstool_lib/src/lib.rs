@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #![deny(missing_docs)]
 //! Virtual file system library for `OpenMW` modding tools.
-/// Conflict analysis: per-source override and overridden-by sets.
-pub mod conflict;
 /// Higher-level analysis APIs: provenance, semantic conflicts, lock manifests, and simulations.
 pub mod analysis;
+/// Conflict analysis: per-source override and overridden-by sets.
+pub mod conflict;
 /// Tree node used for display and serialization of VFS directory structure.
 pub mod directory_node;
+/// Core shared identifiers and normalized key/digest types.
+pub mod foundation;
+/// Shared glob/path matching utilities.
+pub mod matchers;
 /// Declarative policy rules and evaluation against VFS/layer state.
 pub mod policy;
 /// Report types returned by conflict, shadowed, which, stats, and diff subcommands.
@@ -18,21 +22,23 @@ pub mod vfs;
 /// [`VfsFile`] wrapper for loose and archive-backed files.
 pub mod vfs_file;
 
-pub(crate) use directory_node::DirectoryNode;
 pub use analysis::{
     ArchiveHashMode, BucketDelta, CandidateConflict, CandidatePlan, CandidatePlanOpts,
-    CandidatePlanSummary, DriftEntry, DriftKind, DriftReport, LayerIndex, ProviderRecord,
-    ProvenanceChain, ReorderOp, RiskLevel, SemanticConflict, SemanticConflictReport,
-    SemanticOpts, SemanticProvider, SemanticRelation, SimOpts, SimulationDelta, SourceDelta,
-    SourceKind, SourceMeta, VfsLock, VfsLockEntry,
+    CandidatePlanSummary, DriftEntry, DriftKind, DriftReport, LayerIndex, ProvenanceChain,
+    ProviderRecord, ReorderOp, RiskLevel, SemanticConflict, SemanticConflictReport, SemanticOpts,
+    SemanticProvider, SemanticRelation, SimOpts, SimulationDelta, SourceDelta, SourceKind,
+    SourceMeta, VfsLock, VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
+pub(crate) use directory_node::DirectoryNode;
+pub use foundation::{ContentDigest, NormalizedKey, SourceId};
+pub use matchers::{path_glob_matches, source_glob_matches};
 pub use policy::{Policy, PolicyResult, Rule, Severity, Violation};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource, StatsReport, StatsRow, WhichResult,
 };
-pub use run::{changed_files, run_finalize, run_setup, snapshot_directory, Snapshot};
+pub use run::{Snapshot, changed_files, run_finalize, run_setup, snapshot_directory};
 pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
@@ -199,13 +205,13 @@ pub mod archives {
 
     impl StoredArchive {
         /// Returns the typed archive handle.
-        #[must_use] 
+        #[must_use]
         pub fn handle(&self) -> &TypedArchive {
             &self.archive
         }
 
         /// Returns the absolute path to the archive file on disk.
-        #[must_use] 
+        #[must_use]
         pub fn path(&self) -> &Path {
             &self.path
         }
@@ -215,7 +221,7 @@ pub mod archives {
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
     /// Open every archive named in `archive_list` that can be resolved through `file_map`.
-    #[must_use] 
+    #[must_use]
     pub fn from_set(file_map: &AHashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
         archive_list
             .iter()
@@ -245,7 +251,10 @@ pub mod archives {
             let file = match File::open(path) {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("vfstool: warning: failed to open zip '{}': {e}", path.display());
+                    eprintln!(
+                        "vfstool: warning: failed to open zip '{}': {e}",
+                        path.display()
+                    );
                     return None;
                 }
             };
@@ -256,7 +265,10 @@ pub mod archives {
                     path: path.to_path_buf(),
                 })),
                 Err(e) => {
-                    eprintln!("vfstool: warning: failed to read zip '{}': {e}", path.display());
+                    eprintln!(
+                        "vfstool: warning: failed to read zip '{}': {e}",
+                        path.display()
+                    );
                     None
                 }
             };
@@ -268,12 +280,18 @@ pub mod archives {
             let mut file_handle = match File::open(path) {
                 Ok(f) => f,
                 Err(e) => {
-                    eprintln!("vfstool: warning: failed to open archive '{}': {e}", path.display());
+                    eprintln!(
+                        "vfstool: warning: failed to open archive '{}': {e}",
+                        path.display()
+                    );
                     return None;
                 }
             };
             let Some(format) = ba2::guess_format(&mut file_handle) else {
-                eprintln!("vfstool: warning: could not determine format of archive '{}', skipping", path.display());
+                eprintln!(
+                    "vfstool: warning: could not determine format of archive '{}', skipping",
+                    path.display()
+                );
                 return None;
             };
             return match format {
@@ -284,7 +302,10 @@ pub mod archives {
                         path: path.to_path_buf(),
                     })),
                     Err(e) => {
-                        eprintln!("vfstool: warning: failed to read TES3 archive '{}': {e}", path.display());
+                        eprintln!(
+                            "vfstool: warning: failed to read TES3 archive '{}': {e}",
+                            path.display()
+                        );
                         None
                     }
                 },
@@ -295,7 +316,10 @@ pub mod archives {
                         path: path.to_path_buf(),
                     })),
                     Err(e) => {
-                        eprintln!("vfstool: warning: failed to read TES4 archive '{}': {e}", path.display());
+                        eprintln!(
+                            "vfstool: warning: failed to read TES4 archive '{}': {e}",
+                            path.display()
+                        );
                         None
                     }
                 },
@@ -306,7 +330,10 @@ pub mod archives {
                         path: path.to_path_buf(),
                     })),
                     Err(e) => {
-                        eprintln!("vfstool: warning: failed to read FO4 archive '{}': {e}", path.display());
+                        eprintln!(
+                            "vfstool: warning: failed to read FO4 archive '{}': {e}",
+                            path.display()
+                        );
                         None
                     }
                 },
@@ -324,7 +351,7 @@ pub mod archives {
     ///
     /// Used by [`VFS::from_directories_with_conflict_index`] to enumerate archive
     /// contents without re-opening the archive from disk.
-    #[must_use] 
+    #[must_use]
     pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
         match &stored.archive {
             #[cfg(feature = "bsa")]
@@ -376,7 +403,7 @@ pub mod archives {
     }
 
     /// Build a normalized-path → [`VfsFile`] map from an [`ArchiveList`].
-    #[must_use] 
+    #[must_use]
     pub fn file_map(archives: &ArchiveList) -> AHashMap<PathBuf, VfsFile> {
         archives
             .iter()
@@ -423,8 +450,7 @@ pub mod archives {
                         TypedArchive::Zip(archive) => {
                             // Collect eagerly — the iterator borrows from the MutexGuard
                             // which is local and cannot escape the match arm.
-                            let guard =
-                                archive.lock().expect("zip mutex should not be poisoned");
+                            let guard = archive.lock().expect("zip mutex should not be poisoned");
                             let entries: Vec<(PathBuf, VfsFile)> = guard
                                 .file_names()
                                 .filter(|name| !name.ends_with('/'))
@@ -502,7 +528,10 @@ mod tests {
 
     #[test]
     fn normalize_single_component_uppercase() {
-        assert_eq!(normalize_path("Morrowind.ESM"), PathBuf::from("morrowind.esm"));
+        assert_eq!(
+            normalize_path("Morrowind.ESM"),
+            PathBuf::from("morrowind.esm")
+        );
     }
 
     #[test]
@@ -517,8 +546,14 @@ mod tests {
         // Non-ASCII bytes pass through unchanged; only ASCII letters and backslashes transform
         let input = "Textures/Nordström.dds";
         let result = normalize_path(input).to_string_lossy().into_owned();
-        assert!(result.starts_with("textures/"), "ASCII prefix should be lowercased");
-        assert!(result.contains("tröm"), "non-ASCII content should be preserved unchanged");
+        assert!(
+            result.starts_with("textures/"),
+            "ASCII prefix should be lowercased"
+        );
+        assert!(
+            result.contains("tröm"),
+            "non-ASCII content should be preserved unchanged"
+        );
     }
 
     // --- normalize_path_in_place ---

@@ -31,13 +31,13 @@ pub struct SourceConflicts {
 
 impl SourceConflicts {
     /// True if this source overrides at least one file from an earlier source.
-    #[must_use] 
+    #[must_use]
     pub fn has_overrides(&self) -> bool {
         !self.overrides.is_empty()
     }
 
     /// True if at least one of this source's files is overridden by a later source.
-    #[must_use] 
+    #[must_use]
     pub fn is_overridden(&self) -> bool {
         !self.overridden_by.is_empty()
     }
@@ -117,9 +117,7 @@ impl ConflictIndex {
     /// mixing directory walks with archive enumeration at a layer above this crate).
     /// [`ConflictIndex::from_directories`] and [`ConflictIndex::from_directories_with_archives`]
     /// are thin wrappers around this function.
-    pub fn from_file_lists(
-        sources: impl IntoIterator<Item = (PathBuf, Vec<PathBuf>)>,
-    ) -> Self {
+    pub fn from_file_lists(sources: impl IntoIterator<Item = (PathBuf, Vec<PathBuf>)>) -> Self {
         let mut source_paths: Vec<PathBuf> = Vec::new();
         let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
 
@@ -138,7 +136,8 @@ impl ConflictIndex {
         path_to_sources.retain(|_, indices| indices.len() > 1);
 
         // Derive per-source winning/losing sets from the multi-map.
-        let mut conflicts: Vec<SourceConflicts> = (0..n).map(|_| SourceConflicts::default()).collect();
+        let mut conflicts: Vec<SourceConflicts> =
+            (0..n).map(|_| SourceConflicts::default()).collect();
 
         for (path, source_indices) in &path_to_sources {
             // source_indices is sorted ascending (low priority → high priority).
@@ -198,7 +197,7 @@ impl ConflictIndex {
     /// i.e., the next-lower-priority source that also has this path.
     ///
     /// Returns `None` if `source_index` does not override anything for this path.
-    #[must_use] 
+    #[must_use]
     pub fn displaced_by(&self, source_index: usize, path: &Path) -> Option<usize> {
         let indices = self.sources_containing(path);
         let pos = indices.iter().position(|&i| i == source_index)?;
@@ -213,7 +212,7 @@ impl ConflictIndex {
     /// i.e., the next-higher-priority source that also has this path.
     ///
     /// Returns `None` if nothing later in the load order overrides this path.
-    #[must_use] 
+    #[must_use]
     pub fn overridden_by_dir(&self, source_index: usize, path: &Path) -> Option<usize> {
         let indices = self.sources_containing(path);
         let pos = indices.iter().position(|&i| i == source_index)?;
@@ -229,23 +228,29 @@ impl ConflictIndex {
     ///
     /// When `use_relative` is `true`, paths are relative VFS keys; otherwise
     /// they are joined with the source directory to form absolute paths.
-    #[must_use] 
+    #[must_use]
     pub fn conflicts_report(&self, use_relative: bool) -> ConflictsReport {
         let sources = self
             .sources
             .iter()
             .enumerate()
             .map(|(i, src)| {
-                let resolve = |p: &PathBuf| -> PathBuf {
-                    if use_relative { p.clone() } else { src.join(p) }
-                };
+                let resolve =
+                    |p: &PathBuf| -> PathBuf { if use_relative { p.clone() } else { src.join(p) } };
                 let mut overrides: Vec<PathBuf> =
                     self.conflicts[i].overrides.iter().map(resolve).collect();
-                let mut overridden_by: Vec<PathBuf> =
-                    self.conflicts[i].overridden_by.iter().map(resolve).collect();
+                let mut overridden_by: Vec<PathBuf> = self.conflicts[i]
+                    .overridden_by
+                    .iter()
+                    .map(resolve)
+                    .collect();
                 overrides.sort();
                 overridden_by.sort();
-                ConflictSourceEntry { path: src.clone(), overrides, overridden_by }
+                ConflictSourceEntry {
+                    path: src.clone(),
+                    overrides,
+                    overridden_by,
+                }
             })
             .collect();
         ConflictsReport { sources }
@@ -255,7 +260,7 @@ impl ConflictIndex {
     ///
     /// A source is "shadowed" when `is_overridden()` is true — at least one of its
     /// files is superseded by a higher-priority source.
-    #[must_use] 
+    #[must_use]
     pub fn shadowed_report(&self, use_relative: bool) -> ShadowedReport {
         let sources = self
             .sources
@@ -265,13 +270,18 @@ impl ConflictIndex {
                 if !self.conflicts[i].is_overridden() {
                     return None;
                 }
-                let resolve = |p: &PathBuf| -> PathBuf {
-                    if use_relative { p.clone() } else { src.join(p) }
-                };
-                let mut shadowed_files: Vec<PathBuf> =
-                    self.conflicts[i].overridden_by.iter().map(resolve).collect();
+                let resolve =
+                    |p: &PathBuf| -> PathBuf { if use_relative { p.clone() } else { src.join(p) } };
+                let mut shadowed_files: Vec<PathBuf> = self.conflicts[i]
+                    .overridden_by
+                    .iter()
+                    .map(resolve)
+                    .collect();
                 shadowed_files.sort();
-                Some(ShadowedSource { path: src.clone(), shadowed_files })
+                Some(ShadowedSource {
+                    path: src.clone(),
+                    shadowed_files,
+                })
             })
             .collect();
         ShadowedReport { sources }
@@ -281,7 +291,7 @@ impl ConflictIndex {
     ///
     /// Returns `None` if `path` is not in the VFS at all. When the file exists
     /// in only one source, `also_in` is empty and `is_unique` is `true`.
-    #[must_use] 
+    #[must_use]
     pub fn which(&self, vfs: &VFS, path: &Path) -> Option<WhichResult> {
         let winner = vfs.get_file(path)?;
 
@@ -296,10 +306,14 @@ impl ConflictIndex {
         let source_indices = self.sources_containing(&normalized);
 
         let winner_src_idx = if winner.is_loose() {
-            self.sources.iter().position(|src| winner.path().starts_with(src))
+            self.sources
+                .iter()
+                .position(|src| winner.path().starts_with(src))
         } else {
             winner.parent_archive_path().and_then(|ap| {
-                self.sources.iter().position(|src| src == &PathBuf::from(&ap))
+                self.sources
+                    .iter()
+                    .position(|src| src == &PathBuf::from(&ap))
             })
         };
 
@@ -311,7 +325,11 @@ impl ConflictIndex {
 
         let is_unique = source_indices.is_empty();
 
-        Some(WhichResult { winner: winner_display, also_in, is_unique })
+        Some(WhichResult {
+            winner: winner_display,
+            also_in,
+            is_unique,
+        })
     }
 
     /// Compute per-source win/override/overridden counts.
@@ -319,12 +337,14 @@ impl ConflictIndex {
     /// "Wins" is the number of VFS files served from that source (i.e., it has
     /// the highest priority for those files). "Overrides" and "overridden" come
     /// directly from the conflict sets.
-    #[must_use] 
+    #[must_use]
     pub fn stats(&self, vfs: &VFS) -> StatsReport {
         let mut wins: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
         for (_, file) in vfs.iter() {
             let source_idx = if file.is_loose() {
-                self.sources.iter().position(|src| file.path().starts_with(src))
+                self.sources
+                    .iter()
+                    .position(|src| file.path().starts_with(src))
             } else {
                 file.parent_archive_path().and_then(|ap| {
                     self.sources
@@ -354,7 +374,7 @@ impl ConflictIndex {
 
     /// Compare two data directories: which files are shared, unique to each,
     /// and which has higher load-order priority.
-    #[must_use] 
+    #[must_use]
     pub fn diff_report(&self, source_a: &Path, source_b: &Path) -> DiffReport {
         let vfs_a = VFS::from_directories([source_a], None);
         let vfs_b = VFS::from_directories([source_b], None);
@@ -373,7 +393,11 @@ impl ConflictIndex {
         let idx_b = self.sources.iter().position(|s| s == source_b);
         let higher_priority = match (idx_a, idx_b) {
             (Some(a), Some(b)) => {
-                if a > b { source_a.to_path_buf() } else { source_b.to_path_buf() }
+                if a > b {
+                    source_a.to_path_buf()
+                } else {
+                    source_b.to_path_buf()
+                }
             }
             _ => source_b.to_path_buf(),
         };
@@ -651,8 +675,14 @@ mod tests {
         assert!(index.conflicts[0].is_overridden());
 
         // d2 is in the middle: overrides d1, overridden by d3
-        assert!(index.conflicts[1].has_overrides(), "d2 should have green arrow");
-        assert!(index.conflicts[1].is_overridden(), "d2 should have red arrow");
+        assert!(
+            index.conflicts[1].has_overrides(),
+            "d2 should have green arrow"
+        );
+        assert!(
+            index.conflicts[1].is_overridden(),
+            "d2 should have red arrow"
+        );
 
         assert!(index.conflicts[2].has_overrides());
         assert!(!index.conflicts[2].is_overridden());
@@ -786,8 +816,16 @@ mod tests {
 
         assert_eq!(index.conflicts[0].overridden_by.len(), 2);
         assert_eq!(index.conflicts[1].overrides.len(), 2);
-        assert!(!index.conflicts[0].overridden_by.contains(&PathBuf::from("only_d1.txt")));
-        assert!(!index.conflicts[1].overrides.contains(&PathBuf::from("only_d2.txt")));
+        assert!(
+            !index.conflicts[0]
+                .overridden_by
+                .contains(&PathBuf::from("only_d1.txt"))
+        );
+        assert!(
+            !index.conflicts[1]
+                .overrides
+                .contains(&PathBuf::from("only_d2.txt"))
+        );
     }
 
     #[test]
@@ -805,25 +843,31 @@ mod tests {
         let lists = vec![
             (
                 d1.path().to_path_buf(),
-                vec![
-                    PathBuf::from("shared.txt"),
-                    PathBuf::from("only_d1.txt"),
-                ],
+                vec![PathBuf::from("shared.txt"), PathBuf::from("only_d1.txt")],
             ),
             (
                 d2.path().to_path_buf(),
-                vec![
-                    PathBuf::from("shared.txt"),
-                    PathBuf::from("only_d2.txt"),
-                ],
+                vec![PathBuf::from("shared.txt"), PathBuf::from("only_d2.txt")],
             ),
         ];
         let from_lists = ConflictIndex::from_file_lists(lists);
 
-        assert_eq!(from_dirs.conflicts[0].overrides, from_lists.conflicts[0].overrides);
-        assert_eq!(from_dirs.conflicts[0].overridden_by, from_lists.conflicts[0].overridden_by);
-        assert_eq!(from_dirs.conflicts[1].overrides, from_lists.conflicts[1].overrides);
-        assert_eq!(from_dirs.conflicts[1].overridden_by, from_lists.conflicts[1].overridden_by);
+        assert_eq!(
+            from_dirs.conflicts[0].overrides,
+            from_lists.conflicts[0].overrides
+        );
+        assert_eq!(
+            from_dirs.conflicts[0].overridden_by,
+            from_lists.conflicts[0].overridden_by
+        );
+        assert_eq!(
+            from_dirs.conflicts[1].overrides,
+            from_lists.conflicts[1].overrides
+        );
+        assert_eq!(
+            from_dirs.conflicts[1].overridden_by,
+            from_lists.conflicts[1].overridden_by
+        );
     }
 
     #[test]
@@ -843,12 +887,24 @@ mod tests {
         let index = ConflictIndex::from_file_lists(lists);
 
         // archive (0): overridden by the dir, overrides nothing
-        assert!(!index.conflicts[0].has_overrides(), "archive should not override anything");
-        assert!(index.conflicts[0].is_overridden(), "archive should be overridden by the dir");
+        assert!(
+            !index.conflicts[0].has_overrides(),
+            "archive should not override anything"
+        );
+        assert!(
+            index.conflicts[0].is_overridden(),
+            "archive should be overridden by the dir"
+        );
 
         // dir (1): overrides the archive, not overridden by anything
-        assert!(index.conflicts[1].has_overrides(), "dir should override the archive");
-        assert!(!index.conflicts[1].is_overridden(), "nothing overrides the dir");
+        assert!(
+            index.conflicts[1].has_overrides(),
+            "dir should override the archive"
+        );
+        assert!(
+            !index.conflicts[1].is_overridden(),
+            "nothing overrides the dir"
+        );
     }
 
     // ---- conflicts_report ----
@@ -869,7 +925,10 @@ mod tests {
         let d2_entry = &report.sources[1];
         assert!(!d2_entry.overrides.is_empty(), "d2 should have overrides");
         assert!(
-            d2_entry.overrides.iter().any(|p| p == &PathBuf::from("shared.txt")),
+            d2_entry
+                .overrides
+                .iter()
+                .any(|p| p == &PathBuf::from("shared.txt")),
             "overrides should contain the relative key 'shared.txt'"
         );
     }
@@ -957,7 +1016,9 @@ mod tests {
 
         let index = ConflictIndex::from_directories(vec![d1.path()]);
         let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path()], None);
-        let result = index.which(&vfs, Path::new("unique.txt")).expect("file should be found");
+        let result = index
+            .which(&vfs, Path::new("unique.txt"))
+            .expect("file should be found");
         assert!(result.is_unique, "file only in one source should be unique");
         assert!(result.also_in.is_empty());
     }
@@ -970,9 +1031,10 @@ mod tests {
         d2.write("shared.txt", b"d2");
 
         let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
-        let (vfs, _) =
-            VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
-        let result = index.which(&vfs, Path::new("shared.txt")).expect("file should be found");
+        let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
+        let result = index
+            .which(&vfs, Path::new("shared.txt"))
+            .expect("file should be found");
         // d2 wins (higher priority), so also_in should contain d1
         assert!(!result.is_unique);
         assert!(
@@ -992,8 +1054,7 @@ mod tests {
         d2.write("shared.txt", b"d2");
 
         let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
-        let (vfs, _) =
-            VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
+        let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
         let report = index.stats(&vfs);
 
         assert_eq!(report.rows.len(), 2);

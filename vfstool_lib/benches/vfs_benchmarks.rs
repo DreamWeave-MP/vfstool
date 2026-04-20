@@ -4,7 +4,9 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use vfstool_lib::{ConflictIndex, VFS, changed_files, normalize_path, normalize_path_in_place, snapshot_directory};
+use vfstool_lib::{
+    ConflictIndex, VFS, changed_files, normalize_path, normalize_path_in_place, snapshot_directory,
+};
 
 #[cfg(feature = "zip")]
 use std::io::Write as IoWrite;
@@ -52,8 +54,8 @@ fn make_zip_fixture(dir: &TempDir, filename: &str, n: usize) {
     let path = dir.path().join(filename);
     let file = fs::File::create(&path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let subdirs = ["textures", "meshes", "icons", "sound", "music", "scripts"];
     for i in 0..n {
         let subdir = subdirs[i % subdirs.len()];
@@ -170,9 +172,15 @@ fn bench_normalize_in_place(c: &mut Criterion) {
 fn bench_normalize_comparison(c: &mut Criterion) {
     // Inputs chosen to cover the three normalization scenarios.
     let cases: &[(&str, &str)] = &[
-        ("already_normalized",         "textures/landscape/foo.dds"),
-        ("combined_case_and_backslash", "Meshes\\Actors\\XBase_Anim.NIF"),
-        ("long_path_combined",          "Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS"),
+        ("already_normalized", "textures/landscape/foo.dds"),
+        (
+            "combined_case_and_backslash",
+            "Meshes\\Actors\\XBase_Anim.NIF",
+        ),
+        (
+            "long_path_combined",
+            "Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS",
+        ),
     ];
 
     let mut g = c.benchmark_group("normalize_comparison");
@@ -426,9 +434,7 @@ fn bench_conflict_index(c: &mut Criterion) {
 
     // Two-directory case: base + one mod
     g.bench_function("two_dirs_1000_plus_200", |b| {
-        b.iter(|| {
-            ConflictIndex::from_directories(black_box(vec![base.path(), mod_a.path()]))
-        });
+        b.iter(|| ConflictIndex::from_directories(black_box(vec![base.path(), mod_a.path()])));
     });
 
     // Three-directory case: full realistic load order
@@ -489,18 +495,9 @@ fn bench_zip(c: &mut Criterion) {
         let dir = TempDir::new(&format!("vfsbench_zip_construct_{n}"));
         make_zip_fixture(&dir, "data.zip", n);
 
-        g.bench_with_input(
-            BenchmarkId::new("construction", n),
-            &dir,
-            |b, dir| {
-                b.iter(|| {
-                    VFS::from_directories(
-                        vec![black_box(dir.path())],
-                        Some(vec!["data.zip"]),
-                    )
-                })
-            },
-        );
+        g.bench_with_input(BenchmarkId::new("construction", n), &dir, |b, dir| {
+            b.iter(|| VFS::from_directories(vec![black_box(dir.path())], Some(vec!["data.zip"])))
+        });
     }
 
     // --- Lookup in a ZIP-backed VFS ---
@@ -579,7 +576,10 @@ fn bench_dump(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("copy", n), &n, |b, _| {
             b.iter_batched(
                 || TempDir::new(&format!("vfsbench_dump_cp_dest_{n}")),
-                |dest| vfs.dump_to_directory(black_box(dest.path()), false).unwrap(),
+                |dest| {
+                    vfs.dump_to_directory(black_box(dest.path()), false)
+                        .unwrap()
+                },
                 BatchSize::PerIteration,
             );
         });

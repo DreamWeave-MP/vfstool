@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{VFS, analysis::{LayerIndex, SourceKind}};
-use std::{io, path::{Path, PathBuf}};
+use crate::{
+    VFS,
+    analysis::{LayerIndex, SourceKind},
+    path_glob_matches, source_glob_matches,
+};
+use std::{io, path::PathBuf};
 
 /// Policy document: ordered rules evaluated against a VFS + layer index.
 #[derive(Debug, Clone)]
@@ -95,12 +99,15 @@ impl Policy {
 
         for rule in &self.rules {
             match rule {
-                Rule::WinnerMustMatch { path_glob, source_glob } => {
-                    for key in keys.iter().filter(|k| glob_match(path_glob, k)) {
+                Rule::WinnerMustMatch {
+                    path_glob,
+                    source_glob,
+                } => {
+                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
-                        if !glob_match_string(source_glob, &prov.winner.path.to_string_lossy()) {
+                        if !source_glob_matches(source_glob, &prov.winner.path) {
                             violations.push(Violation {
                                 rule: "winner_must_match".into(),
                                 key: Some(key.clone()),
@@ -114,12 +121,15 @@ impl Policy {
                         }
                     }
                 }
-                Rule::WinnerMustNotMatch { path_glob, source_glob } => {
-                    for key in keys.iter().filter(|k| glob_match(path_glob, k)) {
+                Rule::WinnerMustNotMatch {
+                    path_glob,
+                    source_glob,
+                } => {
+                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
-                        if glob_match_string(source_glob, &prov.winner.path.to_string_lossy()) {
+                        if source_glob_matches(source_glob, &prov.winner.path) {
                             violations.push(Violation {
                                 rule: "winner_must_not_match".into(),
                                 key: Some(key.clone()),
@@ -134,7 +144,7 @@ impl Policy {
                     }
                 }
                 Rule::MustExist { path_glob } => {
-                    let exists = keys.iter().any(|k| glob_match(path_glob, k));
+                    let exists = keys.iter().any(|k| path_glob_matches(path_glob, k));
                     if !exists {
                         violations.push(Violation {
                             rule: "must_exist".into(),
@@ -145,7 +155,7 @@ impl Policy {
                     }
                 }
                 Rule::MustBeUnique { path_glob } => {
-                    for key in keys.iter().filter(|k| glob_match(path_glob, k)) {
+                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
                         let provider_count = index.sources_containing(key).len();
                         if provider_count > 1 {
                             violations.push(Violation {
@@ -158,7 +168,7 @@ impl Policy {
                     }
                 }
                 Rule::WinnerKindMustBe { path_glob, kind } => {
-                    for key in keys.iter().filter(|k| glob_match(path_glob, k)) {
+                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
@@ -176,13 +186,15 @@ impl Policy {
                     }
                 }
                 Rule::MaxOverrideDepth { path_glob, max } => {
-                    for key in keys.iter().filter(|k| glob_match(path_glob, k)) {
+                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
                         let provider_count = index.sources_containing(key).len();
                         if provider_count > *max {
                             violations.push(Violation {
                                 rule: "max_override_depth".into(),
                                 key: Some(key.clone()),
-                                message: format!("provider_count {provider_count} exceeds max {max}"),
+                                message: format!(
+                                    "provider_count {provider_count} exceeds max {max}"
+                                ),
                                 severity: Severity::Error,
                             });
                         }
@@ -192,50 +204,21 @@ impl Policy {
         }
 
         violations.sort_by(|a, b| {
-            let ak = a.key.as_ref().map_or_else(String::new, |k| k.display().to_string());
-            let bk = b.key.as_ref().map_or_else(String::new, |k| k.display().to_string());
-            a.rule.cmp(&b.rule).then(ak.cmp(&bk)).then(a.message.cmp(&b.message))
+            let ak = a
+                .key
+                .as_ref()
+                .map_or_else(String::new, |k| k.display().to_string());
+            let bk = b
+                .key
+                .as_ref()
+                .map_or_else(String::new, |k| k.display().to_string());
+            a.rule
+                .cmp(&b.rule)
+                .then(ak.cmp(&bk))
+                .then(a.message.cmp(&b.message))
         });
 
         Ok(PolicyResult { violations })
-    }
-}
-
-fn glob_match(glob: &str, path: &Path) -> bool {
-    glob_match_string(glob, &path.to_string_lossy())
-}
-
-fn glob_match_string(glob: &str, text: &str) -> bool {
-    let mut regex_pattern = String::from("^");
-
-    let chars: Vec<char> = glob.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        match chars[i] {
-            '*' => {
-                if i + 1 < chars.len() && chars[i + 1] == '*' {
-                    regex_pattern.push_str(".*");
-                    i += 2;
-                } else {
-                    regex_pattern.push_str("[^/]*");
-                    i += 1;
-                }
-            }
-            '?' => {
-                regex_pattern.push('.');
-                i += 1;
-            }
-            c => {
-                regex_pattern.push_str(&regex::escape(&c.to_string()));
-                i += 1;
-            }
-        }
-    }
-
-    regex_pattern.push('$');
-    match regex::Regex::new(&regex_pattern) {
-        Ok(re) => re.is_match(text),
-        Err(_) => false,
     }
 }
 
@@ -243,7 +226,7 @@ fn glob_match_string(glob: &str, text: &str) -> bool {
 mod tests {
     use super::*;
     use crate::analysis::{LayerIndex, SourceMeta};
-    use std::fs;
+    use std::{fs, path::Path};
 
     struct TempDir(PathBuf);
 
@@ -267,24 +250,40 @@ mod tests {
 
     #[test]
     fn glob_match_works() {
-        assert!(glob_match_string("textures/**", "textures/foo/bar.dds"));
-        assert!(glob_match_string("textures/*.dds", "textures/a.dds"));
-        assert!(!glob_match_string("textures/*.dds", "textures/a/b.dds"));
+        assert!(path_glob_matches(
+            "textures/**",
+            Path::new("textures/foo/bar.dds")
+        ));
+        assert!(path_glob_matches(
+            "textures/*.dds",
+            Path::new("textures/a.dds")
+        ));
+        assert!(!path_glob_matches(
+            "textures/*.dds",
+            Path::new("textures/a/b.dds")
+        ));
     }
 
     #[test]
     fn must_exist_reports_missing() {
         let temp = TempDir::new("policy_must_exist_reports_missing");
-        let index = LayerIndex::from_file_lists(vec![
-            (
-                SourceMeta { path: PathBuf::from("/a"), kind: SourceKind::LooseDir },
-                vec![PathBuf::from("meshes/a.nif")],
-            ),
-        ]);
+        let index = LayerIndex::from_file_lists(vec![(
+            SourceMeta {
+                path: PathBuf::from("/a"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("meshes/a.nif")],
+        )]);
         let vfs = VFS::from_directories([temp.path()], None::<Vec<&str>>);
 
-        let policy = Policy { rules: vec![Rule::MustExist { path_glob: "textures/**".into() }] };
-        let result = policy.evaluate(&index, &vfs).expect("policy evaluate should not fail");
+        let policy = Policy {
+            rules: vec![Rule::MustExist {
+                path_glob: "textures/**".into(),
+            }],
+        };
+        let result = policy
+            .evaluate(&index, &vfs)
+            .expect("policy evaluate should not fail");
         assert_eq!(result.violations.len(), 1);
         assert_eq!(result.violations[0].rule, "must_exist");
     }

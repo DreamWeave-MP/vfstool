@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::vfs::VFS;
+use rayon::prelude::*;
 use std::{
     collections::HashMap,
     hash::BuildHasher,
     io::{self, BufReader, Read},
     path::{Path, PathBuf},
 };
-use rayon::prelude::*;
 use walkdir::WalkDir;
 
 /// Map from relative file path to its BLAKE3 digest, used to detect changes after a subprocess run.
@@ -21,7 +21,11 @@ pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 /// # Errors
 ///
 /// Returns an error if writing merged files or hashing baseline files fails.
-pub fn run_setup(vfs: &VFS, merged_dir: &Path, use_hardlinks: bool) -> io::Result<(usize, Snapshot)> {
+pub fn run_setup(
+    vfs: &VFS,
+    merged_dir: &Path,
+    use_hardlinks: bool,
+) -> io::Result<(usize, Snapshot)> {
     std::fs::create_dir_all(merged_dir)?;
     let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
     let baseline = snapshot_directory(merged_dir)?;
@@ -91,9 +95,11 @@ pub fn snapshot_directory(dir: &Path) -> io::Result<Snapshot> {
         .filter(|e| e.file_type().is_file())
         .par_bridge()
         .map(|entry| {
-            let rel = entry.path().strip_prefix(dir).map_err(|_| {
-                io::Error::other("walkdir entry should be under root")
-            })?.to_path_buf();
+            let rel = entry
+                .path()
+                .strip_prefix(dir)
+                .map_err(|_| io::Error::other("walkdir entry should be under root"))?
+                .to_path_buf();
             let hash = hash_file(entry.path())?;
             Ok((rel, hash))
         })
@@ -285,7 +291,10 @@ mod tests {
 
         let merged = TempDir::new("run_new_setup_snap_merged");
         let (_, snapshot) = run_setup(&vfs, merged.path(), false).unwrap();
-        assert!(!snapshot.is_empty(), "snapshot should contain entries after setup");
+        assert!(
+            !snapshot.is_empty(),
+            "snapshot should contain entries after setup"
+        );
     }
 
     // ---- run_finalize ----
@@ -301,7 +310,10 @@ mod tests {
 
         let output = TempDir::new("run_new_finalize_nochange_out");
         let copied = run_finalize(merged.path(), &baseline, output.path()).unwrap();
-        assert!(copied.is_empty(), "nothing changed so nothing should be copied");
+        assert!(
+            copied.is_empty(),
+            "nothing changed so nothing should be copied"
+        );
     }
 
     #[test]

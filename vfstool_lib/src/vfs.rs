@@ -11,11 +11,11 @@ use std::io::{Error, ErrorKind, Result};
 #[cfg(any(feature = "bsa", feature = "zip"))]
 use crate::archives;
 
+use crate::reports::CollapseOptions;
 use crate::{
     ConflictIndex, DirectoryNode, DisplayTree, LayerIndex, SourceKind, SourceMeta, VfsFile,
     normalize_path, normalize_path_in_place,
 };
-use crate::reports::CollapseOptions;
 use std::{
     collections::BTreeMap,
     fmt::Write,
@@ -87,7 +87,7 @@ impl VFS {
     }
 
     /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.
-    #[must_use] 
+    #[must_use]
     pub fn par_iter(&self) -> impl ParallelIterator<Item = (&PathBuf, &VfsFile)> {
         self.file_map.par_iter()
     }
@@ -159,7 +159,11 @@ impl VFS {
     /// # Errors
     ///
     /// Returns `Err` if `pattern` is not a valid regex.
-    pub fn find_by_regex(&self, pattern: &str, relative: bool) -> std::result::Result<DisplayTree, regex::Error> {
+    pub fn find_by_regex(
+        &self,
+        pattern: &str,
+        relative: bool,
+    ) -> std::result::Result<DisplayTree, regex::Error> {
         let normalized = normalize_path(pattern);
         let re = regex::RegexBuilder::new(&normalized.to_string_lossy())
             .case_insensitive(true)
@@ -185,100 +189,26 @@ impl VFS {
         self.file_map.iter().for_each(|(relative_path, file)| {
             let merged_path = dest.join(relative_path);
             let Some(merged_dir) = merged_path.parent() else {
-                eprintln!("vfstool: failed to resolve parent dir for {}", merged_path.display());
+                eprintln!(
+                    "vfstool: failed to resolve parent dir for {}",
+                    merged_path.display()
+                );
                 return;
             };
 
             if let Err(e) = std::fs::create_dir_all(merged_dir) {
                 eprintln!(
                     "vfstool: failed to create directory {}: {}",
-                    merged_dir.display(), e
+                    merged_dir.display(),
+                    e
                 );
                 return;
             }
 
             if file.is_loose() {
-                if !file.path().exists() {
-                    eprintln!(
-                        "vfstool: skipping {}: source file no longer exists at {}",
-                        relative_path.display(),
-                        file.path().display()
-                    );
-                    return;
-                }
-
-                if let Err(e) = std::fs::remove_file(&merged_path)
-                    && e.kind() != io::ErrorKind::NotFound
-                {
-                    eprintln!(
-                        "vfstool: failed to remove existing file at {}: {}",
-                        merged_path.display(), e
-                    );
-                    return;
-                }
-
-                // Skip archive files when --extract-archives is set
-                if opts.extract_archives && let Some(ext) = file.path().extension() {
-                    let ext = ext.to_ascii_lowercase();
-                    let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
-                    if (ext == "bsa" || ext == "ba2")
-                        && name != "archiveinvalidationinvalidated!.bsa"
-                    {
-                        eprintln!(
-                            "vfstool: skipping archive {}",
-                            file.file_name().unwrap_or_default().to_string_lossy()
-                        );
-                        return;
-                    }
-                }
-
-                let link_result = if opts.use_symlinks {
-                    Self::symlink(file.path(), &merged_path)
-                } else {
-                    std::fs::hard_link(file.path(), &merged_path)
-                };
-
-                if let Err(e) = link_result {
-                    eprintln!(
-                        "vfstool: link failed for {}: {}",
-                        file.path().display(), e
-                    );
-                    if opts.allow_copying && let Err(e) = std::fs::copy(file.path(), &merged_path) {
-                        eprintln!(
-                            "vfstool: fallback copy of {} to {} failed: {}",
-                            file.path().display(),
-                            merged_path.display(),
-                            e
-                        );
-                    }
-                }
+                Self::collapse_loose_file(file, &merged_path, opts);
             } else if opts.extract_archives {
-                match file.open() {
-                    Ok(mut data) => {
-                        use io::Read;
-                        let mut buf = Vec::new();
-                        match data.read_to_end(&mut buf) {
-                            Err(e) => eprintln!(
-                                "vfstool: failed to read archived file {}: {}",
-                                relative_path.display(), e
-                            ),
-                            Ok(_) => {
-                                if let Err(e) = std::fs::write(&merged_path, buf) {
-                                    eprintln!(
-                                        "vfstool: failed to extract {} to {}: {}",
-                                        relative_path.display(),
-                                        merged_path.display(),
-                                        e
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => eprintln!(
-                        "vfstool: failed to open archived file {}: {}",
-                        relative_path.display(), e
-                    ),
-                }
+                Self::collapse_archive_file(file, relative_path, &merged_path);
             } else {
                 eprintln!(
                     "vfstool: skipping {}, loaded from archive: {}",
@@ -289,6 +219,96 @@ impl VFS {
         });
 
         Ok(())
+    }
+
+    fn collapse_loose_file(file: &VfsFile, merged_path: &Path, opts: &CollapseOptions) {
+        if !file.path().exists() {
+            eprintln!(
+                "vfstool: skipping {}: source file no longer exists at {}",
+                merged_path.display(),
+                file.path().display()
+            );
+            return;
+        }
+
+        if let Err(e) = std::fs::remove_file(merged_path)
+            && e.kind() != io::ErrorKind::NotFound
+        {
+            eprintln!(
+                "vfstool: failed to remove existing file at {}: {}",
+                merged_path.display(),
+                e
+            );
+            return;
+        }
+
+        if Self::is_archive_file(file) && opts.extract_archives {
+            eprintln!(
+                "vfstool: skipping archive {}",
+                file.file_name().unwrap_or_default().to_string_lossy()
+            );
+            return;
+        }
+
+        let link_result = if opts.use_symlinks {
+            Self::symlink(file.path(), merged_path)
+        } else {
+            std::fs::hard_link(file.path(), merged_path)
+        };
+
+        if let Err(e) = link_result {
+            eprintln!("vfstool: link failed for {}: {}", file.path().display(), e);
+            if opts.allow_copying
+                && let Err(copy_err) = std::fs::copy(file.path(), merged_path)
+            {
+                eprintln!(
+                    "vfstool: fallback copy of {} to {} failed: {}",
+                    file.path().display(),
+                    merged_path.display(),
+                    copy_err
+                );
+            }
+        }
+    }
+
+    fn collapse_archive_file(file: &VfsFile, relative_path: &Path, merged_path: &Path) {
+        match file.open() {
+            Ok(mut data) => {
+                use io::Read;
+                let mut buf = Vec::new();
+                match data.read_to_end(&mut buf) {
+                    Err(e) => eprintln!(
+                        "vfstool: failed to read archived file {}: {}",
+                        relative_path.display(),
+                        e
+                    ),
+                    Ok(_) => {
+                        if let Err(e) = std::fs::write(merged_path, buf) {
+                            eprintln!(
+                                "vfstool: failed to extract {} to {}: {}",
+                                relative_path.display(),
+                                merged_path.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+            Err(e) => eprintln!(
+                "vfstool: failed to open archived file {}: {}",
+                relative_path.display(),
+                e
+            ),
+        }
+    }
+
+    fn is_archive_file(file: &VfsFile) -> bool {
+        let Some(ext) = file.path().extension() else {
+            return false;
+        };
+        let ext = ext.to_ascii_lowercase();
+        let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
+        (ext == "bsa" || ext == "ba2") && name != "archiveinvalidationinvalidated!.bsa"
     }
 
     #[cfg(unix)]
@@ -324,9 +344,9 @@ impl VFS {
 
         std::fs::create_dir_all(dest_dir)?;
 
-        let file_name = vfs_path
-            .file_name()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "vfs_path has no file name"))?;
+        let file_name = vfs_path.file_name().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "vfs_path has no file name")
+        })?;
 
         let dest = dest_dir.join(file_name);
 
@@ -351,7 +371,7 @@ impl VFS {
     /// When `replacements_only` is `false`: files still served from `filter_path`.
     /// When `replacements_only` is `true`: files where `filter_path` has a copy
     /// but the full VFS serves them from a different (higher-priority) source.
-    #[must_use] 
+    #[must_use]
     pub fn remaining(
         &self,
         filter_path: &Path,
@@ -385,7 +405,9 @@ impl VFS {
     ) -> impl Iterator<Item = VFSTuple<'_>> {
         let needle = Self::normalize_substring(substring);
         self.file_map.iter().filter_map(move |(path, file)| {
-            path.to_string_lossy().contains(&needle).then_some((path.as_path(), file))
+            path.to_string_lossy()
+                .contains(&needle)
+                .then_some((path.as_path(), file))
         })
     }
 
@@ -396,7 +418,9 @@ impl VFS {
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
         let needle = Self::normalize_substring(substring);
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            path.to_string_lossy().contains(&needle).then_some((path.as_path(), file))
+            path.to_string_lossy()
+                .contains(&needle)
+                .then_some((path.as_path(), file))
         })
     }
 
@@ -404,7 +428,8 @@ impl VFS {
     pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl Iterator<Item = VFSTuple<'_>> {
         let normalized_prefix = normalize_path(prefix.as_ref()).into_owned();
         self.file_map.iter().filter_map(move |(path, file)| {
-            path.starts_with(&normalized_prefix).then_some((path.as_path(), file))
+            path.starts_with(&normalized_prefix)
+                .then_some((path.as_path(), file))
         })
     }
 
@@ -415,7 +440,8 @@ impl VFS {
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
         let normalized_prefix = normalize_path(prefix.as_ref()).into_owned();
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            path.starts_with(&normalized_prefix).then_some((path.as_path(), file))
+            path.starts_with(&normalized_prefix)
+                .then_some((path.as_path(), file))
         })
     }
 
@@ -472,7 +498,11 @@ impl VFS {
         if let Some(list) = archive_list {
             let loose_lookup: AHashMap<PathBuf, VfsFile> = dir_entries
                 .iter()
-                .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                .flat_map(|entries| {
+                    entries
+                        .iter()
+                        .map(|(k, v)| (k.clone(), VfsFile::from(v.path())))
+                })
                 .collect();
             let archive_handles = archives::from_set(&loose_lookup, &list);
             vfs.file_map.extend(archives::file_map(&archive_handles));
@@ -521,7 +551,10 @@ impl VFS {
             .iter()
             .zip(per_dir.iter())
             .map(|(dir, entries)| {
-                (dir.clone(), entries.iter().map(|(k, _)| k.clone()).collect())
+                (
+                    dir.clone(),
+                    entries.iter().map(|(k, _)| k.clone()).collect(),
+                )
             })
             .collect();
 
@@ -532,7 +565,11 @@ impl VFS {
             if let Some(list) = archive_list {
                 let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
                     .iter()
-                    .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                    .flat_map(|entries| {
+                        entries
+                            .iter()
+                            .map(|(k, v)| (k.clone(), VfsFile::from(v.path())))
+                    })
                     .collect();
                 let archive_handles = archives::from_set(&loose_lookup, &list);
                 // Enumerate archive paths before consuming handles into file_map.
@@ -553,7 +590,10 @@ impl VFS {
 
         // Archives occupy lowest-priority positions (prepended before directories).
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        let all_sources = archive_conflict_sources.into_iter().chain(conflict_sources).collect::<Vec<_>>();
+        let all_sources = archive_conflict_sources
+            .into_iter()
+            .chain(conflict_sources)
+            .collect::<Vec<_>>();
         #[cfg(not(any(feature = "bsa", feature = "zip")))]
         let all_sources = conflict_sources;
 
@@ -602,7 +642,11 @@ impl VFS {
             if let Some(list) = archive_list {
                 let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
                     .iter()
-                    .flat_map(|entries| entries.iter().map(|(k, v)| (k.clone(), VfsFile::from(v.path()))))
+                    .flat_map(|entries| {
+                        entries
+                            .iter()
+                            .map(|(k, v)| (k.clone(), VfsFile::from(v.path())))
+                    })
                     .collect();
                 let archive_handles = archives::from_set(&loose_lookup, &list);
                 let sources = archive_handles
@@ -629,7 +673,10 @@ impl VFS {
         }
 
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        let all_sources = archive_sources.into_iter().chain(dir_sources).collect::<Vec<_>>();
+        let all_sources = archive_sources
+            .into_iter()
+            .chain(dir_sources)
+            .collect::<Vec<_>>();
         #[cfg(not(any(feature = "bsa", feature = "zip")))]
         let all_sources = dir_sources;
 
@@ -651,10 +698,7 @@ impl VFS {
     /// are O(1) per file. This is the primitive for mod conflict analysis: call
     /// it once per candidate directory to get the full picture of what that mod
     /// installs, overrides, and adds.
-    pub fn diff_directory<P: AsRef<Path> + Sync>(
-        &self,
-        dir: P,
-    ) -> DirectoryDiff<'_> {
+    pub fn diff_directory<P: AsRef<Path> + Sync>(&self, dir: P) -> DirectoryDiff<'_> {
         let dir = dir.as_ref().to_path_buf();
 
         // Walk the directory in parallel — I/O is the bottleneck here.
@@ -684,7 +728,10 @@ impl VFS {
             }
         }
 
-        DirectoryDiff { conflicts, additions }
+        DirectoryDiff {
+            conflicts,
+            additions,
+        }
     }
 
     /// Returns `true` if the VFS contains a file at `key`.
@@ -692,7 +739,7 @@ impl VFS {
     /// `key` is a normalized relative VFS path (e.g. `"textures/foo.dds"`).
     /// The path is normalized before lookup, so case and separator variants
     /// are accepted. Already-normalized keys skip the allocation.
-    #[must_use] 
+    #[must_use]
     pub fn contains(&self, key: &Path) -> bool {
         let bytes = key.as_os_str().as_encoded_bytes();
         if bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
@@ -704,7 +751,7 @@ impl VFS {
     }
 
     /// Returns a sorted version of the VFS contents as a binary tree.
-    #[must_use] 
+    #[must_use]
     pub fn tree(&self, relative: bool) -> DisplayTree {
         self.build_tree(relative, None::<&fn(&Path, &VfsFile) -> bool>)
     }
@@ -740,20 +787,20 @@ impl VFS {
 
         for (key, entry) in &self.file_map {
             let path = if relative {
-                    entry.parent_archive_name()
-                } else {
-                    entry.parent_archive_path()
-                }
-                .map_or_else(
-                    || {
-                        if relative {
-                            key.into()
-                        } else {
-                            entry.path().to_path_buf()
-                        }
-                    },
-                    |parent| PathBuf::from(parent).join(key),
-                );
+                entry.parent_archive_name()
+            } else {
+                entry.parent_archive_path()
+            }
+            .map_or_else(
+                || {
+                    if relative {
+                        key.into()
+                    } else {
+                        entry.path().to_path_buf()
+                    }
+                },
+                |parent| PathBuf::from(parent).join(key),
+            );
 
             let new_file = match entry.is_archive() {
                 false => VfsFile::from(entry.path()),
@@ -792,10 +839,7 @@ impl VFS {
                 }
 
                 let component_name = PathBuf::from(component.as_os_str());
-                current_node = current_node
-                    .subdirs
-                    .entry(component_name)
-                    .or_default();
+                current_node = current_node.subdirs.entry(component_name).or_default();
             }
 
             current_node.files.push(new_file);
@@ -886,7 +930,6 @@ impl std::fmt::Display for VFS {
         write_tree(&self.tree(true), f)
     }
 }
-
 
 #[cfg(test)]
 mod loose_tests {
@@ -1045,9 +1088,17 @@ mod loose_tests {
 
         let vfs = VFS::from_directories(vec![dir1.path(), dir2.path()], None);
 
-        assert_eq!(vfs.iter().count(), 1, "collision should collapse to one entry");
+        assert_eq!(
+            vfs.iter().count(),
+            1,
+            "collision should collapse to one entry"
+        );
         let winner = vfs.get_file("shared.txt").unwrap();
-        assert_eq!(winner.path(), path2, "dir2 (later) should override dir1 (earlier)");
+        assert_eq!(
+            winner.path(),
+            path2,
+            "dir2 (later) should override dir1 (earlier)"
+        );
         assert_ne!(winner.path(), path1);
     }
 
@@ -1104,7 +1155,11 @@ mod loose_tests {
 
         let vfs = VFS::from_directories(vec![dir1.path(), dir2.path()], None);
 
-        assert_eq!(vfs.iter().count(), 1, "case variants are the same VFS entry");
+        assert_eq!(
+            vfs.iter().count(),
+            1,
+            "case variants are the same VFS entry"
+        );
         assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), path2);
     }
 
@@ -1248,7 +1303,11 @@ mod loose_tests {
         assert!(diff.conflicts.is_empty());
         assert_eq!(diff.additions.len(), 2);
 
-        let addition_paths: Vec<_> = diff.additions.iter().map(|(_, f)| f.path().to_path_buf()).collect();
+        let addition_paths: Vec<_> = diff
+            .additions
+            .iter()
+            .map(|(_, f)| f.path().to_path_buf())
+            .collect();
         assert!(addition_paths.contains(&new1));
         assert!(addition_paths.contains(&new2));
     }
@@ -1308,7 +1367,11 @@ mod loose_tests {
         let replacement = mod_dir.write("Textures/Foo.DDS", b"mod_version");
 
         let diff = vfs.diff_directory(mod_dir.path());
-        assert_eq!(diff.conflicts.len(), 1, "case variant should be detected as conflict");
+        assert_eq!(
+            diff.conflicts.len(),
+            1,
+            "case variant should be detected as conflict"
+        );
         assert_eq!(diff.conflicts[0].1.path(), replacement);
     }
 
@@ -1404,7 +1467,10 @@ mod loose_tests {
             .collect();
         let mut sorted = names.clone();
         sorted.sort();
-        assert_eq!(names, sorted, "files within a DirectoryNode should be alphabetically sorted");
+        assert_eq!(
+            names, sorted,
+            "files within a DirectoryNode should be alphabetically sorted"
+        );
     }
 
     #[test]
@@ -1465,7 +1531,10 @@ mod loose_tests {
         });
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
 
-        assert!(!contains_nif(root), "empty subdirs should be pruned after filtering");
+        assert!(
+            !contains_nif(root),
+            "empty subdirs should be pruned after filtering"
+        );
     }
 
     #[test]
@@ -1558,7 +1627,10 @@ mod loose_tests {
         // Pattern in uppercase should still match the lowercase filename
         let tree = vfs.find_by_regex("FOO", true).unwrap();
         let count = count_files_in_tree(&tree);
-        assert_eq!(count, 1, "FOO pattern should match foo.txt case-insensitively");
+        assert_eq!(
+            count, 1,
+            "FOO pattern should match foo.txt case-insensitively"
+        );
     }
 
     // ---- extract_file ----
@@ -1568,7 +1640,9 @@ mod loose_tests {
         let dir = TempDir::new("vfs_newmethods_extract_none");
         let vfs = VFS::from_directories(vec![dir.path()], None);
         let dest = TempDir::new("vfs_newmethods_extract_none_dest");
-        let result = vfs.extract_file(Path::new("nonexistent.txt"), dest.path()).unwrap();
+        let result = vfs
+            .extract_file(Path::new("nonexistent.txt"), dest.path())
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -1709,10 +1783,10 @@ mod zip_tests {
     #[test]
     fn zip_entries_appear_in_vfs() {
         let dir = TempDir::new("vfszip_entries");
-        dir.create_zip("data.zip", &[
-            ("textures/foo.dds", b""),
-            ("meshes/bar.nif", b""),
-        ]);
+        dir.create_zip(
+            "data.zip",
+            &[("textures/foo.dds", b""), ("meshes/bar.nif", b"")],
+        );
 
         let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
 
@@ -1725,11 +1799,10 @@ mod zip_tests {
         // Verify all ZIP entries are in the VFS (the zip file itself also appears
         // as a loose entry since the data dir is walked, so we don't count total entries).
         let dir = TempDir::new("vfszip_count");
-        dir.create_zip("data.zip", &[
-            ("a.txt", b""),
-            ("b.txt", b""),
-            ("sub/c.txt", b""),
-        ]);
+        dir.create_zip(
+            "data.zip",
+            &[("a.txt", b""), ("b.txt", b""), ("sub/c.txt", b"")],
+        );
 
         let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
         assert!(vfs.get_file("a.txt").is_some());
@@ -1742,9 +1815,7 @@ mod zip_tests {
     #[test]
     fn zip_entry_content_readable() {
         let dir = TempDir::new("vfszip_content");
-        dir.create_zip("data.zip", &[
-            ("scripts/hello.lua", b"return 42"),
-        ]);
+        dir.create_zip("data.zip", &[("scripts/hello.lua", b"return 42")]);
 
         let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
         let file = vfs.get_file("scripts/hello.lua").unwrap();
@@ -1855,9 +1926,14 @@ mod zip_tests {
         // Content must still be readable despite the normalized lookup key
         let mut buf = Vec::new();
         std::io::Read::read_to_end(
-            &mut vfs.get_file("meshes/actors/xbase.nif").unwrap().open().unwrap(),
+            &mut vfs
+                .get_file("meshes/actors/xbase.nif")
+                .unwrap()
+                .open()
+                .unwrap(),
             &mut buf,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(buf, b"nif_data");
     }
 
@@ -1887,11 +1963,16 @@ mod zip_tests {
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
 
         fn find_file(node: &DirectoryNode, name: &str) -> bool {
-            node.files.iter().any(|f| f.file_name().is_some_and(|n| n == name))
+            node.files
+                .iter()
+                .any(|f| f.file_name().is_some_and(|n| n == name))
                 || node.subdirs.values().any(|sub| find_file(sub, name))
         }
 
-        assert!(find_file(root, "sky.dds"), "ZIP entry should appear in tree");
+        assert!(
+            find_file(root, "sky.dds"),
+            "ZIP entry should appear in tree"
+        );
     }
 }
 
@@ -2127,8 +2208,14 @@ mod dump_tests {
         let dest = TempDir::new("dump_creates_dest");
         vfs.dump_to_directory(dest.path(), false).unwrap();
 
-        assert_eq!(fs::read(dest.path().join("textures/foo.dds")).unwrap(), b"dds_data");
-        assert_eq!(fs::read(dest.path().join("meshes/bar.nif")).unwrap(), b"nif_data");
+        assert_eq!(
+            fs::read(dest.path().join("textures/foo.dds")).unwrap(),
+            b"dds_data"
+        );
+        assert_eq!(
+            fs::read(dest.path().join("meshes/bar.nif")).unwrap(),
+            b"nif_data"
+        );
     }
 
     #[test]
@@ -2164,7 +2251,10 @@ mod dump_tests {
 
         let dest = TempDir::new("dump_copy_dest");
         vfs.dump_to_directory(dest.path(), false).unwrap();
-        assert_eq!(fs::read(dest.path().join("data.txt")).unwrap(), b"hello world");
+        assert_eq!(
+            fs::read(dest.path().join("data.txt")).unwrap(),
+            b"hello world"
+        );
     }
 
     #[test]
