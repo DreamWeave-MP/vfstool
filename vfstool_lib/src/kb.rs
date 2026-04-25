@@ -233,7 +233,10 @@ pub fn conflict_fingerprints_from_report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{SourceKind, analysis::SourceMeta};
+    use crate::{
+        SourceKind,
+        analysis::{SemanticConflict, SemanticProvider, SemanticRelation, SourceMeta},
+    };
 
     #[test]
     fn upsert_replaces_matching_fingerprint() {
@@ -291,29 +294,29 @@ mod tests {
         ]);
 
         let report = SemanticConflictReport {
-            entries: vec![crate::SemanticConflict {
+            entries: vec![SemanticConflict {
                 key: PathBuf::from("textures/a.dds"),
                 winner: SourceMeta {
                     path: PathBuf::from("/b"),
                     kind: SourceKind::LooseDir,
                 },
                 providers: vec![
-                    crate::SemanticProvider {
+                    SemanticProvider {
                         source: SourceMeta {
                             path: PathBuf::from("/a"),
                             kind: SourceKind::LooseDir,
                         },
-                        relation: crate::SemanticRelation::DifferentFromWinner,
+                        relation: SemanticRelation::DifferentFromWinner,
                         hash_blake3: Some("aa".into()),
                         size: Some(1),
                         semantic_delta_to_winner: None,
                     },
-                    crate::SemanticProvider {
+                    SemanticProvider {
                         source: SourceMeta {
                             path: PathBuf::from("/b"),
                             kind: SourceKind::LooseDir,
                         },
-                        relation: crate::SemanticRelation::IdenticalToWinner,
+                        relation: SemanticRelation::IdenticalToWinner,
                         hash_blake3: Some("bb".into()),
                         size: Some(1),
                         semantic_delta_to_winner: None,
