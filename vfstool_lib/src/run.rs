@@ -18,8 +18,10 @@ pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 /// [`run_finalize`]. The caller is responsible for executing the subprocess
 /// between these two calls.
 ///
-/// `merged_dir` is created if needed. Existing contents are cleared before the
-/// dump so child processes see only the current VFS contents.
+/// `merged_dir` is created if needed. If it already exists, it is removed
+/// recursively before the dump so child processes see only the current VFS
+/// contents. Callers should pass a dedicated scratch directory, not a directory
+/// containing user data.
 ///
 /// When `use_hardlinks` is `true`, loose files are hardlinked into `merged_dir`.
 /// This is intentional for speed and disk usage, but child processes that edit

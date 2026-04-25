@@ -17,7 +17,7 @@ use crate::{
     normalize_path, normalize_path_in_place, path_glob_matches,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::Write,
     io,
     path::{Component, Path, PathBuf},
@@ -161,6 +161,8 @@ impl VFS {
     /// Returns an error for hardlink/copy/write failures not explicitly handled
     /// as skippable cases.
     pub fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize> {
+        self.validate_materialization_paths()?;
+
         let written: std::io::Result<Vec<bool>> = self
             .file_map
             .par_iter()
@@ -241,6 +243,7 @@ impl VFS {
     ///
     /// Returns an error if creating the destination root directory fails.
     pub fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()> {
+        self.validate_materialization_paths()?;
         std::fs::create_dir_all(dest)?;
 
         self.file_map.iter().for_each(|(relative_path, file)| {
@@ -516,6 +519,30 @@ impl VFS {
             Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(err) => Err(err),
         }
+    }
+
+    fn validate_materialization_paths(&self) -> io::Result<()> {
+        let keys = self.file_map.keys().cloned().collect::<BTreeSet<_>>();
+        for key in &keys {
+            let mut prefix = PathBuf::new();
+            for component in key.components() {
+                prefix.push(component.as_os_str());
+                if &prefix == key {
+                    break;
+                }
+                if keys.contains(&prefix) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!(
+                            "VFS keys '{}' and '{}' cannot both be materialized as filesystem paths",
+                            prefix.display(),
+                            key.display()
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn normalized_safe_key(path: &Path) -> Option<PathBuf> {
@@ -2573,6 +2600,47 @@ mod dump_tests {
         let dest = TempDir::new("dump_count_dest");
         let count = vfs.dump_to_directory(dest.path(), false).unwrap();
         assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn dump_rejects_file_directory_key_conflicts() {
+        let src = TempDir::new("dump_path_conflict_src");
+        let file = src.write("file_source", b"file");
+        let nested = src.write("nested_source", b"nested");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("foo", &file);
+        vfs.insert_loose_file("foo/bar.txt", &nested);
+
+        let dest = TempDir::new("dump_path_conflict_dest");
+        let err = vfs
+            .dump_to_directory(dest.path(), false)
+            .expect_err("path conflict should be rejected");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("cannot both be materialized"));
+    }
+
+    #[test]
+    fn collapse_rejects_file_directory_key_conflicts() {
+        let src = TempDir::new("collapse_path_conflict_src");
+        let file = src.write("file_source", b"file");
+        let nested = src.write("nested_source", b"nested");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("foo", &file);
+        vfs.insert_loose_file("foo/bar.txt", &nested);
+
+        let dest = TempDir::new("collapse_path_conflict_dest");
+        let err = vfs
+            .collapse_into(
+                dest.path(),
+                &CollapseOptions {
+                    allow_copying: true,
+                    extract_archives: true,
+                    use_symlinks: false,
+                },
+            )
+            .expect_err("path conflict should be rejected");
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("cannot both be materialized"));
     }
 
     #[test]

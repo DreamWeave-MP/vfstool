@@ -104,20 +104,14 @@ impl Policy {
                     path_glob,
                     source_glob,
                 } => {
-                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    let path_glob = compile_glob("path_glob", path_glob)?;
                     let source_glob_text = source_glob;
-                    let source_glob = CompiledGlob::new(source_glob_text).ok();
-                    for key in keys
-                        .iter()
-                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
-                    {
+                    let source_glob = compile_glob("source_glob", source_glob_text)?;
+                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
-                        if !source_glob
-                            .as_ref()
-                            .is_some_and(|glob| glob.is_match(&prov.winner.path))
-                        {
+                        if !source_glob.is_match(&prov.winner.path) {
                             violations.push(Violation {
                                 rule: "winner_must_match".into(),
                                 key: Some(key.clone()),
@@ -135,20 +129,14 @@ impl Policy {
                     path_glob,
                     source_glob,
                 } => {
-                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    let path_glob = compile_glob("path_glob", path_glob)?;
                     let source_glob_text = source_glob;
-                    let source_glob = CompiledGlob::new(source_glob_text).ok();
-                    for key in keys
-                        .iter()
-                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
-                    {
+                    let source_glob = compile_glob("source_glob", source_glob_text)?;
+                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
-                        if source_glob
-                            .as_ref()
-                            .is_some_and(|glob| glob.is_match(&prov.winner.path))
-                        {
+                        if source_glob.is_match(&prov.winner.path) {
                             violations.push(Violation {
                                 rule: "winner_must_not_match".into(),
                                 key: Some(key.clone()),
@@ -164,10 +152,8 @@ impl Policy {
                 }
                 Rule::MustExist { path_glob } => {
                     let path_glob_text = path_glob;
-                    let path_glob = CompiledGlob::new(path_glob).ok();
-                    let exists = keys
-                        .iter()
-                        .any(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)));
+                    let path_glob = compile_glob("path_glob", path_glob)?;
+                    let exists = keys.iter().any(|k| path_glob.is_match(k));
                     if !exists {
                         violations.push(Violation {
                             rule: "must_exist".into(),
@@ -178,11 +164,8 @@ impl Policy {
                     }
                 }
                 Rule::MustBeUnique { path_glob } => {
-                    let path_glob = CompiledGlob::new(path_glob).ok();
-                    for key in keys
-                        .iter()
-                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
-                    {
+                    let path_glob = compile_glob("path_glob", path_glob)?;
+                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
                         let provider_count = index.sources_containing(key).len();
                         if provider_count > 1 {
                             violations.push(Violation {
@@ -195,11 +178,8 @@ impl Policy {
                     }
                 }
                 Rule::WinnerKindMustBe { path_glob, kind } => {
-                    let path_glob = CompiledGlob::new(path_glob).ok();
-                    for key in keys
-                        .iter()
-                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
-                    {
+                    let path_glob = compile_glob("path_glob", path_glob)?;
+                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
@@ -217,11 +197,8 @@ impl Policy {
                     }
                 }
                 Rule::MaxOverrideDepth { path_glob, max } => {
-                    let path_glob = CompiledGlob::new(path_glob).ok();
-                    for key in keys
-                        .iter()
-                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
-                    {
+                    let path_glob = compile_glob("path_glob", path_glob)?;
+                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
                         let provider_count = index.sources_containing(key).len();
                         if provider_count > *max {
                             violations.push(Violation {
@@ -255,6 +232,15 @@ impl Policy {
 
         Ok(PolicyResult { violations })
     }
+}
+
+fn compile_glob(field: &str, glob: &str) -> io::Result<CompiledGlob> {
+    CompiledGlob::new(glob).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid {field} '{glob}': {err}"),
+        )
+    })
 }
 
 #[cfg(test)]

@@ -285,27 +285,23 @@ fn compile_constraints(
                 path_glob,
                 source_glob,
             } => {
-                let path_glob_re = CompiledGlob::new(path_glob).ok();
+                let path_glob_re = compile_glob("path_glob", path_glob)?;
                 let matched_key_indices = keys
                     .iter()
                     .enumerate()
                     .filter_map(|(key_idx, key)| {
-                        if path_glob_re.as_ref().is_some_and(|glob| glob.is_match(key)) {
+                        if path_glob_re.is_match(key) {
                             Some(key_idx)
                         } else {
                             None
                         }
                     })
                     .collect();
-                let source_glob_re = CompiledGlob::new(source_glob).ok();
+                let source_glob_re = compile_glob("source_glob", source_glob)?;
                 let allowed_sources = layer
                     .sources
                     .iter()
-                    .map(|source| {
-                        source_glob_re
-                            .as_ref()
-                            .is_some_and(|glob| glob.is_match(&source.path))
-                    })
+                    .map(|source| source_glob_re.is_match(&source.path))
                     .collect();
 
                 CompiledConstraint::WinnerMustBe {
@@ -320,6 +316,15 @@ fn compile_constraints(
         compiled.push(item);
     }
     Ok(compiled)
+}
+
+fn compile_glob(field: &str, glob: &str) -> io::Result<CompiledGlob> {
+    CompiledGlob::new(glob).map_err(|err| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid {field} '{glob}': {err}"),
+        )
+    })
 }
 
 fn source_index(source_lookup: &AHashMap<PathBuf, usize>, path: &PathBuf) -> io::Result<usize> {

@@ -7,7 +7,7 @@ use crate::{
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{self, Read},
     path::{Path, PathBuf},
 };
@@ -818,11 +818,7 @@ impl LayerIndex {
             }
 
             let before_idx = self.current_winner_source_idx(vfs, &key, providers);
-            let Some(after_idx) = providers
-                .iter()
-                .copied()
-                .max_by_key(|idx| rank_by_source[*idx])
-            else {
+            let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
 
@@ -968,11 +964,7 @@ impl LayerIndex {
         for key in self.keys() {
             let providers = self.sources_containing(&key);
             let before_idx = self.current_winner_source_idx(vfs, &key, providers);
-            let Some(after_idx) = providers
-                .iter()
-                .copied()
-                .max_by_key(|idx| rank_by_source[*idx])
-            else {
+            let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
             let Some(before_idx) = before_idx else {
@@ -1082,17 +1074,22 @@ impl LayerIndex {
     ) -> io::Result<CandidatePlan> {
         let diff = vfs.diff_directory(candidate_dir);
 
-        let mut additions = diff
+        let additions_by_key = diff
             .additions
             .into_iter()
             .map(|(key, _incoming)| key)
-            .collect::<Vec<_>>();
-        additions.sort();
+            .collect::<BTreeSet<_>>();
+        let additions = additions_by_key.iter().cloned().collect::<Vec<_>>();
+
+        let mut conflicts_by_key = BTreeMap::new();
+        for (key, incoming, existing) in diff.conflicts {
+            conflicts_by_key.entry(key).or_insert((incoming, existing));
+        }
 
         let mut conflicts = Vec::new();
         let mut displaced_winners = Vec::new();
 
-        for (key, incoming, existing) in diff.conflicts {
+        for (key, (incoming, existing)) in conflicts_by_key {
             let providers = self.sources_containing(&key);
             let current_winner_source = self
                 .current_winner_source_idx(vfs, &key, providers)
@@ -1273,6 +1270,20 @@ impl LayerIndex {
                     && normalize_path(&self.sources[*idx].path).as_ref() == parent.as_ref()
             })
         }
+    }
+
+    fn winner_after_reorder(&self, providers: &[usize], rank_by_source: &[usize]) -> Option<usize> {
+        providers
+            .iter()
+            .copied()
+            .filter(|idx| self.sources[*idx].kind == SourceKind::LooseDir)
+            .max_by_key(|idx| rank_by_source[*idx])
+            .or_else(|| {
+                providers
+                    .iter()
+                    .copied()
+                    .max_by_key(|idx| rank_by_source[*idx])
+            })
     }
 
     fn fingerprint_for_provider(
@@ -1820,6 +1831,43 @@ mod tests {
     }
 
     #[test]
+    fn simulate_reorder_preserves_loose_over_archive_precedence() {
+        let loose = TempDir::new("analysis_sim_loose_archive_loose");
+        loose.write("textures/a.dds", b"loose");
+        let loose_file = loose.path().join("textures/a.dds");
+        let archive = PathBuf::from("/archives/base.bsa");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("textures/a.dds", loose_file);
+        let index = LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: loose.path().to_path_buf(),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("textures/a.dds")],
+            ),
+            (
+                SourceMeta {
+                    path: archive.clone(),
+                    kind: SourceKind::Archive,
+                },
+                vec![PathBuf::from("textures/a.dds")],
+            ),
+        ]);
+
+        let delta = index
+            .simulate(
+                &vfs,
+                ReorderOp::FullOrder(vec![loose.path().to_path_buf(), archive]),
+            )
+            .expect("simulation should succeed");
+
+        assert_eq!(delta.changed_winners, 0);
+        assert_eq!(delta.by_source_gain_loss[0].wins_after, 1);
+        assert_eq!(delta.by_source_gain_loss[1].wins_after, 0);
+    }
+
+    #[test]
     fn simulate_impact_scores_with_profile() {
         let low = TempDir::new("analysis_impact_low");
         let high = TempDir::new("analysis_impact_high");
@@ -1975,6 +2023,29 @@ mod tests {
 
         assert_eq!(plan.conflicts.len(), 1);
         assert_eq!(plan.conflicts[0].semantic_differs, None);
+    }
+
+    #[test]
+    fn candidate_plan_deduplicates_normalized_candidate_keys() {
+        let base = TempDir::new("analysis_plan_dedupe_base");
+        let candidate = TempDir::new("analysis_plan_dedupe_candidate");
+        base.write("textures/a.dds", b"base");
+        candidate.write("textures/a.dds", b"candidate-lower");
+        candidate.write("Textures/A.dds", b"candidate-upper");
+        candidate.write("meshes/b.nif", b"candidate-lower");
+        candidate.write("Meshes/B.nif", b"candidate-upper");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([base.path()], None);
+        let plan = index
+            .plan_candidate_directory(&vfs, candidate.path(), CandidatePlanOpts::default())
+            .expect("candidate plan should succeed");
+
+        assert_eq!(plan.summary.additions, 1);
+        assert_eq!(plan.summary.conflicts, 1);
+        assert_eq!(plan.summary.displaced_winners, 1);
+        assert_eq!(plan.additions, vec![PathBuf::from("meshes/b.nif")]);
+        assert_eq!(plan.conflicts.len(), 1);
+        assert_eq!(plan.conflicts[0].key, PathBuf::from("textures/a.dds"));
     }
 
     #[test]
