@@ -26,15 +26,16 @@ type VFSFiles = AHashMap<PathBuf, VfsFile>;
 pub struct VFS {
     file_map: VFSFiles,
 }
+
 #[cfg(test)]
-#[path = "vfs/tests/dump_tests.rs"]
+#[path = "tests/dump_tests.rs"]
 mod dump_tests;
 #[cfg(test)]
-#[path = "vfs/tests/loose_tests.rs"]
+#[path = "tests/loose_tests.rs"]
 mod loose_tests;
 #[cfg(all(test, feature = "bsa"))]
-#[path = "vfs/tests/tests.rs"]
+#[path = "tests/tests.rs"]
 mod tests;
 #[cfg(all(test, feature = "zip"))]
-#[path = "vfs/tests/zip_tests.rs"]
+#[path = "tests/zip_tests.rs"]
 mod zip_tests;
