@@ -11,7 +11,6 @@ use std::{
 struct Fixture {
     root: PathBuf,
     config_dir: PathBuf,
-    low: PathBuf,
     high: PathBuf,
 }
 
@@ -50,7 +49,6 @@ impl Fixture {
         Self {
             root,
             config_dir,
-            low,
             high,
         }
     }
