@@ -14,6 +14,8 @@ pub mod foundation;
 pub mod kb;
 /// Shared glob/path matching utilities.
 pub mod matchers;
+/// Provider-aware mutable VFS that can reveal lower-priority providers after removals.
+pub mod mutable_vfs;
 /// Declarative policy rules and evaluation against VFS/layer state.
 #[doc(hidden)]
 pub mod policy;
@@ -39,6 +41,7 @@ pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
 pub use matchers::{path_glob_matches, source_glob_matches};
+pub use mutable_vfs::{MutableVfs, VfsProvider};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource, StatsReport, StatsRow, WhichResult,

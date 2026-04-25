@@ -127,7 +127,7 @@ impl Read for TES4FileReader {
 
 /// A reference to a single file within an open [`StoredArchive`].
 #[cfg(any(feature = "bsa", feature = "zip"))]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ArchiveReference {
     path: PathBuf,
     parent_archive: Arc<StoredArchive>,
@@ -163,7 +163,7 @@ impl ArchiveReference {
 }
 
 /// Backing storage for a [`VfsFile`]: either a loose path on disk or an archive entry.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FileType {
     /// File stored inside a BSA, BA2, ZIP, or PK3 archive.
     #[cfg(any(feature = "bsa", feature = "zip"))]
@@ -181,7 +181,7 @@ pub enum FileType {
 ///
 /// Files in the VFS should be **unique** and stored in a `HashMap` inside the `VFS` struct.
 /// They are typically wrapped in `Arc<VfsFile>` for safe concurrent access.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VfsFile {
     file: FileType,
 }

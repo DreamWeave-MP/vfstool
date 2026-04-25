@@ -1,0 +1,278 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
+use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path, normalize_path_in_place};
+use ahash::AHashMap;
+use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
+
+/// One provider for a normalized VFS key.
+#[derive(Debug, Clone)]
+pub struct VfsProvider {
+    /// Source metadata for the provider.
+    pub source: SourceMeta,
+    /// Backing file for this provider.
+    pub file: VfsFile,
+}
+
+/// Provider-aware mutable VFS.
+///
+/// Providers for each key are stored low-to-high priority. Removing the current winner reveals the
+/// next lower-priority provider when one exists.
+#[derive(Debug, Default)]
+pub struct MutableVfs {
+    providers: AHashMap<PathBuf, Vec<VfsProvider>>,
+}
+
+impl MutableVfs {
+    /// Create an empty provider-aware VFS.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            providers: AHashMap::new(),
+        }
+    }
+
+    /// Build a provider-aware VFS from ordered loose directories.
+    ///
+    /// Later directories have higher priority, matching `OpenMW` `data=` semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a directory traversal entry cannot be read.
+    pub fn from_directories(
+        search_dirs: impl IntoIterator<Item = impl AsRef<Path>>,
+    ) -> std::io::Result<Self> {
+        let mut mutable = Self::new();
+        for dir in search_dirs {
+            mutable.push_directory(dir)?;
+        }
+        Ok(mutable)
+    }
+
+    /// Insert a provider at the highest priority for `key`.
+    pub fn push_provider<P: AsRef<Path>>(&mut self, key: P, provider: VfsProvider) {
+        let key = normalize_path(key.as_ref()).into_owned();
+        self.providers.entry(key).or_default().push(provider);
+    }
+
+    /// Insert every loose file under `root` as a higher-priority provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if directory traversal fails.
+    pub fn push_directory<P: AsRef<Path>>(&mut self, root: P) -> std::io::Result<()> {
+        let root = root.as_ref();
+        let source = SourceMeta {
+            path: root.to_path_buf(),
+            kind: SourceKind::LooseDir,
+        };
+
+        for entry in WalkDir::new(root).follow_links(true) {
+            let entry = entry.map_err(std::io::Error::other)?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let mut key = entry
+                .path()
+                .strip_prefix(root)
+                .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
+            normalize_path_in_place(&mut key);
+            self.push_provider(
+                key,
+                VfsProvider {
+                    source: source.clone(),
+                    file: VfsFile::from(entry.path()),
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Materialize current winners into a normal [`VFS`].
+    #[must_use]
+    pub fn to_vfs(&self) -> VFS {
+        let mut vfs = VFS::new();
+        for (key, providers) in &self.providers {
+            if let Some(provider) = providers.last() {
+                vfs.insert_file(key, provider.file.clone());
+            }
+        }
+        vfs
+    }
+
+    /// Return providers for `key`, ordered low-to-high priority.
+    #[must_use]
+    pub fn providers_for<P: AsRef<Path>>(&self, key: P) -> Option<&[VfsProvider]> {
+        let key = normalize_path(key.as_ref()).into_owned();
+        self.providers.get(&key).map(Vec::as_slice)
+    }
+
+    /// Remove the current winner for `key`, revealing the next lower-priority provider if present.
+    pub fn remove_winner<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsProvider> {
+        let key = normalize_path(key.as_ref()).into_owned();
+        let providers = self.providers.get_mut(&key)?;
+        let removed = providers.pop();
+        if providers.is_empty() {
+            self.providers.remove(&key);
+        }
+        removed
+    }
+
+    /// Remove all providers for `key` whose source path matches `source`.
+    pub fn remove_provider<P: AsRef<Path>>(&mut self, key: P, source: &Path) -> Vec<VfsProvider> {
+        let key = normalize_path(key.as_ref()).into_owned();
+        let Some(providers) = self.providers.get_mut(&key) else {
+            return Vec::new();
+        };
+
+        let mut removed = Vec::new();
+        let mut i = 0;
+        while i < providers.len() {
+            if providers[i].source.path == source {
+                removed.push(providers.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        if providers.is_empty() {
+            self.providers.remove(&key);
+        }
+        removed
+    }
+
+    /// Remove every provider from `source`.
+    pub fn remove_source(&mut self, source: &Path) -> Vec<(PathBuf, VfsProvider)> {
+        self.remove_matching_provider(|_, provider| provider.source.path == source)
+    }
+
+    /// Remove providers under `prefix` regardless of source.
+    pub fn remove_prefix<P: AsRef<Path>>(&mut self, prefix: P) -> Vec<(PathBuf, VfsProvider)> {
+        let prefix = normalize_path(prefix.as_ref()).into_owned();
+        self.remove_matching_provider(|key, _| key.starts_with(&prefix))
+    }
+
+    /// Remove providers accepted by `matcher`.
+    pub fn remove_matching_provider(
+        &mut self,
+        mut matcher: impl FnMut(&Path, &VfsProvider) -> bool,
+    ) -> Vec<(PathBuf, VfsProvider)> {
+        let keys = self.providers.keys().cloned().collect::<Vec<_>>();
+        let mut removed = Vec::new();
+
+        for key in keys {
+            let Some(providers) = self.providers.get_mut(&key) else {
+                continue;
+            };
+            let mut i = 0;
+            while i < providers.len() {
+                if matcher(&key, &providers[i]) {
+                    removed.push((key.clone(), providers.remove(i)));
+                } else {
+                    i += 1;
+                }
+            }
+            if providers.is_empty() {
+                self.providers.remove(&key);
+            }
+        }
+
+        removed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::current_dir().unwrap().join(name);
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+
+        fn write(&self, rel: &str, data: &[u8]) -> PathBuf {
+            let target = self.0.join(rel);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(&target, data).unwrap();
+            target
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn remove_winner_reveals_lower_priority_provider() {
+        let low = TempDir::new("mutable_vfs_low");
+        let high = TempDir::new("mutable_vfs_high");
+        let low_file = low.write("textures/foo.dds", b"low");
+        let high_file = high.write("textures/foo.dds", b"high");
+        let mut mutable = MutableVfs::from_directories([low.path(), high.path()]).unwrap();
+
+        assert_eq!(
+            mutable
+                .to_vfs()
+                .get_file("textures/foo.dds")
+                .unwrap()
+                .path(),
+            high_file
+        );
+        let removed = mutable
+            .remove_winner("Textures\\Foo.dds")
+            .expect("winner should be removed");
+
+        assert_eq!(removed.file.path(), high_file);
+        assert_eq!(
+            mutable
+                .to_vfs()
+                .get_file("textures/foo.dds")
+                .unwrap()
+                .path(),
+            low_file
+        );
+    }
+
+    #[test]
+    fn remove_source_reveals_remaining_source() {
+        let low = TempDir::new("mutable_vfs_remove_source_low");
+        let high = TempDir::new("mutable_vfs_remove_source_high");
+        let low_file = low.write("shared.txt", b"low");
+        high.write("shared.txt", b"high");
+        high.write("only_high.txt", b"high");
+        let mut mutable = MutableVfs::from_directories([low.path(), high.path()]).unwrap();
+
+        let removed = mutable.remove_source(high.path());
+
+        assert_eq!(removed.len(), 2);
+        let vfs = mutable.to_vfs();
+        assert_eq!(vfs.get_file("shared.txt").unwrap().path(), low_file);
+        assert!(vfs.get_file("only_high.txt").is_none());
+    }
+
+    #[test]
+    fn remove_prefix_removes_providers_under_prefix() {
+        let data = TempDir::new("mutable_vfs_remove_prefix");
+        data.write("textures/foo.dds", b"tex");
+        data.write("meshes/foo.nif", b"mesh");
+        let mut mutable = MutableVfs::from_directories([data.path()]).unwrap();
+
+        let removed = mutable.remove_prefix("Textures");
+
+        assert_eq!(removed.len(), 1);
+        let vfs = mutable.to_vfs();
+        assert!(vfs.get_file("textures/foo.dds").is_none());
+        assert!(vfs.get_file("meshes/foo.nif").is_some());
+    }
+}
