@@ -457,12 +457,13 @@ impl LayerIndex {
         for (source_meta, files) in sources {
             let idx = source_paths.len();
             source_paths.push(source_meta);
+            let mut seen = AHashSet::new();
 
             for path in files {
-                path_to_sources
-                    .entry(NormalizedKey::new(path))
-                    .or_default()
-                    .push(idx);
+                let key = NormalizedKey::new(path);
+                if seen.insert(key.clone()) {
+                    path_to_sources.entry(key).or_default().push(idx);
+                }
             }
         }
 
@@ -1383,6 +1384,28 @@ mod tests {
         assert_eq!(chain.providers[0].source.path, low.path());
         assert_eq!(chain.providers[1].source.path, high.path());
         assert_eq!(chain.winner.path, high.path());
+    }
+
+    #[test]
+    fn layer_index_deduplicates_keys_within_one_source() {
+        let index = LayerIndex::from_file_lists(vec![(
+            SourceMeta {
+                path: PathBuf::from("/one"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("shared.txt"), PathBuf::from("SHARED.TXT")],
+        )]);
+
+        assert_eq!(index.sources_containing(Path::new("shared.txt")), &[0]);
+    }
+
+    #[test]
+    fn layer_index_includes_unique_provider_keys() {
+        let data = TempDir::new("analysis_unique_provider");
+        data.write("unique.txt", b"unique");
+        let (_vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+
+        assert_eq!(index.sources_containing(Path::new("unique.txt")), &[0]);
     }
 
     #[test]

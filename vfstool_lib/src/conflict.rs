@@ -125,8 +125,11 @@ impl ConflictIndex {
         for (source_path, files) in sources {
             let source_idx = source_paths.len();
             source_paths.push(source_path);
+            let mut seen = AHashSet::new();
             for file in files {
-                path_to_sources.entry(file).or_default().push(source_idx);
+                if seen.insert(file.clone()) {
+                    path_to_sources.entry(file).or_default().push(source_idx);
+                }
             }
         }
 
@@ -721,6 +724,21 @@ mod tests {
         let unique2 = PathBuf::from("only_in_d2.txt");
         assert!(!index.conflicts[0].overridden_by.contains(&unique1));
         assert!(!index.conflicts[1].overrides.contains(&unique2));
+    }
+
+    #[test]
+    fn duplicate_keys_within_one_source_do_not_self_conflict() {
+        let index = ConflictIndex::from_file_lists(vec![
+            (
+                PathBuf::from("/one"),
+                vec![PathBuf::from("shared.txt"), PathBuf::from("shared.txt")],
+            ),
+            (PathBuf::from("/two"), vec![PathBuf::from("unique.txt")]),
+        ]);
+
+        assert!(index.sources_containing(Path::new("shared.txt")).is_empty());
+        assert!(index.conflicts[0].overrides.is_empty());
+        assert!(index.conflicts[0].overridden_by.is_empty());
     }
 
     #[test]
