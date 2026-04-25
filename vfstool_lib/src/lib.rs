@@ -157,7 +157,7 @@ pub mod archives {
     use std::{
         fmt,
         fs::File,
-        path::{Path, PathBuf},
+        path::{Component, Path, PathBuf},
         sync::Arc,
     };
 
@@ -227,6 +227,22 @@ pub mod archives {
 
     /// Ordered list of open archive handles.
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
+
+    fn normalized_archive_key(raw: &str) -> Option<PathBuf> {
+        let mut normalized = PathBuf::from(raw);
+        crate::normalize_path_in_place(&mut normalized);
+
+        let mut safe = PathBuf::new();
+        for component in normalized.components() {
+            match component {
+                Component::Normal(part) => safe.push(part),
+                Component::CurDir => {}
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+            }
+        }
+
+        (!safe.as_os_str().is_empty()).then_some(safe)
+    }
 
     /// Open every archive named in `archive_list` that can be resolved through `file_map`.
     #[must_use]
@@ -365,11 +381,7 @@ pub mod archives {
             #[cfg(feature = "bsa")]
             TypedArchive::Tes3(data) => data
                 .iter()
-                .map(|(key, _)| {
-                    let mut p = PathBuf::from(key.name().to_string());
-                    crate::normalize_path_in_place(&mut p);
-                    p
-                })
+                .filter_map(|(key, _)| normalized_archive_key(&key.name().to_string()))
                 .collect(),
             #[cfg(feature = "bsa")]
             TypedArchive::Tes4(data) => data
@@ -377,10 +389,8 @@ pub mod archives {
                 .flat_map(|(dir_key, dir)| {
                     let dir_str = dir_key.name().to_string();
                     dir.iter()
-                        .map(move |(key, _)| {
-                            let mut p = PathBuf::from(format!("{}\\{}", dir_str, key.name()));
-                            crate::normalize_path_in_place(&mut p);
-                            p
+                        .filter_map(move |(key, _)| {
+                            normalized_archive_key(&format!("{}\\{}", dir_str, key.name()))
                         })
                         .collect::<Vec<_>>()
                 })
@@ -388,11 +398,7 @@ pub mod archives {
             #[cfg(feature = "bsa")]
             TypedArchive::Fo4(data) => data
                 .iter()
-                .map(|(key, _)| {
-                    let mut p = PathBuf::from(key.name().to_string());
-                    crate::normalize_path_in_place(&mut p);
-                    p
-                })
+                .filter_map(|(key, _)| normalized_archive_key(&key.name().to_string()))
                 .collect(),
             #[cfg(feature = "zip")]
             TypedArchive::Zip(archive) => {
@@ -400,11 +406,7 @@ pub mod archives {
                 guard
                     .file_names()
                     .filter(|name| !name.ends_with('/'))
-                    .map(|name| {
-                        let mut p = PathBuf::from(name);
-                        crate::normalize_path_in_place(&mut p);
-                        p
-                    })
+                    .filter_map(normalized_archive_key)
                     .collect()
             }
         }
@@ -416,68 +418,85 @@ pub mod archives {
         archives
             .iter()
             .flat_map(|stored_archive| {
-                let iter: Box<dyn Iterator<Item = (PathBuf, VfsFile)>> =
-                    match &stored_archive.archive {
-                        #[cfg(feature = "bsa")]
-                        TypedArchive::Tes3(data) => Box::new(data.iter().map(|(key, _value)| {
-                            let name_string = key.name().to_string();
-                            let mut normalized = PathBuf::from(&name_string);
-                            crate::normalize_path_in_place(&mut normalized);
-                            (
-                                normalized,
-                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
-                            )
-                        })),
-                        #[cfg(feature = "bsa")]
-                        TypedArchive::Tes4(data) => {
-                            Box::new(data.iter().flat_map(move |(dir_key, dir)| {
-                                let dir_string = dir_key.name();
-                                dir.iter().map(move |(key, _value)| {
-                                    let archive_path = format!("{}\\{}", dir_string, key.name());
-                                    let mut normalized = PathBuf::from(&archive_path);
-                                    crate::normalize_path_in_place(&mut normalized);
-                                    let vfs_file = VfsFile::from_archive(
-                                        normalized.to_string_lossy(),
-                                        Arc::clone(stored_archive),
-                                    );
-                                    (normalized, vfs_file)
+                let iter: Box<dyn Iterator<Item = (PathBuf, VfsFile)>> = match &stored_archive
+                    .archive
+                {
+                    #[cfg(feature = "bsa")]
+                    TypedArchive::Tes3(data) => Box::new(
+                        data.iter()
+                            .map(|(key, _value)| {
+                                let name_string = key.name().to_string();
+                                normalized_archive_key(&name_string).map(|normalized| {
+                                    (
+                                        normalized,
+                                        VfsFile::from_archive(
+                                            &name_string,
+                                            Arc::clone(stored_archive),
+                                        ),
+                                    )
                                 })
-                            }))
-                        }
-                        #[cfg(feature = "bsa")]
-                        TypedArchive::Fo4(data) => Box::new(data.iter().map(|(key, _value)| {
-                            let name_string = key.name().to_string();
-                            let mut normalized = PathBuf::from(&name_string);
-                            crate::normalize_path_in_place(&mut normalized);
-                            (
-                                normalized,
-                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
-                            )
-                        })),
-                        #[cfg(feature = "zip")]
-                        TypedArchive::Zip(archive) => {
-                            // Collect eagerly — the iterator borrows from the MutexGuard
-                            // which is local and cannot escape the match arm.
-                            let guard = archive.lock().expect("zip mutex should not be poisoned");
-                            let entries: Vec<(PathBuf, VfsFile)> = guard
-                                .file_names()
-                                .filter(|name| !name.ends_with('/'))
-                                .map(|name| {
-                                    // Keep the original name for lookup in open(); normalize
-                                    // separately for the VFS HashMap key.
-                                    let original_name = name.to_string();
-                                    let mut normalized = PathBuf::from(name);
-                                    crate::normalize_path_in_place(&mut normalized);
+                            })
+                            .flatten(),
+                    ),
+                    #[cfg(feature = "bsa")]
+                    TypedArchive::Tes4(data) => {
+                        Box::new(data.iter().flat_map(move |(dir_key, dir)| {
+                            let dir_string = dir_key.name();
+                            dir.iter()
+                                .map(move |(key, _value)| {
+                                    let archive_path = format!("{}\\{}", dir_string, key.name());
+                                    normalized_archive_key(&archive_path).map(|normalized| {
+                                        let vfs_file = VfsFile::from_archive(
+                                            archive_path.as_str(),
+                                            Arc::clone(stored_archive),
+                                        );
+                                        (normalized, vfs_file)
+                                    })
+                                })
+                                .flatten()
+                        }))
+                    }
+                    #[cfg(feature = "bsa")]
+                    TypedArchive::Fo4(data) => Box::new(
+                        data.iter()
+                            .map(|(key, _value)| {
+                                let name_string = key.name().to_string();
+                                normalized_archive_key(&name_string).map(|normalized| {
+                                    (
+                                        normalized,
+                                        VfsFile::from_archive(
+                                            &name_string,
+                                            Arc::clone(stored_archive),
+                                        ),
+                                    )
+                                })
+                            })
+                            .flatten(),
+                    ),
+                    #[cfg(feature = "zip")]
+                    TypedArchive::Zip(archive) => {
+                        // Collect eagerly — the iterator borrows from the MutexGuard
+                        // which is local and cannot escape the match arm.
+                        let guard = archive.lock().expect("zip mutex should not be poisoned");
+                        let entries: Vec<(PathBuf, VfsFile)> = guard
+                            .file_names()
+                            .filter(|name| !name.ends_with('/'))
+                            .filter_map(|name| {
+                                // Keep the original name for lookup in open(); normalize
+                                // separately for the VFS HashMap key.
+                                let original_name = name.to_string();
+                                normalized_archive_key(name).map(|normalized| {
                                     let vfs_file = VfsFile::from_archive(
                                         &original_name,
                                         Arc::clone(stored_archive),
                                     );
                                     (normalized, vfs_file)
                                 })
-                                .collect();
-                            Box::new(entries.into_iter())
-                        }
-                    };
+                            })
+                            .collect();
+                        Box::new(entries.into_iter())
+                    }
+                };
                 iter
             })
             .collect()

@@ -855,18 +855,7 @@ impl VFS {
                 |parent| PathBuf::from(parent).join(key),
             );
 
-            let new_file = match entry.is_archive() {
-                false => VfsFile::from(entry.path()),
-                #[cfg(any(feature = "bsa", feature = "zip"))]
-                true => VfsFile::from_archive(
-                    path.to_string_lossy(),
-                    entry.parent_archive_handle().unwrap(),
-                ),
-                #[cfg(not(any(feature = "bsa", feature = "zip")))]
-                true => unimplemented!(
-                    "Archives are not supported in this build. Enable the 'bsa' or 'zip' feature of vfstool_lib to use them."
-                ),
-            };
+            let new_file = entry.clone();
 
             // Filter before touching the tree so we never create directory
             // nodes for paths whose files are all excluded.
@@ -1957,6 +1946,29 @@ mod zip_tests {
     }
 
     #[test]
+    fn zip_entries_with_unsafe_paths_are_skipped() {
+        let dir = TempDir::new("vfszip_unsafe_paths");
+        dir.create_zip(
+            "data.zip",
+            &[
+                ("../outside.txt", b"bad"),
+                ("/absolute.txt", b"bad"),
+                ("safe/inside.txt", b"good"),
+            ],
+        );
+        let out = TempDir::new("vfszip_unsafe_paths_out");
+
+        let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+        let dumped = vfs.dump_to_directory(out.path(), false).unwrap();
+
+        assert!(vfs.get_file("../outside.txt").is_none());
+        assert!(vfs.get_file("/absolute.txt").is_none());
+        assert!(vfs.get_file("safe/inside.txt").is_some());
+        assert!(dumped > 0);
+        assert!(!out.path().join("../outside.txt").exists());
+    }
+
+    #[test]
     fn zip_entry_open_is_repeatable() {
         // open() must be callable multiple times (mutex lock, not move)
         let dir = TempDir::new("vfszip_repeat");
@@ -2002,6 +2014,23 @@ mod zip_tests {
 
         let file = vfs.get_file("shared.txt").unwrap();
         assert_eq!(file.path(), loose, "loose dir entry must beat ZIP");
+    }
+
+    #[test]
+    fn later_archive_wins_over_earlier_archive() {
+        let dir = TempDir::new("vfszip_archive_priority");
+        dir.create_zip("low.zip", &[("shared.txt", b"low")]);
+        dir.create_zip("high.zip", &[("shared.txt", b"high")]);
+
+        let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["low.zip", "high.zip"]));
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(
+            &mut vfs.get_file("shared.txt").unwrap().open().unwrap(),
+            &mut buf,
+        )
+        .unwrap();
+
+        assert_eq!(buf, b"high");
     }
 
     // ---- Flags ----
@@ -2104,6 +2133,28 @@ mod zip_tests {
             find_file(root, "sky.dds"),
             "ZIP entry should appear in tree"
         );
+    }
+
+    #[test]
+    fn zip_entries_from_tree_are_openable() {
+        let dir = TempDir::new("vfszip_tree_openable");
+        dir.create_zip("data.zip", &[("textures/sky.dds", b"sky")]);
+
+        let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+        let tree = vfs.tree(true);
+        let root = tree.get(&PathBuf::from("Data Files")).unwrap();
+
+        fn find_file<'a>(node: &'a DirectoryNode, name: &str) -> Option<&'a VfsFile> {
+            node.files
+                .iter()
+                .find(|f| f.file_name().is_some_and(|n| n == name))
+                .or_else(|| node.subdirs.values().find_map(|sub| find_file(sub, name)))
+        }
+
+        let file = find_file(root, "sky.dds").expect("tree should include zip file");
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
+        assert_eq!(buf, b"sky");
     }
 }
 
