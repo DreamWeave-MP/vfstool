@@ -14,7 +14,7 @@ use crate::archives;
 use crate::reports::CollapseOptions;
 use crate::{
     ConflictIndex, DirectoryNode, DisplayTree, LayerIndex, SourceKind, SourceMeta, VfsFile,
-    normalize_path, normalize_path_in_place,
+    normalize_path, normalize_path_in_place, path_glob_matches,
 };
 use std::{
     collections::BTreeMap,
@@ -60,10 +60,66 @@ impl VFS {
     const DIR_PREFIX: &str = "├── ";
     const FILE_PREFIX: &str = "│   ├── ";
 
-    fn new() -> Self {
+    /// Create an empty VFS.
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             file_map: AHashMap::new(),
         }
+    }
+
+    /// Insert or replace a file at `key` in the resolved winner map.
+    ///
+    /// This is a winner-only mutation: replacing or removing a key does not reveal lower-priority
+    /// providers that may have existed when the VFS was originally constructed.
+    pub fn insert_file<P: AsRef<Path>>(&mut self, key: P, file: VfsFile) -> Option<VfsFile> {
+        let normalized = normalize_path(key.as_ref()).into_owned();
+        self.file_map.insert(normalized, file)
+    }
+
+    /// Insert or replace a loose file at `key` in the resolved winner map.
+    pub fn insert_loose_file<K: AsRef<Path>, P: AsRef<Path>>(
+        &mut self,
+        key: K,
+        physical_path: P,
+    ) -> Option<VfsFile> {
+        self.insert_file(key, VfsFile::from(physical_path))
+    }
+
+    /// Remove the current winner at `key` from this resolved VFS.
+    ///
+    /// This does not reveal any lower-priority provider; it removes the key from the materialized
+    /// map entirely.
+    pub fn remove_file<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsFile> {
+        let normalized = normalize_path(key.as_ref()).into_owned();
+        self.file_map.remove(&normalized)
+    }
+
+    /// Remove every current winner whose normalized key starts with `prefix`.
+    pub fn remove_prefix<P: AsRef<Path>>(&mut self, prefix: P) -> Vec<(PathBuf, VfsFile)> {
+        let normalized = normalize_path(prefix.as_ref()).into_owned();
+        self.remove_matching(|key, _| key.starts_with(&normalized))
+    }
+
+    /// Remove every current winner accepted by `matcher`.
+    pub fn remove_matching(
+        &mut self,
+        mut matcher: impl FnMut(&Path, &VfsFile) -> bool,
+    ) -> Vec<(PathBuf, VfsFile)> {
+        let keys = self
+            .file_map
+            .iter()
+            .filter_map(|(key, file)| matcher(key, file).then_some(key.clone()))
+            .collect::<Vec<_>>();
+
+        keys.into_iter()
+            .filter_map(|key| self.file_map.remove(&key).map(|file| (key, file)))
+            .collect()
+    }
+
+    /// Remove every current winner whose normalized key matches `glob`.
+    pub fn remove_matching_glob(&mut self, glob: &str) -> Vec<(PathBuf, VfsFile)> {
+        self.remove_matching(|key, _| path_glob_matches(glob, key))
     }
 
     /// Looks up a file in the VFS after normalizing the path.
@@ -1002,6 +1058,72 @@ mod loose_tests {
         assert!(vfs.get_file("bar.txt").is_some());
         assert!(vfs.get_file("sub/baz.txt").is_some());
         assert_eq!(vfs.iter().count(), 3);
+    }
+
+    #[test]
+    fn insert_loose_file_normalizes_key_and_returns_previous_winner() {
+        let dir = TempDir::new("vfsloose_insert_file");
+        let first = dir.write("first.txt", b"a");
+        let second = dir.write("second.txt", b"b");
+        let mut vfs = VFS::new();
+
+        assert!(vfs.insert_loose_file("Textures/Foo.dds", &first).is_none());
+        let previous = vfs
+            .insert_loose_file("textures/foo.dds", &second)
+            .expect("second insert should return previous winner");
+
+        assert_eq!(previous.path(), first);
+        assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), second);
+        assert_eq!(vfs.iter().count(), 1);
+    }
+
+    #[test]
+    fn remove_file_normalizes_key() {
+        let dir = TempDir::new("vfsloose_remove_file");
+        let path = dir.write("foo.txt", b"a");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("textures/foo.dds", &path);
+
+        let removed = vfs
+            .remove_file("Textures\\Foo.dds")
+            .expect("normalized key should be removed");
+
+        assert_eq!(removed.path(), path);
+        assert!(!vfs.contains(Path::new("textures/foo.dds")));
+    }
+
+    #[test]
+    fn remove_prefix_removes_nested_keys() {
+        let dir = TempDir::new("vfsloose_remove_prefix");
+        let tex = dir.write("foo.dds", b"a");
+        let mesh = dir.write("foo.nif", b"b");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("textures/foo.dds", &tex);
+        vfs.insert_loose_file("textures/nested/bar.dds", &tex);
+        vfs.insert_loose_file("meshes/foo.nif", &mesh);
+
+        let removed = vfs.remove_prefix("Textures");
+
+        assert_eq!(removed.len(), 2);
+        assert!(!vfs.contains(Path::new("textures/foo.dds")));
+        assert!(vfs.contains(Path::new("meshes/foo.nif")));
+    }
+
+    #[test]
+    fn remove_matching_glob_removes_matching_winners() {
+        let dir = TempDir::new("vfsloose_remove_glob");
+        let tex = dir.write("foo.dds", b"a");
+        let mesh = dir.write("foo.nif", b"b");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("textures/foo.dds", &tex);
+        vfs.insert_loose_file("textures/nested/bar.dds", &tex);
+        vfs.insert_loose_file("meshes/foo.nif", &mesh);
+
+        let removed = vfs.remove_matching_glob("textures/**");
+
+        assert_eq!(removed.len(), 2);
+        assert!(!vfs.contains(Path::new("textures/nested/bar.dds")));
+        assert!(vfs.contains(Path::new("meshes/foo.nif")));
     }
 
     #[test]
