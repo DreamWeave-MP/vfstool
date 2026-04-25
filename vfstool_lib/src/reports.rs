@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 // --- Collapse ---
 
-/// Options that control how [`VFS::collapse_into`] links or copies files.
+/// Options that control how [`VFS::collapse_into`](crate::vfs::VFS::collapse_into)
+/// links or copies files.
 pub struct CollapseOptions {
     /// Fall back to copying when hardlinking fails.
     pub allow_copying: bool,
