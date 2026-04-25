@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::{
-    AssetClass, ContentDigest, NormalizedKey, SemanticDelta, SourceId, VFS, analyze_pair,
-    normalize_path_in_place, path_glob_matches,
+    ContentDigest, NormalizedKey, SourceId, VFS, normalize_path_in_place, path_glob_matches,
+    semantic::{AssetClass, SemanticDelta, analyze_pair},
 };
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;

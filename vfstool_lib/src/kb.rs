@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::SemanticConflictReport;
+use crate::analysis::SemanticConflictReport;
 use std::{io, path::PathBuf};
 
 /// Stable conflict fingerprint key.
@@ -319,7 +319,7 @@ mod tests {
                         semantic_delta_to_winner: None,
                     },
                 ],
-                asset_class: crate::AssetClass::Binary,
+                asset_class: crate::semantic::AssetClass::Binary,
                 all_identical: false,
                 distinct_versions: 2,
             }],

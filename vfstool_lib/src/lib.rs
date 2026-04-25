@@ -10,18 +10,22 @@ pub mod directory_node;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
 /// Conflict fingerprint knowledge base types and storage.
+#[doc(hidden)]
 pub mod kb;
 /// Shared glob/path matching utilities.
 pub mod matchers;
 /// Declarative policy rules and evaluation against VFS/layer state.
+#[doc(hidden)]
 pub mod policy;
 /// Report types returned by conflict, shadowed, which, stats, and diff subcommands.
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
 /// Asset-class semantic analyzers and deltas.
+#[doc(hidden)]
 pub mod semantic;
 /// Constraint-based load-order solving.
+#[doc(hidden)]
 pub mod solve;
 /// Core [`VFS`] struct and directory-construction logic.
 pub mod vfs;
@@ -29,32 +33,17 @@ pub mod vfs;
 pub mod vfs_file;
 
 pub use analysis::{
-    ArchiveHashMode, BucketDelta, CandidateConflict, CandidatePlan, CandidatePlanOpts,
-    CandidatePlanSummary, DriftEntry, DriftKind, DriftReport, HeuristicCondition, ImpactHeuristic,
-    ImpactProfile, ImpactReport, LayerIndex, ProvenanceChain, ProviderRecord, ReorderOp, RiskLevel,
-    RiskyChange, SemanticConflict, SemanticConflictReport, SemanticOpts, SemanticProvider,
-    SemanticRelation, SimOpts, SimulationDelta, SourceDelta, SourceKind, SourceMeta, VfsLock,
-    VfsLockEntry,
+    DriftEntry, DriftKind, DriftReport, LayerIndex, SourceKind, SourceMeta, VfsLock, VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
-pub use kb::{
-    ConflictFingerprint, KnowledgeEntry, KnowledgeStore, KnownOutcome, LocalKnowledgeStore,
-    conflict_fingerprints_from_report,
-};
 pub use matchers::{path_glob_matches, source_glob_matches};
-pub use policy::{Policy, PolicyResult, Rule, Severity, Violation};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource, StatsReport, StatsRow, WhichResult,
 };
 pub use run::{Snapshot, changed_files, run_finalize, run_setup, snapshot_directory};
-pub use semantic::{AssetClass, SemanticDelta, analyze_pair};
-pub use solve::{
-    ConstraintViolation, OrderConstraint, SolveDiagnostics, SolveObjective, SolveRequest,
-    SolveResult, SolveStatus,
-};
 pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 
