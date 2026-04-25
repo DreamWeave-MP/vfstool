@@ -17,6 +17,9 @@ pub struct VfsProvider {
 ///
 /// Providers for each key are stored low-to-high priority. Removing the current winner reveals the
 /// next lower-priority provider when one exists.
+///
+/// Source paths are matched lexically. Pass the same source path representation to removal methods
+/// that was used when providers were inserted.
 #[derive(Debug, Default)]
 pub struct MutableVfs {
     providers: AHashMap<PathBuf, Vec<VfsProvider>>,
@@ -274,5 +277,38 @@ mod tests {
         let vfs = mutable.to_vfs();
         assert!(vfs.get_file("textures/foo.dds").is_none());
         assert!(vfs.get_file("meshes/foo.nif").is_some());
+    }
+
+    #[test]
+    fn remove_source_uses_lexical_source_paths() {
+        let data = TempDir::new("mutable_vfs_lexical_source");
+        data.write("file.txt", b"data");
+        let relative = PathBuf::from(data.path().file_name().unwrap());
+        let mut mutable = MutableVfs::from_directories([relative.as_path()]).unwrap();
+
+        assert!(mutable.remove_source(data.path()).is_empty());
+        assert!(mutable.to_vfs().get_file("file.txt").is_some());
+        assert_eq!(mutable.remove_source(&relative).len(), 1);
+    }
+
+    #[test]
+    fn remove_middle_provider_preserves_current_winner() {
+        let low = TempDir::new("mutable_vfs_middle_low");
+        let middle = TempDir::new("mutable_vfs_middle_mid");
+        let high = TempDir::new("mutable_vfs_middle_high");
+        low.write("shared.txt", b"low");
+        middle.write("shared.txt", b"middle");
+        let high_file = high.write("shared.txt", b"high");
+        let mut mutable =
+            MutableVfs::from_directories([low.path(), middle.path(), high.path()]).unwrap();
+
+        let removed = mutable.remove_provider("shared.txt", middle.path());
+
+        assert_eq!(removed.len(), 1);
+        assert_eq!(
+            mutable.to_vfs().get_file("shared.txt").unwrap().path(),
+            high_file
+        );
+        assert_eq!(mutable.providers_for("shared.txt").unwrap().len(), 2);
     }
 }

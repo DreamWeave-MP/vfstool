@@ -18,6 +18,10 @@ pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 /// [`run_finalize`]. The caller is responsible for executing the subprocess
 /// between these two calls.
 ///
+/// When `use_hardlinks` is `true`, loose files are hardlinked into `merged_dir`.
+/// This is intentional for speed and disk usage, but child processes that edit
+/// files in place may mutate the original source files through those hardlinks.
+///
 /// # Errors
 ///
 /// Returns an error if writing merged files or hashing baseline files fails.

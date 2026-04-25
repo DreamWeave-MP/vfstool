@@ -111,6 +111,15 @@ let resolved = mutable.to_vfs();
 # Ok::<(), std::io::Error>(())
 ```
 
+`MutableVfs` source removal uses lexical path equality. Use the same source path representation for
+removal that you used when inserting/building providers.
+
+### Runner hardlink behavior
+
+`run_setup` can populate the merged directory with hardlinks. This is intentional for speed and disk
+usage, but tools that edit merged files in place may mutate the original loose source files through
+those hardlinks. Use copy mode when running tools that are not hardlink-safe.
+
 ---
 
 ## Feature flags

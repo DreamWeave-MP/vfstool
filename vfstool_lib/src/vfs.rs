@@ -1116,6 +1116,33 @@ mod loose_tests {
     }
 
     #[test]
+    fn remove_file_does_not_reveal_lower_priority_provider() {
+        let low = TempDir::new("vfsloose_remove_winner_low");
+        let high = TempDir::new("vfsloose_remove_winner_high");
+        low.write("shared.txt", b"low");
+        high.write("shared.txt", b"high");
+        let mut vfs = VFS::from_directories([low.path(), high.path()], None);
+
+        let removed = vfs.remove_file("shared.txt");
+
+        assert!(removed.is_some());
+        assert!(vfs.get_file("shared.txt").is_none());
+    }
+
+    #[test]
+    fn remove_matching_glob_normalizes_pattern() {
+        let dir = TempDir::new("vfsloose_remove_glob_normalized");
+        let tex = dir.write("foo.dds", b"a");
+        let mut vfs = VFS::new();
+        vfs.insert_loose_file("textures/foo.dds", &tex);
+
+        let removed = vfs.remove_matching_glob("Textures\\**");
+
+        assert_eq!(removed.len(), 1);
+        assert!(!vfs.contains(Path::new("textures/foo.dds")));
+    }
+
+    #[test]
     fn from_multiple_directories_unique_files_all_present() {
         let dir1 = TempDir::new("vfsloose_multi1");
         let dir2 = TempDir::new("vfsloose_multi2");
