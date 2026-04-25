@@ -74,3 +74,7 @@ pub(crate) fn normalized_safe_key(path: &Path) -> Option<PathBuf> {
 
     (!safe.as_os_str().is_empty()).then_some(safe)
 }
+
+#[cfg(test)]
+#[path = "paths/tests.rs"]
+mod tests;
