@@ -244,7 +244,7 @@ enum Commands {
         /// Path to lock manifest (yaml/json/toml; inferred from extension).
         lock_file: PathBuf,
         /// If set, drift causes exit code 4.
-        #[arg(long, default_value_t = true)]
+        #[arg(long)]
         fail_on_drift: bool,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
@@ -282,7 +282,9 @@ fn write_serialized<T: serde::Serialize>(
     match path {
         None => println!("{serialized}"),
         Some(p) => {
-            if let Some(parent) = p.parent() {
+            if let Some(parent) = p.parent()
+                && !parent.as_os_str().is_empty()
+            {
                 fs::create_dir_all(parent)?;
             }
             write!(fs::File::create(&p)?, "{serialized}")?;
@@ -362,6 +364,30 @@ fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
     ))
 }
 
+fn resolve_config_path(config_dir: Option<PathBuf>) -> io::Result<PathBuf> {
+    match config_dir {
+        Some(dir) => validate_config_dir(&dir),
+        None => match std::env::var_os("OPENMW_CONFIG") {
+            Some(path) => {
+                let path = PathBuf::from(path);
+                if path.is_file() {
+                    Ok(path)
+                } else {
+                    eprintln!(
+                        "[ ERROR ]: OPENMW_CONFIG '{}' does not exist or is not a file.",
+                        path.display()
+                    );
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Unable to resolve OPENMW_CONFIG path.",
+                    ))
+                }
+            }
+            None => validate_config_dir(&openmw_config::default_config_path()),
+        },
+    }
+}
+
 fn output_to_serialize_type(format: OutputFormat) -> SerializeType {
     match format {
         OutputFormat::Json => SerializeType::Json,
@@ -397,10 +423,11 @@ fn write_serialized_vfs(
     match path {
         None => println!("{serialized}"),
         Some(path) => {
-            let parent = path
-                .parent()
-                .expect("Failed to extract parent directory from output param!");
-            fs::create_dir_all(parent)?;
+            if let Some(parent) = path.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)?;
+            }
             let mut file = fs::File::create(&path)?;
             write!(file, "{serialized}")?;
         }
@@ -427,11 +454,14 @@ fn handle_collapse(
 
 fn handle_extract(vfs: &VFS, source_file: &Path, target_dir: &Path) -> Result<()> {
     match vfs.extract_file(source_file, target_dir)? {
-        None => eprintln!(
-            "{}Couldn't locate {} in the vfs!",
-            print::err_prefix(),
-            print::green(source_file.display()),
-        ),
+        None => {
+            eprintln!(
+                "{}Couldn't locate {} in the vfs!",
+                print::err_prefix(),
+                print::green(source_file.display()),
+            );
+            std::process::exit(VFSToolExitCode::FindFailed.into());
+        }
         Some(dest) => println!(
             "{}Successfully extracted {} to {}",
             print::success_prefix(),
@@ -492,7 +522,7 @@ fn handle_find_file(vfs: &VFS, path: &PathBuf, simple: bool, only_physical: bool
     };
 
     if simple {
-        print!("{path_display}");
+        println!("{path_display}");
     } else {
         println!(
             "{}Successfully found VFS File {} at path {}",
@@ -884,12 +914,10 @@ fn run_analysis_command(
     use_relative: bool,
     resolved_config_dir: PathBuf,
 ) -> Result<()> {
-    let Some(command) = run_analysis_primary(command, use_relative, resolved_config_dir.clone())?
-    else {
+    if run_analysis_primary(command, use_relative, resolved_config_dir)?.is_none() {
         return Ok(());
-    };
-    let _ = (command, resolved_config_dir);
-    Ok(())
+    }
+    unreachable!("all 1.0 commands should be handled before this point")
 }
 
 fn run_command(
@@ -909,8 +937,7 @@ fn run_command(
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-    let config_dir = args.config.unwrap_or(openmw_config::default_config_path());
-    let resolved_config_dir = validate_config_dir(&config_dir)?;
+    let resolved_config_dir = resolve_config_path(args.config)?;
     let vfs = construct_vfs(resolved_config_dir.clone());
     run_command(args.command, args.use_relative, resolved_config_dir, &vfs)
 }

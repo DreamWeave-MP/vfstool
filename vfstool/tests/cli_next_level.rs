@@ -113,6 +113,7 @@ fn lock_then_drift_detects_hash_change_and_exits_four() {
     let drift = fixture.run(&[
         "drift",
         lock_path.to_str().expect("lock path should be utf-8"),
+        "--fail-on-drift",
         "--format",
         "json",
     ]);

@@ -168,10 +168,7 @@ impl VFS {
         let re = regex::RegexBuilder::new(&normalized.to_string_lossy())
             .case_insensitive(true)
             .build()?;
-        Ok(self.tree_filtered(relative, |_key, file| {
-            let normalized_path = normalize_path(file.path());
-            re.is_match(&normalized_path.to_string_lossy())
-        }))
+        Ok(self.tree_filtered(relative, |key, _file| re.is_match(&key.to_string_lossy())))
     }
 
     /// Collapse the entire VFS into `dest`, creating hardlinks, symlinks, or copies.
@@ -1608,6 +1605,18 @@ mod loose_tests {
         let tree = vfs.find_by_regex("[.]txt$", true).unwrap();
         let count = count_files_in_tree(&tree);
         assert_eq!(count, 0, "no .txt files should match");
+    }
+
+    #[test]
+    fn find_by_regex_does_not_match_source_directory() {
+        let dir = TempDir::new("vfs_newmethods_regex_source_dir_match");
+        dir.write("asset.nif", b"a");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        let tree = vfs
+            .find_by_regex("vfs_newmethods_regex_source_dir_match", true)
+            .unwrap();
+        assert_eq!(count_files_in_tree(&tree), 0);
     }
 
     #[test]

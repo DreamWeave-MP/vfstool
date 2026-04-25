@@ -91,10 +91,14 @@ pub fn hash_file(path: &Path) -> io::Result<[u8; 32]> {
 pub fn snapshot_directory(dir: &Path) -> io::Result<Snapshot> {
     WalkDir::new(dir)
         .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
+        .filter_map(|entry| match entry.map_err(io::Error::other) {
+            Ok(entry) if entry.file_type().is_file() => Some(Ok(entry)),
+            Ok(_) => None,
+            Err(err) => Some(Err(err)),
+        })
         .par_bridge()
         .map(|entry| {
+            let entry = entry?;
             let rel = entry
                 .path()
                 .strip_prefix(dir)
@@ -118,10 +122,17 @@ pub fn changed_files<S: BuildHasher + Sync>(
 ) -> io::Result<Vec<PathBuf>> {
     WalkDir::new(dir)
         .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
+        .filter_map(|entry| match entry.map_err(io::Error::other) {
+            Ok(entry) if entry.file_type().is_file() => Some(Ok(entry)),
+            Ok(_) => None,
+            Err(err) => Some(Err(err)),
+        })
         .par_bridge()
         .filter_map(|entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => return Some(Err(err)),
+            };
             let rel = match entry.path().strip_prefix(dir) {
                 Ok(path) => path.to_path_buf(),
                 Err(_) => return Some(Err(io::Error::other("walkdir entry should be under root"))),
