@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{analysis::LayerIndex, matchers::CompiledGlob};
+use crate::{SourceKind, analysis::LayerIndex, matchers::CompiledGlob};
 use ahash::AHashMap;
 use std::{cmp::Ordering, io, path::PathBuf};
 
@@ -139,6 +139,11 @@ impl LayerIndex {
             .iter()
             .map(|key| self.sources_containing(key))
             .collect();
+        let source_kinds = self
+            .sources
+            .iter()
+            .map(|source| source.kind)
+            .collect::<Vec<_>>();
         let compiled_constraints =
             compile_constraints(self, &request.constraints, &keys, &source_lookup)?;
         let precedence_edges = precedence_edges(&compiled_constraints);
@@ -157,19 +162,24 @@ impl LayerIndex {
             });
         };
 
-        let violations = improve_candidate(
-            &current,
-            &mut candidate,
-            self.sources.len(),
-            &precedence_edges,
-            &compiled_constraints,
-            &keys,
-            &providers_by_key,
-        );
+        let eval = SolveEvalContext {
+            source_count: self.sources.len(),
+            constraints: &compiled_constraints,
+            keys: &keys,
+            providers_by_key: &providers_by_key,
+            source_kinds: &source_kinds,
+        };
+
+        let violations = improve_candidate(&current, &mut candidate, &precedence_edges, &eval);
 
         let move_count = move_count(&current, &candidate);
-        let changed_winners =
-            changed_winner_count(self.sources.len(), &providers_by_key, &current, &candidate);
+        let changed_winners = changed_winner_count(
+            self.sources.len(),
+            &providers_by_key,
+            &source_kinds,
+            &current,
+            &candidate,
+        );
 
         let status = if violations.is_empty() {
             SolveStatus::Satisfiable
@@ -383,20 +393,14 @@ fn stable_topological_sort(
     Some(order)
 }
 
-fn evaluate_constraints(
-    source_count: usize,
-    order: &[usize],
-    constraints: &[CompiledConstraint],
-    keys: &[PathBuf],
-    providers_by_key: &[&[usize]],
-) -> Vec<ConstraintViolation> {
+fn evaluate_constraints(order: &[usize], eval: &SolveEvalContext<'_>) -> Vec<ConstraintViolation> {
     let mut violations = Vec::new();
-    let mut rank = vec![0usize; source_count];
+    let mut rank = vec![0usize; eval.source_count];
     for (pos, source_idx) in order.iter().copied().enumerate() {
         rank[source_idx] = pos;
     }
 
-    for constraint in constraints {
+    for constraint in eval.constraints {
         match constraint {
             CompiledConstraint::SourceBefore {
                 constraint_index,
@@ -442,14 +446,14 @@ fn evaluate_constraints(
                 let matched_keys = matched_key_indices.len();
                 let mut failing_keys = Vec::new();
                 for key_index in matched_key_indices {
-                    let providers = providers_by_key[*key_index];
-                    let winner_idx = providers.iter().copied().max_by_key(|src| rank[*src]);
+                    let providers = eval.providers_by_key[*key_index];
+                    let winner_idx = winner_for_providers(providers, &rank, eval.source_kinds);
                     let Some(winner_idx) = winner_idx else {
                         continue;
                     };
 
                     if !allowed_sources[winner_idx] {
-                        failing_keys.push(keys[*key_index].clone());
+                        failing_keys.push(eval.keys[*key_index].clone());
                     }
                 }
 
@@ -554,40 +558,37 @@ fn has_unavoidable_unsat(
     false
 }
 
+struct SolveEvalContext<'a> {
+    source_count: usize,
+    constraints: &'a [CompiledConstraint],
+    keys: &'a [PathBuf],
+    providers_by_key: &'a [&'a [usize]],
+    source_kinds: &'a [SourceKind],
+}
+
 fn improve_candidate(
     current: &[usize],
     candidate: &mut Vec<usize>,
-    source_count: usize,
     precedence_edges: &[(usize, usize)],
-    constraints: &[CompiledConstraint],
-    keys: &[PathBuf],
-    providers_by_key: &[&[usize]],
+    eval: &SolveEvalContext<'_>,
 ) -> Vec<ConstraintViolation> {
-    let mut violations =
-        evaluate_constraints(source_count, candidate, constraints, keys, providers_by_key);
-    if violations.is_empty() || has_unavoidable_unsat(source_count, constraints, providers_by_key) {
+    let mut violations = evaluate_constraints(candidate, eval);
+    if violations.is_empty()
+        || has_unavoidable_unsat(eval.source_count, eval.constraints, eval.providers_by_key)
+    {
         return violations;
     }
 
     let search = LocalSearch {
         current,
-        source_count,
         precedence_edges,
-        constraints,
-        keys,
-        providers_by_key,
+        eval,
     };
     search.improve_candidate_locally(candidate, &mut violations);
 
     if !violations.is_empty()
-        && let Some(exact) = best_satisfying_topological_order(
-            current,
-            source_count,
-            precedence_edges,
-            constraints,
-            keys,
-            providers_by_key,
-        )
+        && let Some(exact) =
+            best_satisfying_topological_order(current, eval.source_count, precedence_edges, eval)
     {
         *candidate = exact;
         violations.clear();
@@ -598,11 +599,8 @@ fn improve_candidate(
 
 struct LocalSearch<'a> {
     current: &'a [usize],
-    source_count: usize,
     precedence_edges: &'a [(usize, usize)],
-    constraints: &'a [CompiledConstraint],
-    keys: &'a [PathBuf],
-    providers_by_key: &'a [&'a [usize]],
+    eval: &'a SolveEvalContext<'a>,
 }
 
 impl LocalSearch<'_> {
@@ -611,27 +609,19 @@ impl LocalSearch<'_> {
         candidate: &mut Vec<usize>,
         violations: &mut Vec<ConstraintViolation>,
     ) {
-        let max_iters = self.source_count.saturating_mul(self.source_count).max(1);
+        let max_iters = self
+            .eval
+            .source_count
+            .saturating_mul(self.eval.source_count)
+            .max(1);
         for _ in 0..max_iters {
-            let Some(next) = best_neighbor(
-                self.current,
-                candidate,
-                self.source_count,
-                self.precedence_edges,
-                self.constraints,
-                self.keys,
-                self.providers_by_key,
-            ) else {
+            let Some(next) =
+                best_neighbor(self.current, candidate, self.precedence_edges, self.eval)
+            else {
                 break;
             };
 
-            let next_violations = evaluate_constraints(
-                self.source_count,
-                &next,
-                self.constraints,
-                self.keys,
-                self.providers_by_key,
-            );
+            let next_violations = evaluate_constraints(&next, self.eval);
             if compare_solution_quality(
                 &next_violations,
                 &next,
@@ -652,14 +642,10 @@ impl LocalSearch<'_> {
 fn best_neighbor(
     current: &[usize],
     order: &[usize],
-    source_count: usize,
     precedence_edges: &[(usize, usize)],
-    constraints: &[CompiledConstraint],
-    keys: &[PathBuf],
-    providers_by_key: &[&[usize]],
+    eval: &SolveEvalContext<'_>,
 ) -> Option<Vec<usize>> {
-    let baseline_violations =
-        evaluate_constraints(source_count, order, constraints, keys, providers_by_key);
+    let baseline_violations = evaluate_constraints(order, eval);
     let mut best = None;
     let mut best_violations = baseline_violations;
 
@@ -672,13 +658,7 @@ fn best_neighbor(
             if !satisfies_precedence(&candidate, precedence_edges) {
                 continue;
             }
-            let candidate_violations = evaluate_constraints(
-                source_count,
-                &candidate,
-                constraints,
-                keys,
-                providers_by_key,
-            );
+            let candidate_violations = evaluate_constraints(&candidate, eval);
             if compare_solution_quality(
                 &candidate_violations,
                 &candidate,
@@ -728,9 +708,7 @@ fn best_satisfying_topological_order(
     current: &[usize],
     source_count: usize,
     precedence_edges: &[(usize, usize)],
-    constraints: &[CompiledConstraint],
-    keys: &[PathBuf],
-    providers_by_key: &[&[usize]],
+    eval: &SolveEvalContext<'_>,
 ) -> Option<Vec<usize>> {
     const MAX_EXACT_SOURCES: usize = 9;
     if source_count > MAX_EXACT_SOURCES {
@@ -747,74 +725,61 @@ fn best_satisfying_topological_order(
     let mut used = vec![false; source_count];
     let mut order = Vec::with_capacity(source_count);
     let mut best: Option<Vec<usize>> = None;
-    search_satisfying_orders(
+    let search = ExactSearch {
         current,
         source_count,
-        constraints,
-        keys,
-        providers_by_key,
-        &outgoing,
-        &mut indegree,
-        &mut used,
-        &mut order,
-        &mut best,
-    );
+        eval,
+        outgoing: &outgoing,
+    };
+    search.search(&mut indegree, &mut used, &mut order, &mut best);
     best
 }
 
-#[allow(clippy::too_many_arguments)]
-fn search_satisfying_orders(
-    current: &[usize],
+struct ExactSearch<'a> {
+    current: &'a [usize],
     source_count: usize,
-    constraints: &[CompiledConstraint],
-    keys: &[PathBuf],
-    providers_by_key: &[&[usize]],
-    outgoing: &[Vec<usize>],
-    indegree: &mut [usize],
-    used: &mut [bool],
-    order: &mut Vec<usize>,
-    best: &mut Option<Vec<usize>>,
-) {
-    if order.len() == source_count {
-        if evaluate_constraints(source_count, order, constraints, keys, providers_by_key).is_empty()
-            && best.as_ref().is_none_or(|best_order| {
-                move_count(current, order) < move_count(current, best_order)
-            })
-        {
-            *best = Some(order.clone());
-        }
-        return;
-    }
+    eval: &'a SolveEvalContext<'a>,
+    outgoing: &'a [Vec<usize>],
+}
 
-    for node in 0..source_count {
-        if used[node] || indegree[node] != 0 {
-            continue;
+impl ExactSearch<'_> {
+    fn search(
+        &self,
+        indegree: &mut [usize],
+        used: &mut [bool],
+        order: &mut Vec<usize>,
+        best: &mut Option<Vec<usize>>,
+    ) {
+        if order.len() == self.source_count {
+            if evaluate_constraints(order, self.eval).is_empty()
+                && best.as_ref().is_none_or(|best_order| {
+                    move_count(self.current, order) < move_count(self.current, best_order)
+                })
+            {
+                *best = Some(order.clone());
+            }
+            return;
         }
 
-        used[node] = true;
-        order.push(node);
-        for &next in &outgoing[node] {
-            indegree[next] = indegree[next].saturating_sub(1);
-        }
+        for node in 0..self.source_count {
+            if used[node] || indegree[node] != 0 {
+                continue;
+            }
 
-        search_satisfying_orders(
-            current,
-            source_count,
-            constraints,
-            keys,
-            providers_by_key,
-            outgoing,
-            indegree,
-            used,
-            order,
-            best,
-        );
+            used[node] = true;
+            order.push(node);
+            for &next in &self.outgoing[node] {
+                indegree[next] = indegree[next].saturating_sub(1);
+            }
 
-        for &next in &outgoing[node] {
-            indegree[next] += 1;
+            self.search(indegree, used, order, best);
+
+            for &next in &self.outgoing[node] {
+                indegree[next] += 1;
+            }
+            order.pop();
+            used[node] = false;
         }
-        order.pop();
-        used[node] = false;
     }
 }
 
@@ -829,6 +794,7 @@ fn move_count(current: &[usize], solved: &[usize]) -> usize {
 fn changed_winner_count(
     source_count: usize,
     providers_by_key: &[&[usize]],
+    source_kinds: &[SourceKind],
     current: &[usize],
     solved: &[usize],
 ) -> usize {
@@ -843,19 +809,31 @@ fn changed_winner_count(
 
     let mut changed = 0usize;
     for providers in providers_by_key {
-        let current_winner = providers
-            .iter()
-            .copied()
-            .max_by_key(|src| current_rank[*src]);
-        let solved_winner = providers
-            .iter()
-            .copied()
-            .max_by_key(|src| solved_rank[*src]);
+        let current_winner = winner_for_providers(providers, &current_rank, source_kinds);
+        let solved_winner = winner_for_providers(providers, &solved_rank, source_kinds);
         if current_winner != solved_winner {
             changed += 1;
         }
     }
     changed
+}
+
+fn winner_for_providers(
+    providers: &[usize],
+    rank_by_source: &[usize],
+    source_kinds: &[SourceKind],
+) -> Option<usize> {
+    providers
+        .iter()
+        .copied()
+        .filter(|idx| source_kinds[*idx] == SourceKind::LooseDir)
+        .max_by_key(|idx| rank_by_source[*idx])
+        .or_else(|| {
+            providers
+                .iter()
+                .copied()
+                .max_by_key(|idx| rank_by_source[*idx])
+        })
 }
 
 fn indices_to_paths(layer: &LayerIndex, order: &[usize]) -> Vec<PathBuf> {
@@ -1022,6 +1000,39 @@ mod tests {
             .expect("solve should succeed");
 
         assert_eq!(result.status, SolveStatus::Satisfiable);
+    }
+
+    #[test]
+    fn solve_winner_constraint_cannot_make_archive_beat_loose_file() {
+        let layer = LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: PathBuf::from("/archive.bsa"),
+                    kind: SourceKind::Archive,
+                },
+                vec![PathBuf::from("textures/a.dds")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("/loose"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("textures/a.dds")],
+            ),
+        ]);
+
+        let result = layer
+            .solve_order(&SolveRequest {
+                current_order: vec![],
+                constraints: vec![OrderConstraint::WinnerMustBe {
+                    path_glob: "textures/a.dds".into(),
+                    source_glob: "**/archive.bsa".into(),
+                }],
+                objective: SolveObjective::MinMovesFromCurrent,
+            })
+            .expect("solve should return result");
+
+        assert_eq!(result.status, SolveStatus::Unsatisfiable);
     }
 
     #[test]

@@ -10,6 +10,8 @@
 - **Conflict analysis**: Per-source override and overridden-by sets, plus high-level reports for the `conflicts`, `shadowed`, `which`, `stats`, and `diff` queries.
 - **Archive support**: BSA/BA2 (Morrowind, Oblivion, Skyrim, Fallout 4) via the `ba2` crate (`bsa` feature). ZIP/PK3 via the `zip` crate (`zip` feature).
 - **Serialization**: JSON, YAML, TOML output via `serde` (`serialize` feature).
+- **Semantic JSON/TOML analysis**: Structured JSON/TOML comparisons require the `serialize` feature;
+  without it those formats are reported as unknown semantic deltas.
 - **Parallel processing**: Directory walks and hash operations use `rayon`.
 - **MO2-style runner support**: `run_setup` / `run_finalize` for dump-run-collect workflows.
 - **Mutable views**: Winner-only mutation on `VFS`, plus provider-aware mutation with `MutableVfs`.

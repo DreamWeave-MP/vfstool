@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path, normalize_path_in_place};
+use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path};
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -52,9 +52,14 @@ impl MutableVfs {
     }
 
     /// Insert a provider at the highest priority for `key`.
-    pub fn push_provider<P: AsRef<Path>>(&mut self, key: P, provider: VfsProvider) {
-        let key = normalize_path(key.as_ref()).into_owned();
+    ///
+    /// Returns `false` and leaves the VFS unchanged when `key` is not a safe relative VFS path.
+    pub fn push_provider<P: AsRef<Path>>(&mut self, key: P, provider: VfsProvider) -> bool {
+        let Some(key) = VFS::normalized_safe_key(key.as_ref()) else {
+            return false;
+        };
         self.providers.entry(key).or_default().push(provider);
+        true
     }
 
     /// Insert every loose file under `root` as a higher-priority provider.
@@ -75,18 +80,23 @@ impl MutableVfs {
                 continue;
             }
 
-            let mut key = entry
+            let key = entry
                 .path()
                 .strip_prefix(root)
                 .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
-            normalize_path_in_place(&mut key);
-            self.push_provider(
-                key,
+            if !self.push_provider(
+                &key,
                 VfsProvider {
                     source: source.clone(),
                     file: VfsFile::from(entry.path()),
                 },
-            );
+            ) {
+                eprintln!(
+                    "vfstool: skipping unsafe VFS path '{}' from {}",
+                    key.display(),
+                    entry.path().display()
+                );
+            }
         }
 
         Ok(())
@@ -289,6 +299,42 @@ mod tests {
         assert!(mutable.remove_source(data.path()).is_empty());
         assert!(mutable.to_vfs().get_file("file.txt").is_some());
         assert_eq!(mutable.remove_source(&relative).len(), 1);
+    }
+
+    #[test]
+    fn push_provider_rejects_unsafe_keys() {
+        let data = TempDir::new("mutable_vfs_unsafe_provider");
+        let file = data.write("source.txt", b"data");
+        let mut mutable = MutableVfs::new();
+
+        let inserted = mutable.push_provider(
+            "../escape.txt",
+            VfsProvider {
+                source: SourceMeta {
+                    path: data.path().to_path_buf(),
+                    kind: SourceKind::LooseDir,
+                },
+                file: VfsFile::from(file),
+            },
+        );
+
+        assert!(!inserted);
+        assert!(mutable.providers_for("../escape.txt").is_none());
+        assert_eq!(mutable.to_vfs().iter().count(), 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn push_directory_skips_filenames_that_normalize_to_unsafe_keys() {
+        let data = TempDir::new("mutable_vfs_scan_unsafe_keys");
+        data.write("..\\outside.txt", b"escape");
+        data.write("safe.txt", b"safe");
+
+        let mutable = MutableVfs::from_directories([data.path()]).unwrap();
+
+        assert!(mutable.providers_for("safe.txt").is_some());
+        assert!(mutable.providers_for("../outside.txt").is_none());
+        assert_eq!(mutable.to_vfs().iter().count(), 1);
     }
 
     #[test]

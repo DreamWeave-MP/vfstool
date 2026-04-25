@@ -82,6 +82,9 @@ pub struct ConflictIndex {
     /// Per-source conflict info, indexed by load-order position.
     pub conflicts: Vec<SourceConflicts>,
 
+    /// Count of unique normalized files per source.
+    source_file_counts: Vec<usize>,
+
     /// Multi-map: normalized path → source indices (ascending = lower priority first).
     /// Only paths present in two or more sources are included.
     ///
@@ -119,6 +122,7 @@ impl ConflictIndex {
     /// are thin wrappers around this function.
     pub fn from_file_lists(sources: impl IntoIterator<Item = (PathBuf, Vec<PathBuf>)>) -> Self {
         let mut source_paths: Vec<PathBuf> = Vec::new();
+        let mut source_file_counts: Vec<usize> = Vec::new();
         let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
 
         // Sequential merge preserves source order and therefore priority.
@@ -136,6 +140,7 @@ impl ConflictIndex {
                         .push(source_idx);
                 }
             }
+            source_file_counts.push(seen.len());
         }
 
         let n = source_paths.len();
@@ -164,6 +169,7 @@ impl ConflictIndex {
         Self {
             sources: source_paths,
             conflicts,
+            source_file_counts,
             path_to_sources,
         }
     }
@@ -290,8 +296,8 @@ impl ConflictIndex {
 
     /// Build a [`ShadowedReport`] listing sources whose files are entirely overridden.
     ///
-    /// A source is "shadowed" when `is_overridden()` is true — at least one of its
-    /// files is superseded by a higher-priority source.
+    /// A source is "shadowed" when every file in the source is superseded by a
+    /// higher-priority source.
     #[must_use]
     pub fn shadowed_report(&self, use_relative: bool) -> ShadowedReport {
         let sources = self
@@ -299,7 +305,9 @@ impl ConflictIndex {
             .iter()
             .enumerate()
             .filter_map(|(i, src)| {
-                if !self.conflicts[i].is_overridden() {
+                if self.source_file_counts[i] == 0
+                    || self.conflicts[i].overridden_by.len() != self.source_file_counts[i]
+                {
                     return None;
                 }
                 let resolve = |p: &PathBuf| -> PathBuf { report_path(src, p, use_relative) };
@@ -1088,6 +1096,20 @@ mod tests {
             shadowed.shadowed_files.windows(2).all(|w| w[0] <= w[1]),
             "shadowed_files should be sorted"
         );
+    }
+
+    #[test]
+    fn shadowed_report_excludes_partially_overridden_source() {
+        let d1 = TempDir::new("ci_report_sr_partial_d1");
+        let d2 = TempDir::new("ci_report_sr_partial_d2");
+        d1.write("shared.txt", b"");
+        d1.write("unique.txt", b"");
+        d2.write("shared.txt", b"");
+
+        let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
+        let report = index.shadowed_report(true);
+
+        assert!(report.sources.is_empty());
     }
 
     // ---- which ----

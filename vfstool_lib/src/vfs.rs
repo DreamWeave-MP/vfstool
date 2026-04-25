@@ -168,6 +168,7 @@ impl VFS {
             .par_iter()
             .map(|(relative_path, file)| -> std::io::Result<bool> {
                 let dest = dir.join(relative_path);
+                Self::ensure_output_parent_safe(dir, &dest)?;
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
@@ -246,14 +247,15 @@ impl VFS {
         self.validate_materialization_paths()?;
         std::fs::create_dir_all(dest)?;
 
-        self.file_map.iter().for_each(|(relative_path, file)| {
+        for (relative_path, file) in &self.file_map {
             let merged_path = dest.join(relative_path);
+            Self::ensure_output_parent_safe(dest, &merged_path)?;
             let Some(merged_dir) = merged_path.parent() else {
                 eprintln!(
                     "vfstool: failed to resolve parent dir for {}",
                     merged_path.display()
                 );
-                return;
+                continue;
             };
 
             if let Err(e) = std::fs::create_dir_all(merged_dir) {
@@ -262,7 +264,7 @@ impl VFS {
                     merged_dir.display(),
                     e
                 );
-                return;
+                continue;
             }
 
             if file.is_loose() {
@@ -276,7 +278,7 @@ impl VFS {
                     file.parent_archive_path().unwrap_or_default()
                 );
             }
-        });
+        }
 
         Ok(())
     }
@@ -404,6 +406,7 @@ impl VFS {
         })?;
 
         let dest = dest_dir.join(file_name);
+        Self::ensure_output_parent_safe(dest_dir, &dest)?;
 
         if file.is_loose() {
             Self::copy_replacing_output(file.path(), &dest)?;
@@ -524,6 +527,13 @@ impl VFS {
     fn validate_materialization_paths(&self) -> io::Result<()> {
         let keys = self.file_map.keys().cloned().collect::<BTreeSet<_>>();
         for key in &keys {
+            if Self::normalized_safe_key(key).as_ref() != Some(key) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("VFS key '{}' cannot be safely materialized", key.display()),
+                ));
+            }
+
             let mut prefix = PathBuf::new();
             for component in key.components() {
                 prefix.push(component.as_os_str());
@@ -545,7 +555,43 @@ impl VFS {
         Ok(())
     }
 
-    fn normalized_safe_key(path: &Path) -> Option<PathBuf> {
+    fn ensure_output_parent_safe(root: &Path, output: &Path) -> io::Result<()> {
+        let relative = output
+            .strip_prefix(root)
+            .map_err(|_| io::Error::other("output path should be under root"))?;
+        if std::fs::symlink_metadata(root)
+            .map(|meta| meta.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("output root is a symlink: {}", root.display()),
+            ));
+        }
+
+        let mut current = root.to_path_buf();
+        let mut components = relative.components().peekable();
+        while let Some(component) = components.next() {
+            if components.peek().is_none() {
+                break;
+            }
+            current.push(component.as_os_str());
+            match std::fs::symlink_metadata(&current) {
+                Ok(meta) if meta.file_type().is_symlink() => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        format!("output parent is a symlink: {}", current.display()),
+                    ));
+                }
+                Ok(_) => {}
+                Err(err) if err.kind() == io::ErrorKind::NotFound => break,
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn normalized_safe_key(path: &Path) -> Option<PathBuf> {
         let normalized = normalize_path(path).into_owned();
         let normalized_text = normalized.to_string_lossy();
         if normalized_text.as_bytes().get(1) == Some(&b':') {
@@ -587,17 +633,23 @@ impl VFS {
                 }
             })
             .par_bridge()
-            .map(move |entry| {
+            .filter_map(move |entry| {
                 let path = entry.path();
                 let target_path = path
                     .strip_prefix(&dir)
                     .expect("Entry path should always be prefixed by scan directory!");
 
-                let mut normalized_path = target_path.to_path_buf();
-                normalize_path_in_place(&mut normalized_path);
+                let Some(normalized_path) = Self::normalized_safe_key(target_path) else {
+                    eprintln!(
+                        "vfstool: skipping unsafe VFS path '{}' from {}",
+                        target_path.display(),
+                        path.display()
+                    );
+                    return None;
+                };
 
                 let vfs_file = VfsFile::from(path);
-                (normalized_path, vfs_file)
+                Some((normalized_path, vfs_file))
             })
     }
 
@@ -945,13 +997,13 @@ impl VFS {
                 |parent| PathBuf::from(parent).join(key),
             );
 
-            let new_file = entry.clone();
-
             // Filter before touching the tree so we never create directory
             // nodes for paths whose files are all excluded.
-            if file_filter.as_ref().is_some_and(|f| !f(key, &new_file)) {
+            if file_filter.as_ref().is_some_and(|f| !f(key, entry)) {
                 continue;
             }
+
+            let new_file = entry.clone();
 
             let parent = path
                 .parent()
@@ -1172,6 +1224,22 @@ mod loose_tests {
         assert!(vfs.insert_loose_file("/absolute.txt", &path).is_none());
         assert!(vfs.insert_loose_file("C:\\absolute.txt", &path).is_none());
         assert_eq!(vfs.iter().count(), 0);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn from_directories_skips_filenames_that_normalize_to_unsafe_keys() {
+        let dir = TempDir::new("vfsloose_scan_unsafe_keys");
+        dir.write("..\\outside.txt", b"escape");
+        dir.write("\\absolute.txt", b"absolute");
+        dir.write("safe.txt", b"safe");
+
+        let vfs = VFS::from_directories([dir.path()], None);
+
+        assert!(vfs.contains(Path::new("safe.txt")));
+        assert!(!vfs.contains(Path::new("../outside.txt")));
+        assert!(!vfs.contains(Path::new("/absolute.txt")));
+        assert_eq!(vfs.iter().count(), 1);
     }
 
     #[test]
@@ -2720,6 +2788,51 @@ mod dump_tests {
                 .file_type()
                 .is_symlink()
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dump_rejects_symlinked_parent_directory() {
+        let src = TempDir::new("dump_parent_symlink_src");
+        src.write("textures/f.txt", b"new_content");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_parent_symlink_dest");
+        let outside = TempDir::new("dump_parent_symlink_outside");
+        std::os::unix::fs::symlink(outside.path(), dest.path().join("textures")).unwrap();
+
+        let err = vfs
+            .dump_to_directory(dest.path(), false)
+            .expect_err("symlinked parent should be rejected");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(!outside.path().join("f.txt").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn collapse_rejects_symlinked_parent_directory() {
+        let src = TempDir::new("collapse_parent_symlink_src");
+        src.write("textures/f.txt", b"new_content");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("collapse_parent_symlink_dest");
+        let outside = TempDir::new("collapse_parent_symlink_outside");
+        std::os::unix::fs::symlink(outside.path(), dest.path().join("textures")).unwrap();
+
+        let err = vfs
+            .collapse_into(
+                dest.path(),
+                &CollapseOptions {
+                    allow_copying: true,
+                    extract_archives: true,
+                    use_symlinks: false,
+                },
+            )
+            .expect_err("symlinked parent should be rejected");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(!outside.path().join("f.txt").exists());
     }
 
     #[test]

@@ -168,10 +168,14 @@ fn parse_ini_like(input: &str) -> BTreeMap<String, BTreeMap<String, String>> {
 }
 
 fn analyze_toml(left: &[u8], right: &[u8]) -> SemanticDelta {
+    // Structured TOML parsing is intentionally tied to the serialize feature,
+    // which owns the toml dependency for the crate.
     analyze_structured_pair(left, right, parse_toml_value, "TOML semantic values differ")
 }
 
 fn analyze_json(left: &[u8], right: &[u8]) -> SemanticDelta {
+    // Structured JSON parsing is intentionally tied to the serialize feature,
+    // which owns the serde_json dependency for the crate.
     analyze_structured_pair(left, right, parse_json_value, "JSON semantic values differ")
 }
 
@@ -237,6 +241,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "serialize")]
     fn toml_value_change_is_behavior_changing() {
         let left = b"[x]\na = 1\n";
         let right = b"[x]\na = 2\n";
@@ -245,6 +250,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "serialize"))]
+    fn toml_semantics_are_unknown_without_serialize() {
+        let left = b"[x]\na = 1\n";
+        let right = b"[x]\na = 2\n";
+        let (_class, delta) = analyze_pair(Path::new("config.toml"), left, right);
+        assert_eq!(delta, SemanticDelta::Unknown);
+    }
+
+    #[test]
+    #[cfg(feature = "serialize")]
     fn json_reformat_is_cosmetic() {
         let left = br#"{"a":1,"b":2}"#;
         let right = br#"{
@@ -253,6 +268,18 @@ mod tests {
 }"#;
         let (_class, delta) = analyze_pair(Path::new("x.json"), left, right);
         assert_eq!(delta, SemanticDelta::CosmeticOnly);
+    }
+
+    #[test]
+    #[cfg(not(feature = "serialize"))]
+    fn json_semantics_are_unknown_without_serialize() {
+        let left = br#"{"a":1,"b":2}"#;
+        let right = br#"{
+  "b": 2,
+  "a": 1
+}"#;
+        let (_class, delta) = analyze_pair(Path::new("x.json"), left, right);
+        assert_eq!(delta, SemanticDelta::Unknown);
     }
 
     #[test]
