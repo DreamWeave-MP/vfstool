@@ -39,7 +39,7 @@ vfstool_lib = { version = "1.0", features = ["bsa", "serialize"] }
 ### Basic example
 
 ```rust
-use vfstool_lib::vfs::VFS;
+use vfstool_lib::VFS;
 use std::path::PathBuf;
 
 fn main() {
@@ -60,7 +60,7 @@ fn main() {
 ### Conflict analysis
 
 ```rust
-use vfstool_lib::vfs::VFS;
+use vfstool_lib::VFS;
 
 let (vfs, ci) = VFS::from_directories_with_conflict_index(
     vec!["path/to/base", "path/to/mod"],
@@ -79,7 +79,7 @@ for entry in &report.sources {
 ### Serialization
 
 ```rust
-use vfstool_lib::{vfs::VFS, SerializeType};
+use vfstool_lib::{SerializeType, VFS};
 
 let vfs = VFS::from_directories(vec!["path/to/data"], None);
 let tree = vfs.tree(false, None);
@@ -125,6 +125,15 @@ those hardlinks. Use copy mode when running tools that are not hardlink-safe.
 `run_setup` creates the merged directory if needed. If it already exists, it removes that directory
 recursively before rebuilding it so child tools see only the current VFS contents. Pass a dedicated
 scratch directory, not a directory containing user data.
+
+---
+
+## 1.0 API surface
+
+The stable 1.0 API is the top-level re-exported surface from `vfstool_lib`, including `VFS`,
+`VfsFile`, `MutableVfs`, conflict/report types, path helpers, lock/drift types, runner helpers,
+and serialization helpers. Modules marked `#[doc(hidden)]` are intentionally public for internal
+composition and tests, but they are not promoted or stable API.
 
 ---
 

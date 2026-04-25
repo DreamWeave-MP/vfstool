@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-#[cfg(feature = "bsa")]
-use ba2::{
-    fo4::{ArchiveKey as Fo4ArchiveKey, File as Fo4File},
-    tes3::ArchiveKey as Tes3Key,
-    tes4::{
-        ArchiveKey as Tes4ArchiveKey, DirectoryKey as Tes4DirKey, File as Tes4File,
-        FileCompressionOptions as Tes4CompressionOptions,
-    },
-};
-
 #[cfg(any(feature = "bsa", feature = "zip"))]
-use std::{
-    io::{Cursor, Error, ErrorKind},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use std::{
     fs::File as StdFile,
@@ -22,145 +9,18 @@ use std::{
 };
 
 #[cfg(any(feature = "bsa", feature = "zip"))]
-use crate::archives::{StoredArchive, TypedArchive};
+use crate::archives::StoredArchive;
 
-/// Streaming reader over a Fallout 4 BA2 file stored as multiple chunks.
-#[cfg(feature = "bsa")]
-pub struct Fo4FileReader<'a> {
-    chunks: std::vec::IntoIter<&'a [u8]>,
-    current_chunk: Option<&'a [u8]>,
-    position: usize,
-}
-
-#[cfg(feature = "bsa")]
-/// Since FO4 Archives are stored in chunks, implement a custom reader for them
-/// This allows to seamlessly call read on them as we do for other all other file types
-impl<'a> Fo4FileReader<'a> {
-    /// Creates a [`Fo4FileReader`] that streams chunks from `file` in order.
-    #[must_use]
-    pub fn new(file: &'a Fo4File) -> Self {
-        let mut chunks = file
-            .iter()
-            .map(ba2::fo4::Chunk::as_bytes)
-            .collect::<Vec<_>>()
-            .into_iter();
-        let current_chunk = chunks.next();
-
-        Self {
-            chunks,
-            current_chunk,
-            position: 0,
-        }
-    }
-}
-
-#[cfg(feature = "bsa")]
-impl Read for Fo4FileReader<'_> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut total_read = 0;
-
-        while total_read < buf.len() {
-            let chunk = match self.current_chunk {
-                Some(chunk) if self.position < chunk.len() => chunk,
-                _ => {
-                    // Move to the next chunk
-                    self.current_chunk = self.chunks.next();
-                    self.position = 0;
-                    match self.current_chunk {
-                        Some(chunk) => chunk,
-                        None => return Ok(total_read), // No more data
-                    }
-                }
-            };
-
-            let remaining = chunk.len() - self.position;
-            let to_read = (buf.len() - total_read).min(remaining);
-
-            buf[total_read..total_read + to_read]
-                .copy_from_slice(&chunk[self.position..self.position + to_read]);
-
-            self.position += to_read;
-            total_read += to_read;
-        }
-
-        Ok(total_read)
-    }
-}
-
-/// Reader over a TES4 (Oblivion/Skyrim BSA) file, decompressing on construction if needed.
-#[cfg(feature = "bsa")]
-pub struct TES4FileReader {
-    data: Cursor<Vec<u8>>, // Cursor over the file's data (decompressed or raw)
-}
-
-#[cfg(feature = "bsa")]
-impl TES4FileReader {
-    /// Creates a new `TES4FileReader` for a TES4 file.
-    ///
-    /// If the file is compressed, it will be decompressed before being wrapped in the reader.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if decompression fails.
-    pub fn new(file: &Tes4File) -> io::Result<Self> {
-        let data = if file.is_compressed() {
-            file.decompress(&Tes4CompressionOptions::default())
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-                .as_bytes()
-                .to_vec()
-        } else {
-            file.as_bytes().to_vec()
-        };
-
-        Ok(Self {
-            data: Cursor::new(data),
-        })
-    }
-}
-
-#[cfg(feature = "bsa")]
-impl Read for TES4FileReader {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.data.read(buf)
-    }
-}
-
-/// A reference to a single file within an open [`StoredArchive`].
 #[cfg(any(feature = "bsa", feature = "zip"))]
-#[derive(Debug, Clone)]
-pub struct ArchiveReference {
-    path: PathBuf,
-    parent_archive: Arc<StoredArchive>,
-}
+#[path = "vfs_file/archive.rs"]
+mod archive;
 
-#[cfg(feature = "bsa")]
-impl ArchiveReference {
-    /// Decompose a normalized VFS path into a TES4 directory key and file key pair.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the path has no parent directory or file name.
-    pub fn tes4_keys(path: &Path) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
-        let path = path.to_string_lossy();
-        let Some((dir, file)) = path.rsplit_once(['/', '\\']) else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Missing parent directory in TES4 archive",
-            ));
-        };
-        if dir.is_empty() || file.is_empty() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "Missing TES4 archive directory or file name",
-            ));
-        }
+#[cfg(any(feature = "bsa", feature = "zip"))]
+pub use archive::ArchiveReference;
 
-        let dir_key: Tes4ArchiveKey = dir.to_owned().into();
-        let file_key: Tes4DirKey = file.to_owned().into();
-
-        Ok((dir_key, file_key))
-    }
-}
+#[cfg(test)]
+#[path = "vfs_file/tests.rs"]
+mod tests;
 
 /// Backing storage for a [`VfsFile`]: either a loose path on disk or an archive entry.
 #[derive(Debug, Clone)]
@@ -230,12 +90,8 @@ impl VfsFile {
     /// VFS key level, not here).
     #[cfg(any(feature = "bsa", feature = "zip"))]
     pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> Self {
-        let path = PathBuf::from(path.as_ref());
         VfsFile {
-            file: FileType::Archive(ArchiveReference {
-                path,
-                parent_archive,
-            }),
+            file: FileType::Archive(ArchiveReference::new(path.as_ref(), parent_archive)),
         }
     }
 
@@ -303,10 +159,10 @@ impl VfsFile {
     /// # Errors
     ///
     /// Returns an error when called on a loose-file-backed `VfsFile`.
-    pub fn parent_archive_handle(&self) -> Result<Arc<StoredArchive>, Error> {
+    pub fn parent_archive_handle(&self) -> io::Result<Arc<StoredArchive>> {
         match &self.file {
-            FileType::Loose(_) => Err(Error::new(
-                ErrorKind::InvalidData,
+            FileType::Loose(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
                 "Loose files may not return an archive reference!",
             )),
             FileType::Archive(archive_ref) => Ok(Arc::clone(&archive_ref.parent_archive)),
@@ -345,70 +201,7 @@ impl VfsFile {
             }
 
             #[cfg(any(feature = "bsa", feature = "zip"))]
-            FileType::Archive(archive_ref) => {
-                let parent = archive_ref.parent_archive.handle();
-                let path_string = archive_ref.path.to_string_lossy().to_string();
-
-                match parent {
-                    #[cfg(feature = "bsa")]
-                    TypedArchive::Tes3(archive) => {
-                        let key: Tes3Key = path_string.into();
-                        let bytes = archive
-                            .get(&key)
-                            .map(|data| data.as_bytes().to_vec())
-                            .ok_or_else(|| {
-                                io::Error::new(
-                                    io::ErrorKind::NotFound,
-                                    "File not found in TES3 archive",
-                                )
-                            })?;
-                        Ok(Box::new(Cursor::new(bytes)))
-                    }
-
-                    #[cfg(feature = "bsa")]
-                    TypedArchive::Tes4(archive) => {
-                        let (dir_key, file_key) =
-                            ArchiveReference::tes4_keys(archive_ref.path.as_path())?;
-                        let file: &Tes4File = archive
-                            .get(&dir_key)
-                            .and_then(|dir| dir.get(&file_key))
-                            .ok_or_else(|| {
-                                io::Error::new(
-                                    io::ErrorKind::NotFound,
-                                    "File not found in TES4 archive",
-                                )
-                            })?;
-                        Ok(Box::new(TES4FileReader::new(file)?))
-                    }
-
-                    #[cfg(feature = "bsa")]
-                    TypedArchive::Fo4(archive) => {
-                        let key: Fo4ArchiveKey = path_string.into();
-                        let file: &Fo4File = archive.get(&key).ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::NotFound, "File not found in FO4 archive")
-                        })?;
-                        Ok(Box::new(Fo4FileReader::new(file)))
-                    }
-
-                    #[cfg(feature = "zip")]
-                    TypedArchive::Zip(archive) => {
-                        let mut guard = archive
-                            .lock()
-                            .map_err(|_| io::Error::other("zip mutex poisoned"))?;
-                        let buf = {
-                            let mut entry = guard.by_name(&path_string).map_err(|e| {
-                                io::Error::new(io::ErrorKind::NotFound, e.to_string())
-                            })?;
-                            let mut buf = Vec::with_capacity(
-                                usize::try_from(entry.size()).unwrap_or_default(),
-                            );
-                            io::copy(&mut entry, &mut buf)?;
-                            buf
-                        };
-                        Ok(Box::new(Cursor::new(buf)))
-                    }
-                }
-            }
+            FileType::Archive(archive_ref) => archive::open(archive_ref),
         }
     }
 
@@ -499,266 +292,5 @@ impl VfsFile {
             #[cfg(any(feature = "bsa", feature = "zip"))]
             FileType::Archive(archive_ref) => &archive_ref.path,
         }
-    }
-}
-
-#[cfg(test)]
-mod read {
-    #[cfg(feature = "bsa")]
-    use super::ArchiveReference;
-    use super::VfsFile;
-    use crate::normalize_path;
-    use std::{
-        fs::{File, OpenOptions, create_dir, metadata, remove_dir_all, remove_file},
-        io::{Read, Write},
-        path::PathBuf,
-        sync::Arc,
-        thread,
-    };
-
-    const TEST_DATA: &str = "Act IV, Scene III, continued
-
-Lifts-Her-Tail
-Certainly not, kind sir! I am here but to clean your chambers.
-
-Crantius Colto
-Is that all you have come here for, little one? My chambers?
-
-Lifts-Her-Tail
-I have no idea what it is you imply, master. I am but a poor Argonian maid.
-
-Crantius Colto
-So you are, my dumpling. And a good one at that. Such strong legs and shapely tail.
-
-Lifts-Her-Tail
-You embarrass me, sir!
-
-Crantius Colto
-Fear not. You are safe here with me.
-
-Lifts-Her-Tail
-I must finish my cleaning, sir. The mistress will have my head if I do not!
-
-Crantius Colto
-Cleaning, eh? I have something for you. Here, polish my spear.
-
-Lifts-Her-Tail
-But it is huge! It could take me all night!
-
-Crantius Colto
-Plenty of time, my sweet. Plenty of time.
-
-END OF ACT IV, SCENE III";
-
-    /// The `VFSFile` itself is *not* responsible for normalization
-    /// It contains a reference to the real path, and some helpers to interact with it
-    /// Its parent struct, `VFSFiles`, uses the normalized path as a `HashMap` key to refer to the
-    /// `VFSFile`
-
-    #[test]
-    #[cfg(feature = "bsa")]
-    fn tes4_keys_split_backslash_paths_on_unix() {
-        assert!(ArchiveReference::tes4_keys(PathBuf::from("meshes\\foo.nif").as_path()).is_ok());
-        assert!(ArchiveReference::tes4_keys(PathBuf::from("meshes/foo.nif").as_path()).is_ok());
-        assert!(ArchiveReference::tes4_keys(PathBuf::from("foo.nif").as_path()).is_err());
-    }
-    /// Thus, we should ensure that the path contained in the `VFSFile` is not already normalized
-    /// but instead refers to the literal path on the user's system
-    #[test]
-    fn path_must_not_be_normalized() {
-        let test_dir = PathBuf::from("SpOnGeBoBcAsEfIlE");
-        let test_path = test_dir.join("wHoOpSyDoOpSy.EsM");
-
-        if metadata(&test_dir).is_err() {
-            let path = create_dir(test_dir.clone());
-            assert!(
-                path.is_ok(),
-                "{}",
-                format!(
-                    "CRITICAL TEST FAILURE: COULD NOT CREATE TEST DIRECTORY: {}!",
-                    path.unwrap_err()
-                ),
-            );
-        }
-
-        let _ = File::create(&test_path);
-        let vfs_file = VfsFile::from(&test_path);
-        let fd = vfs_file.open();
-
-        assert!(fd.is_ok(), "TEST FAILURE: COULD NOT OPEN VFS FILE!");
-
-        assert_ne!(normalize_path(&test_path), vfs_file.path());
-
-        let _ = remove_dir_all(test_dir);
-    }
-
-    #[test]
-    fn paths_must_match() {
-        let path = "path/to/some/file";
-        let path_buf = PathBuf::from(&path);
-        let vfs_file = VfsFile::from(path);
-        assert!(&path_buf.eq(vfs_file.path()));
-    }
-
-    #[test]
-    fn open_existing_file() {
-        let test_path = "test_file.txt";
-        let _ = File::create(test_path);
-
-        let vfs_file = VfsFile::from(test_path);
-
-        let fd = vfs_file.open();
-        assert!(fd.is_ok(), "Opening an existing file should succeed");
-        let _ = remove_file(vfs_file.path());
-    }
-
-    #[test]
-    fn open_non_existing_file() {
-        let bad_path = "non_existent_file";
-        let file = VfsFile::from(bad_path);
-
-        let fd = file.open();
-        assert!(fd.is_err(), "Opening a non-existent file should fail");
-    }
-
-    #[test]
-    fn open_loose_file_with_weird_chars() -> std::io::Result<()> {
-        let test_path = "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt";
-
-        let mut fd = File::create(test_path)?;
-
-        write!(fd, "{TEST_DATA}")?;
-
-        let vfs_file = VfsFile::from(test_path);
-
-        let mut reader = vfs_file.open()?;
-
-        let mut data_buf = String::new();
-        let _written = reader.read_to_string(&mut data_buf);
-
-        assert_eq!(data_buf, TEST_DATA);
-
-        remove_file(vfs_file.path())?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_concurrent_reading() {
-        let path_str = "test.txt";
-        let mut test_file_content = File::create(path_str).unwrap();
-        let _ = write!(test_file_content, "{TEST_DATA}");
-
-        let vfs_file = Arc::new(VfsFile::from(path_str));
-
-        vfs_file.open().expect("File should open");
-
-        let handles: Vec<_> = (0..10)
-            .map(|_| {
-                let vfs_clone = Arc::clone(&vfs_file);
-                thread::spawn(move || {
-                    let result = vfs_clone.open();
-                    assert!(result.is_ok(), "Read should succeed");
-
-                    let mut result_data = String::new();
-                    let _ = result.unwrap().read_to_string(&mut result_data);
-
-                    assert_eq!(result_data, TEST_DATA);
-                })
-            })
-            .collect();
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        let _ = remove_file(PathBuf::from(path_str));
-    }
-
-    /// The OS generally handles concurrent writes, so not much special needs done here
-    /// But do note that later iterations of this design won't implement writes this way
-    #[test]
-    fn test_concurrent_writing() {
-        let path_str = "test_write.txt";
-
-        let _ = File::create(path_str).unwrap();
-
-        let vfs_file = Arc::new(VfsFile::from(path_str));
-
-        vfs_file.open().expect("File should open");
-
-        let handles: Vec<_> = (0..10)
-            .map(|_| {
-                let vfs_clone = Arc::clone(&vfs_file);
-                thread::spawn(move || {
-                    let mut file = OpenOptions::new()
-                        .write(true)
-                        .open(vfs_clone.path())
-                        .expect("File should be openable in thread!");
-
-                    let write_result = file.write_all(TEST_DATA.as_bytes());
-
-                    assert!(
-                        write_result.is_ok(),
-                        "Write operations are not natively thread-safe {}!",
-                        write_result.unwrap_err()
-                    );
-                })
-            })
-            .collect();
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        let _ = remove_file(PathBuf::from(path_str));
-    }
-
-    /// This usage isn't really necessary, as the OS will handle sequencing of read and write ops
-    /// However, if explicit sequencing is required, this is the way to do it
-    #[test]
-    fn test_concurrent_writing_with_rwlock() {
-        let path_str = "test_write_safe.txt";
-
-        let _ = File::create(path_str).expect("Failed to create test file"); // Ensure the file exists
-
-        let vfs_file = Arc::new(VfsFile::from(path_str));
-        let file_lock = Arc::new(std::sync::RwLock::new(())); // Lock for write access
-
-        let handles: Vec<_> = (0..10)
-            .map(|i| {
-                let vfs_clone = Arc::clone(&vfs_file);
-                let lock_clone = Arc::clone(&file_lock);
-
-                thread::spawn(move || {
-                    let _guard = lock_clone.write().expect("Write lock should succeed");
-
-                    let mut file = match std::fs::OpenOptions::new()
-                        .write(true)
-                        .open(vfs_clone.path())
-                    {
-                        Ok(f) => f,
-                        Err(e) => {
-                            eprintln!("Thread {i} failed to open file: {e}");
-                            return;
-                        }
-                    };
-
-                    let result = file.write_all(TEST_DATA.as_bytes());
-                    assert!(
-                        result.is_ok(),
-                        "Thread {} failed to write: {}",
-                        i,
-                        result.unwrap_err()
-                    );
-                })
-            })
-            .collect();
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        let _ = remove_file(PathBuf::from(path_str));
     }
 }

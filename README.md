@@ -35,7 +35,7 @@ Clone the repository and build the tool using `cargo`:
 ```bash
 git clone https://github.com/DreamWeave-MP/vfstool.git
 cd vfstool
-cargo install --path .
+cargo install --path vfstool
 ```
 
 ---
@@ -102,6 +102,7 @@ vfstool find-file [OPTIONS] <PATH>
 
 **Options**:
 
+- `-p, --only_physical`: Match only loose files; exits `2` if the file exists only in an archive.
 - `-s, --simple`: Output the result in a simple format (no colors or formatting).
 
 ---
@@ -273,7 +274,7 @@ This form is the most space-efficient variant of collapse, since it doesn't copy
 ### Collapse the VFS into a single directory, with extraction and hardlinks
 
 ```bash
-vfstool -c C:\Games\Oblivion\openmw.cfg collapse -ae C:\Games\Oblivion\Data
+vfstool -c C:\Games\Oblivion collapse -ae C:\Games\Oblivion\Data
 ```
 
 This form consumes more space and takes longer due to extracting archive contents, but will perform better ingame and allow removing BSAs entirely.
