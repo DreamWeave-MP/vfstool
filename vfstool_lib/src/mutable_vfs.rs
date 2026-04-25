@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path};
+use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path, paths::normalized_safe_key};
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -55,7 +55,7 @@ impl MutableVfs {
     ///
     /// Returns `false` and leaves the VFS unchanged when `key` is not a safe relative VFS path.
     pub fn push_provider<P: AsRef<Path>>(&mut self, key: P, provider: VfsProvider) -> bool {
-        let Some(key) = VFS::normalized_safe_key(key.as_ref()) else {
+        let Some(key) = normalized_safe_key(key.as_ref()) else {
             return false;
         };
         self.providers.entry(key).or_default().push(provider);
