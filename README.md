@@ -14,11 +14,11 @@
 
 ## Installation
 
-As of version 0.1.6, vfstool is published in many places!
+As of version 1.0, vfstool is published in many places.
 
 ### GitHub
 
-The latest stable release can be downloaded from GitHub for macOS, Linux, and Windows [here](https://github.com/magicaldave/vfstool/releases/latest). Development builds can be found at [here](https://github.com/magicaldave/vfstool/releases/development).
+The latest stable release can be downloaded from GitHub for macOS, Linux, and Windows [here](https://github.com/DreamWeave-MP/vfstool/releases/latest). Development builds can be found [here](https://github.com/DreamWeave-MP/vfstool/releases/development).
 
 ### AUR
 
@@ -33,7 +33,7 @@ The latest stable release can be downloaded from GitHub for macOS, Linux, and Wi
 Clone the repository and build the tool using `cargo`:
 
 ```bash
-git clone https://github.com/magicaldave/vfstool.git
+git clone https://github.com/DreamWeave-MP/vfstool.git
 cd vfstool
 cargo install --path .
 ```
@@ -108,29 +108,20 @@ vfstool find-file [OPTIONS] <PATH>
 
 #### `find`
 
-Search for files in the VFS based on a query term.
+Search for files in the VFS using a case-insensitive regular expression matched against normalized VFS paths.
 
 ```bash
-vfstool find [OPTIONS] --path <PATH>
+vfstool find [OPTIONS] <PATH>
 ```
+
+**Arguments**:
+
+- `<PATH>`: Case-insensitive regex matched against VFS paths.
 
 **Options**:
 
-- `-p, --path <PATH>`: Query term, actual contents depend on search type. Mandatory
 - `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
 - `-o, --output <OUTPUT>`: Path to save the search results. If omitted, results are printed to stdout.
-- `-t, --type <TYPE>`: Type of filter to use when searching. Default: `name`.
-
-**Filter Types**:
-
-- `exact`: Match the exact VFS path.
-- `name`: Match files containing the query in their name.
-- `name-exact`: Match files with the exact name.
-- `folder`: Match files in a specific folder.
-- `prefix`: Match files with a specific prefix.
-- `extension`: Match files with a specific extension.
-- `stem`: Match files by their stem (filename without extension).
-- `stem-exact`: Match files by their exact stem.
 
 ---
 
@@ -151,6 +142,121 @@ vfstool remaining [OPTIONS] <FILTER_PATH>
 - `-r, --replacements-only`: Show only files replacing contents of the given path.
 - `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
 - `-o, --output <OUTPUT>`: Path to save the filtered VFS. If omitted, results are printed to stdout.
+
+---
+
+#### `conflicts`
+
+Report source override relationships across the load order.
+
+```bash
+vfstool conflicts [OPTIONS]
+```
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
+
+---
+
+#### `shadowed`
+
+Report files overridden by higher-priority sources.
+
+```bash
+vfstool shadowed [OPTIONS]
+```
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
+
+---
+
+#### `which`
+
+Show the winning source for one VFS path and any lower-priority providers.
+
+```bash
+vfstool which <PATH>
+```
+
+---
+
+#### `stats`
+
+Show per-source winner, override, and overridden counts.
+
+```bash
+vfstool stats
+```
+
+---
+
+#### `diff`
+
+Compare files between two configured data directories.
+
+```bash
+vfstool diff [OPTIONS] <SOURCE_A> <SOURCE_B>
+```
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
+
+---
+
+#### `run`
+
+Dump the merged VFS to a directory, run a child command, then capture new or modified files to `data-local` or `--output`.
+
+```bash
+vfstool run [OPTIONS] <MERGED_DIR> -- <COMMAND>...
+```
+
+**Options**:
+
+- `--keep-merged`: Keep the merged directory after the child command exits.
+- `--output <OUTPUT>`: Destination for captured files. Defaults to `data-local` from `openmw.cfg`.
+- `--copy`: Copy files instead of hardlinking them into the merged directory.
+- `--working-dir <WORKING_DIR>`: Working directory for the child process.
+
+`{}` in child command arguments is replaced with the merged directory path. Deletions made by the child command are not captured.
+
+---
+
+#### `lock`
+
+Emit a deterministic lock manifest for current VFS winners.
+
+```bash
+vfstool lock [OPTIONS]
+```
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the lock file. If omitted, results are printed to stdout.
+
+---
+
+#### `drift`
+
+Compare the current VFS state to a lock manifest.
+
+```bash
+vfstool drift [OPTIONS] <LOCK_FILE>
+```
+
+**Options**:
+
+- `--fail-on-drift`: Exit with code `4` when drift is detected.
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
 
 ---
 
@@ -187,13 +293,19 @@ vfstool find-file meshes/xbase_anim.nif
 ### Search for files by extension
 
 ```bash
-vfstool find -t extension -f json -o results.json nif
+vfstool find -f json -o results.json '[.]nif$'
 ```
 
 ### Show files replacing contents of a directory
 
 ```bash
 vfstool remaining -r /path/to/filter
+```
+
+### Run a tool against a merged VFS
+
+```bash
+vfstool run /tmp/merged -- some-tool {} output.txt
 ```
 
 ---
