@@ -12,6 +12,7 @@
 - **Serialization**: JSON, YAML, TOML output via `serde` (`serialize` feature).
 - **Parallel processing**: Directory walks and hash operations use `rayon`.
 - **MO2-style runner support**: `run_setup` / `run_finalize` for dump-run-collect workflows.
+- **Mutable views**: Winner-only mutation on `VFS`, plus provider-aware mutation with `MutableVfs`.
 
 ---
 
@@ -82,6 +83,32 @@ let vfs = VFS::from_directories(vec!["path/to/data"], None);
 let tree = vfs.tree(false, None);
 let json = vfs.serialize_from_tree(&tree, SerializeType::Json).unwrap();
 println!("{json}");
+```
+
+### Mutating VFS contents
+
+`VFS` mutators edit the materialized winner map directly. Removing a winner removes that key from
+the resolved view; it does not reveal lower-priority providers.
+
+```rust
+use vfstool_lib::{VFS, VfsFile};
+
+let mut vfs = VFS::new();
+vfs.insert_file("textures/foo.dds", VfsFile::from("/mods/high/textures/foo.dds"));
+let removed = vfs.remove_file("Textures/Foo.dds");
+assert!(removed.is_some());
+```
+
+Use `MutableVfs` when provider stacks matter. Providers are stored low-to-high priority, so removing
+the current winner reveals the next lower-priority provider if one exists.
+
+```rust
+use vfstool_lib::MutableVfs;
+
+let mut mutable = MutableVfs::from_directories(["/mods/base", "/mods/high"])?;
+mutable.remove_winner("textures/foo.dds");
+let resolved = mutable.to_vfs();
+# Ok::<(), std::io::Error>(())
 ```
 
 ---
