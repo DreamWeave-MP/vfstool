@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{analysis::LayerIndex, normalize_path};
+use crate::{analysis::LayerIndex, matchers::CompiledGlob};
 use ahash::AHashMap;
-use regex::Regex;
 use std::{cmp::Ordering, io, path::PathBuf};
 
 /// Optimization objective for solver output ranking.
@@ -133,7 +132,7 @@ impl LayerIndex {
             SolveObjective::MinMovesFromCurrent => {}
         }
 
-        let source_lookup = source_lookup(self);
+        let source_lookup = source_lookup(self)?;
         let current = resolve_current_order(self, &request.current_order, &source_lookup)?;
         let keys = self.keys();
         let providers_by_key: Vec<&[usize]> = keys
@@ -158,52 +157,15 @@ impl LayerIndex {
             });
         };
 
-        let mut violations = evaluate_constraints(
+        let violations = improve_candidate(
+            &current,
+            &mut candidate,
             self.sources.len(),
-            &candidate,
+            &precedence_edges,
             &compiled_constraints,
             &keys,
             &providers_by_key,
         );
-        if !violations.is_empty()
-            && !has_unavoidable_unsat(self.sources.len(), &compiled_constraints, &providers_by_key)
-        {
-            let max_iters = self.sources.len().saturating_mul(self.sources.len()).max(1);
-            for _ in 0..max_iters {
-                let Some(next) = best_neighbor(
-                    &current,
-                    &candidate,
-                    self.sources.len(),
-                    &precedence_edges,
-                    &compiled_constraints,
-                    &keys,
-                    &providers_by_key,
-                ) else {
-                    break;
-                };
-
-                let next_violations = evaluate_constraints(
-                    self.sources.len(),
-                    &next,
-                    &compiled_constraints,
-                    &keys,
-                    &providers_by_key,
-                );
-                if compare_solution_quality(
-                    &next_violations,
-                    &next,
-                    &violations,
-                    &candidate,
-                    &current,
-                ) == Ordering::Less
-                {
-                    candidate = next;
-                    violations = next_violations;
-                } else {
-                    break;
-                }
-            }
-        }
 
         let move_count = move_count(&current, &candidate);
         let changed_winners =
@@ -233,13 +195,17 @@ impl LayerIndex {
     }
 }
 
-fn source_lookup(layer: &LayerIndex) -> AHashMap<PathBuf, usize> {
-    layer
-        .sources
-        .iter()
-        .enumerate()
-        .map(|(idx, source)| (source.path.clone(), idx))
-        .collect()
+fn source_lookup(layer: &LayerIndex) -> io::Result<AHashMap<PathBuf, usize>> {
+    let mut lookup = AHashMap::new();
+    for (idx, source) in layer.sources.iter().enumerate() {
+        if lookup.insert(source.path.clone(), idx).is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("duplicate source path: {}", source.path.display()),
+            ));
+        }
+    }
+    Ok(lookup)
 }
 
 fn resolve_current_order(
@@ -319,29 +285,26 @@ fn compile_constraints(
                 path_glob,
                 source_glob,
             } => {
-                let path_glob_re = compile_glob_regex(path_glob);
+                let path_glob_re = CompiledGlob::new(path_glob).ok();
                 let matched_key_indices = keys
                     .iter()
                     .enumerate()
                     .filter_map(|(key_idx, key)| {
-                        if path_glob_re
-                            .as_ref()
-                            .is_some_and(|glob| glob.is_match(&key.to_string_lossy()))
-                        {
+                        if path_glob_re.as_ref().is_some_and(|glob| glob.is_match(key)) {
                             Some(key_idx)
                         } else {
                             None
                         }
                     })
                     .collect();
-                let source_glob_re = compile_glob_regex(source_glob);
+                let source_glob_re = CompiledGlob::new(source_glob).ok();
                 let allowed_sources = layer
                     .sources
                     .iter()
                     .map(|source| {
-                        source_glob_re.as_ref().is_some_and(|glob| {
-                            glob.is_match(&normalize_path(&source.path).to_string_lossy())
-                        })
+                        source_glob_re
+                            .as_ref()
+                            .is_some_and(|glob| glob.is_match(&source.path))
                     })
                     .collect();
 
@@ -366,37 +329,6 @@ fn source_index(source_lookup: &AHashMap<PathBuf, usize>, path: &PathBuf) -> io:
             format!("unknown source in constraint: {}", path.display()),
         )
     })
-}
-
-fn compile_glob_regex(glob: &str) -> Option<Regex> {
-    let mut regex_pattern = String::from("^");
-
-    let chars: Vec<char> = glob.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        match chars[i] {
-            '*' => {
-                if i + 1 < chars.len() && chars[i + 1] == '*' {
-                    regex_pattern.push_str(".*");
-                    i += 2;
-                } else {
-                    regex_pattern.push_str("[^/]*");
-                    i += 1;
-                }
-            }
-            '?' => {
-                regex_pattern.push('.');
-                i += 1;
-            }
-            c => {
-                regex_pattern.push_str(&regex::escape(&c.to_string()));
-                i += 1;
-            }
-        }
-    }
-
-    regex_pattern.push('$');
-    Regex::new(&regex_pattern).ok()
 }
 
 fn stable_topological_sort(
@@ -503,7 +435,7 @@ fn evaluate_constraints(
                 allowed_sources,
             } => {
                 let matched_keys = matched_key_indices.len();
-                let mut failing_key = None;
+                let mut failing_keys = Vec::new();
                 for key_index in matched_key_indices {
                     let providers = providers_by_key[*key_index];
                     let winner_idx = providers.iter().copied().max_by_key(|src| rank[*src]);
@@ -512,8 +444,7 @@ fn evaluate_constraints(
                     };
 
                     if !allowed_sources[winner_idx] {
-                        failing_key = Some(keys[*key_index].clone());
-                        break;
+                        failing_keys.push(keys[*key_index].clone());
                     }
                 }
 
@@ -523,14 +454,16 @@ fn evaluate_constraints(
                         message: format!("winner_must_be matched no keys for glob '{path_glob}'"),
                         sample_key: None,
                     });
-                } else if let Some(sample_key) = failing_key {
-                    violations.push(ConstraintViolation {
-                        constraint_index: *constraint_index,
-                        message: format!(
-                            "winner for matching keys does not satisfy source glob '{source_glob}'"
-                        ),
-                        sample_key: Some(sample_key),
-                    });
+                } else {
+                    violations.extend(failing_keys.into_iter().map(|sample_key| {
+                        ConstraintViolation {
+                            constraint_index: *constraint_index,
+                            message: format!(
+                                "winner for matching key does not satisfy source glob '{source_glob}'"
+                            ),
+                            sample_key: Some(sample_key),
+                        }
+                    }));
                 }
             }
         }
@@ -616,6 +549,101 @@ fn has_unavoidable_unsat(
     false
 }
 
+fn improve_candidate(
+    current: &[usize],
+    candidate: &mut Vec<usize>,
+    source_count: usize,
+    precedence_edges: &[(usize, usize)],
+    constraints: &[CompiledConstraint],
+    keys: &[PathBuf],
+    providers_by_key: &[&[usize]],
+) -> Vec<ConstraintViolation> {
+    let mut violations =
+        evaluate_constraints(source_count, candidate, constraints, keys, providers_by_key);
+    if violations.is_empty() || has_unavoidable_unsat(source_count, constraints, providers_by_key) {
+        return violations;
+    }
+
+    let search = LocalSearch {
+        current,
+        source_count,
+        precedence_edges,
+        constraints,
+        keys,
+        providers_by_key,
+    };
+    search.improve_candidate_locally(candidate, &mut violations);
+
+    if !violations.is_empty()
+        && let Some(exact) = best_satisfying_topological_order(
+            current,
+            source_count,
+            precedence_edges,
+            constraints,
+            keys,
+            providers_by_key,
+        )
+    {
+        *candidate = exact;
+        violations.clear();
+    }
+
+    violations
+}
+
+struct LocalSearch<'a> {
+    current: &'a [usize],
+    source_count: usize,
+    precedence_edges: &'a [(usize, usize)],
+    constraints: &'a [CompiledConstraint],
+    keys: &'a [PathBuf],
+    providers_by_key: &'a [&'a [usize]],
+}
+
+impl LocalSearch<'_> {
+    fn improve_candidate_locally(
+        &self,
+        candidate: &mut Vec<usize>,
+        violations: &mut Vec<ConstraintViolation>,
+    ) {
+        let max_iters = self.source_count.saturating_mul(self.source_count).max(1);
+        for _ in 0..max_iters {
+            let Some(next) = best_neighbor(
+                self.current,
+                candidate,
+                self.source_count,
+                self.precedence_edges,
+                self.constraints,
+                self.keys,
+                self.providers_by_key,
+            ) else {
+                break;
+            };
+
+            let next_violations = evaluate_constraints(
+                self.source_count,
+                &next,
+                self.constraints,
+                self.keys,
+                self.providers_by_key,
+            );
+            if compare_solution_quality(
+                &next_violations,
+                &next,
+                violations,
+                candidate,
+                self.current,
+            ) != Ordering::Less
+            {
+                break;
+            }
+
+            *candidate = next;
+            *violations = next_violations;
+        }
+    }
+}
+
 fn best_neighbor(
     current: &[usize],
     order: &[usize],
@@ -689,6 +717,100 @@ fn satisfies_precedence(order: &[usize], edges: &[(usize, usize)]) -> bool {
         rank[source_idx] = pos;
     }
     edges.iter().all(|(a, b)| rank[*a] < rank[*b])
+}
+
+fn best_satisfying_topological_order(
+    current: &[usize],
+    source_count: usize,
+    precedence_edges: &[(usize, usize)],
+    constraints: &[CompiledConstraint],
+    keys: &[PathBuf],
+    providers_by_key: &[&[usize]],
+) -> Option<Vec<usize>> {
+    const MAX_EXACT_SOURCES: usize = 9;
+    if source_count > MAX_EXACT_SOURCES {
+        return None;
+    }
+
+    let mut indegree = vec![0usize; source_count];
+    let mut outgoing = vec![Vec::<usize>::new(); source_count];
+    for &(from, to) in precedence_edges {
+        outgoing[from].push(to);
+        indegree[to] += 1;
+    }
+
+    let mut used = vec![false; source_count];
+    let mut order = Vec::with_capacity(source_count);
+    let mut best: Option<Vec<usize>> = None;
+    search_satisfying_orders(
+        current,
+        source_count,
+        constraints,
+        keys,
+        providers_by_key,
+        &outgoing,
+        &mut indegree,
+        &mut used,
+        &mut order,
+        &mut best,
+    );
+    best
+}
+
+#[allow(clippy::too_many_arguments)]
+fn search_satisfying_orders(
+    current: &[usize],
+    source_count: usize,
+    constraints: &[CompiledConstraint],
+    keys: &[PathBuf],
+    providers_by_key: &[&[usize]],
+    outgoing: &[Vec<usize>],
+    indegree: &mut [usize],
+    used: &mut [bool],
+    order: &mut Vec<usize>,
+    best: &mut Option<Vec<usize>>,
+) {
+    if order.len() == source_count {
+        if evaluate_constraints(source_count, order, constraints, keys, providers_by_key).is_empty()
+            && best.as_ref().is_none_or(|best_order| {
+                move_count(current, order) < move_count(current, best_order)
+            })
+        {
+            *best = Some(order.clone());
+        }
+        return;
+    }
+
+    for node in 0..source_count {
+        if used[node] || indegree[node] != 0 {
+            continue;
+        }
+
+        used[node] = true;
+        order.push(node);
+        for &next in &outgoing[node] {
+            indegree[next] = indegree[next].saturating_sub(1);
+        }
+
+        search_satisfying_orders(
+            current,
+            source_count,
+            constraints,
+            keys,
+            providers_by_key,
+            outgoing,
+            indegree,
+            used,
+            order,
+            best,
+        );
+
+        for &next in &outgoing[node] {
+            indegree[next] += 1;
+        }
+        order.pop();
+        used[node] = false;
+    }
 }
 
 fn move_count(current: &[usize], solved: &[usize]) -> usize {
@@ -851,6 +973,53 @@ mod tests {
     }
 
     #[test]
+    fn solve_winner_constraint_uses_exact_fallback_for_neutral_moves() {
+        let layer = LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: PathBuf::from("/allowed_a"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("one.txt")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("/blocked_b"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("one.txt")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("/allowed_d"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("two.txt")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("/blocked_c"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("two.txt")],
+            ),
+        ]);
+
+        let result = layer
+            .solve_order(&SolveRequest {
+                current_order: vec![],
+                constraints: vec![OrderConstraint::WinnerMustBe {
+                    path_glob: "**/*.txt".into(),
+                    source_glob: "**/allowed_*".into(),
+                }],
+                objective: SolveObjective::MinMovesFromCurrent,
+            })
+            .expect("solve should succeed");
+
+        assert_eq!(result.status, SolveStatus::Satisfiable);
+    }
+
+    #[test]
     fn solve_unsat_contradictory_winner_constraints() {
         let layer = sample_layer();
         let result = layer
@@ -910,6 +1079,37 @@ mod tests {
 
         assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
         assert!(err.to_string().contains("unknown source in current_order"));
+    }
+
+    #[test]
+    fn solve_rejects_duplicate_source_paths() {
+        let layer = LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: PathBuf::from("/dup"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("a.txt")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("/dup"),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("b.txt")],
+            ),
+        ]);
+
+        let err = layer
+            .solve_order(&SolveRequest {
+                current_order: vec![],
+                constraints: vec![],
+                objective: SolveObjective::MinMovesFromCurrent,
+            })
+            .expect_err("duplicate source paths should be rejected");
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert!(err.to_string().contains("duplicate source path"));
     }
 
     #[test]

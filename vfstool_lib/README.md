@@ -120,6 +120,9 @@ removal that you used when inserting/building providers.
 usage, but tools that edit merged files in place may mutate the original loose source files through
 those hardlinks. Use copy mode when running tools that are not hardlink-safe.
 
+`run_setup` creates the merged directory if needed and clears existing contents first, so child tools
+see only the current VFS contents.
+
 ---
 
 ## Feature flags

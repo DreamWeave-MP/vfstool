@@ -496,7 +496,7 @@ fn bench_zip(c: &mut Criterion) {
         make_zip_fixture(&dir, "data.zip", n);
 
         g.bench_with_input(BenchmarkId::new("construction", n), &dir, |b, dir| {
-            b.iter(|| VFS::from_directories(vec![black_box(dir.path())], Some(vec!["data.zip"])))
+            b.iter(|| VFS::from_directories(vec![black_box(dir.path())], Some(vec!["data.zip"])));
         });
     }
 
@@ -508,17 +508,17 @@ fn bench_zip(c: &mut Criterion) {
 
         // Hit: already-normalized key
         g.bench_function("lookup_hit_normalized", |b| {
-            b.iter(|| vfs.get_file(black_box("textures/file_00000.dat")))
+            b.iter(|| vfs.get_file(black_box("textures/file_00000.dat")));
         });
 
         // Hit: needs case folding
         g.bench_function("lookup_hit_uppercase", |b| {
-            b.iter(|| vfs.get_file(black_box("Textures/File_00000.dat")))
+            b.iter(|| vfs.get_file(black_box("Textures/File_00000.dat")));
         });
 
         // Miss
         g.bench_function("lookup_miss", |b| {
-            b.iter(|| vfs.get_file(black_box("textures/no_such_file.dds")))
+            b.iter(|| vfs.get_file(black_box("textures/no_such_file.dds")));
         });
     }
 
@@ -546,7 +546,7 @@ fn bench_zip(c: &mut Criterion) {
                 let mut buf = Vec::with_capacity(1024);
                 std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
                 buf
-            })
+            });
         });
     }
 

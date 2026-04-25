@@ -20,7 +20,7 @@ use std::{
     collections::BTreeMap,
     fmt::Write,
     io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 // Owned
@@ -73,7 +73,7 @@ impl VFS {
     /// This is a winner-only mutation: replacing or removing a key does not reveal lower-priority
     /// providers that may have existed when the VFS was originally constructed.
     pub fn insert_file<P: AsRef<Path>>(&mut self, key: P, file: VfsFile) -> Option<VfsFile> {
-        let normalized = normalize_path(key.as_ref()).into_owned();
+        let normalized = Self::normalized_safe_key(key.as_ref())?;
         self.file_map.insert(normalized, file)
     }
 
@@ -179,6 +179,9 @@ impl VFS {
                         return Ok(false);
                     }
                     if use_hardlinks {
+                        if dest.exists() {
+                            std::fs::remove_file(&dest)?;
+                        }
                         match std::fs::hard_link(file.path(), &dest) {
                             Ok(()) => {}
                             Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
@@ -187,11 +190,13 @@ impl VFS {
                             Err(e) => return Err(e),
                         }
                     } else {
+                        Self::remove_existing_output_file(&dest)?;
                         std::fs::copy(file.path(), &dest)?;
                     }
                 } else {
                     match file.open() {
                         Ok(mut reader) => {
+                            Self::remove_existing_output_file(&dest)?;
                             let mut out = std::fs::File::create(&dest)?;
                             std::io::copy(&mut reader, &mut out)?;
                         }
@@ -220,8 +225,7 @@ impl VFS {
         pattern: &str,
         relative: bool,
     ) -> std::result::Result<DisplayTree, regex::Error> {
-        let normalized = normalize_path(pattern);
-        let re = regex::RegexBuilder::new(&normalized.to_string_lossy())
+        let re = regex::RegexBuilder::new(pattern)
             .case_insensitive(true)
             .build()?;
         Ok(self.tree_filtered(relative, |key, _file| re.is_match(&key.to_string_lossy())))
@@ -312,7 +316,7 @@ impl VFS {
         if let Err(e) = link_result {
             eprintln!("vfstool: link failed for {}: {}", file.path().display(), e);
             if opts.allow_copying
-                && let Err(copy_err) = std::fs::copy(file.path(), merged_path)
+                && let Err(copy_err) = Self::copy_replacing_output(file.path(), merged_path)
             {
                 eprintln!(
                     "vfstool: fallback copy of {} to {} failed: {}",
@@ -327,24 +331,19 @@ impl VFS {
     fn collapse_archive_file(file: &VfsFile, relative_path: &Path, merged_path: &Path) {
         match file.open() {
             Ok(mut data) => {
-                use io::Read;
-                let mut buf = Vec::new();
-                match data.read_to_end(&mut buf) {
-                    Err(e) => eprintln!(
-                        "vfstool: failed to read archived file {}: {}",
+                let result = (|| -> io::Result<()> {
+                    Self::remove_existing_output_file(merged_path)?;
+                    let mut out = std::fs::File::create(merged_path)?;
+                    std::io::copy(&mut data, &mut out)?;
+                    Ok(())
+                })();
+                if let Err(e) = result {
+                    eprintln!(
+                        "vfstool: failed to extract {} to {}: {}",
                         relative_path.display(),
+                        merged_path.display(),
                         e
-                    ),
-                    Ok(_) => {
-                        if let Err(e) = std::fs::write(merged_path, buf) {
-                            eprintln!(
-                                "vfstool: failed to extract {} to {}: {}",
-                                relative_path.display(),
-                                merged_path.display(),
-                                e
-                            );
-                        }
-                    }
+                    );
                 }
             }
             Err(e) => eprintln!(
@@ -404,12 +403,12 @@ impl VFS {
         let dest = dest_dir.join(file_name);
 
         if file.is_loose() {
-            std::fs::copy(file.path(), &dest)?;
+            Self::copy_replacing_output(file.path(), &dest)?;
         } else {
-            use io::Read;
-            let mut buf = Vec::new();
-            file.open()?.read_to_end(&mut buf)?;
-            std::fs::write(&dest, buf)?;
+            Self::remove_existing_output_file(&dest)?;
+            let mut reader = file.open()?;
+            let mut out = std::fs::File::create(&dest)?;
+            std::io::copy(&mut reader, &mut out)?;
         }
 
         Ok(Some(dest))
@@ -502,17 +501,64 @@ impl VFS {
         normalize_path(s.as_ref()).to_string_lossy().into_owned()
     }
 
+    fn copy_replacing_output(src: &Path, dest: &Path) -> io::Result<u64> {
+        Self::remove_existing_output_file(dest)?;
+        std::fs::copy(src, dest)
+    }
+
+    fn remove_existing_output_file(path: &Path) -> io::Result<()> {
+        match std::fs::symlink_metadata(path) {
+            Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("destination is a directory: {}", path.display()),
+            )),
+            Ok(_) => std::fs::remove_file(path),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn normalized_safe_key(path: &Path) -> Option<PathBuf> {
+        let normalized = normalize_path(path).into_owned();
+        let normalized_text = normalized.to_string_lossy();
+        if normalized_text.as_bytes().get(1) == Some(&b':') {
+            return None;
+        }
+
+        let mut safe = PathBuf::new();
+        for component in normalized.components() {
+            match component {
+                Component::Normal(part) => safe.push(part),
+                Component::CurDir => {}
+                Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+            }
+        }
+
+        (!safe.as_os_str().is_empty()).then_some(safe)
+    }
+
     /// Returns a parallel iterator meant to be fed into `par_extend`
     /// Only used when appending a directory or set of directories into the file map
     fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
         dir: I,
     ) -> impl ParallelIterator<Item = (PathBuf, VfsFile)> {
         let dir = dir.as_ref().to_path_buf();
+        let walk_root = dir.clone();
 
         WalkDir::new(&dir)
             .follow_links(true)
             .into_iter()
-            .filter_map(|entry| entry.ok().filter(|e| e.file_type().is_file()))
+            .filter_map(move |entry| match entry {
+                Ok(entry) if entry.file_type().is_file() => Some(entry),
+                Ok(_) => None,
+                Err(err) => {
+                    eprintln!(
+                        "vfstool: warning: failed to walk '{}': {err}",
+                        walk_root.display()
+                    );
+                    None
+                }
+            })
             .par_bridge()
             .map(move |entry| {
                 let path = entry.path();
@@ -683,7 +729,14 @@ impl VFS {
                         path: dir.clone(),
                         kind: SourceKind::LooseDir,
                     },
-                    entries.iter().map(|(k, _)| k.clone()).collect(),
+                    entries
+                        .iter()
+                        .map(|(key, file)| {
+                            file.path()
+                                .strip_prefix(dir)
+                                .map_or_else(|_| key.clone(), Path::to_path_buf)
+                        })
+                        .collect(),
                 )
             })
             .collect();
@@ -758,7 +811,17 @@ impl VFS {
         let entries: Vec<(PathBuf, VfsFile)> = WalkDir::new(&dir)
             .follow_links(true)
             .into_iter()
-            .filter_map(|e| e.ok().filter(|e| e.file_type().is_file()))
+            .filter_map(|entry| match entry {
+                Ok(entry) if entry.file_type().is_file() => Some(entry),
+                Ok(_) => None,
+                Err(err) => {
+                    eprintln!(
+                        "vfstool: warning: failed to walk '{}': {err}",
+                        dir.display()
+                    );
+                    None
+                }
+            })
             .par_bridge()
             .map(|entry| {
                 let mut normalized = entry
@@ -973,6 +1036,12 @@ impl std::fmt::Display for VFS {
     }
 }
 
+impl Default for VFS {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod loose_tests {
     use super::*;
@@ -1064,6 +1133,18 @@ mod loose_tests {
         assert_eq!(previous.path(), first);
         assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), second);
         assert_eq!(vfs.iter().count(), 1);
+    }
+
+    #[test]
+    fn insert_loose_file_rejects_unsafe_keys() {
+        let dir = TempDir::new("vfsloose_insert_unsafe");
+        let path = dir.write("source.txt", b"a");
+        let mut vfs = VFS::new();
+
+        assert!(vfs.insert_loose_file("../escape.txt", &path).is_none());
+        assert!(vfs.insert_loose_file("/absolute.txt", &path).is_none());
+        assert!(vfs.insert_loose_file("C:\\absolute.txt", &path).is_none());
+        assert_eq!(vfs.iter().count(), 0);
     }
 
     #[test]
@@ -1726,11 +1807,20 @@ mod loose_tests {
         dir.write("baz.nif", b"c");
         let vfs = VFS::from_directories(vec![dir.path()], None);
 
-        // Use a character-class instead of backslash-escaped dot so that
-        // normalize_path (which converts '\' to '/') doesn't corrupt the pattern.
-        let tree = vfs.find_by_regex("[.]txt$", true).unwrap();
+        let tree = vfs.find_by_regex(r"\.txt$", true).unwrap();
         let count = count_files_in_tree(&tree);
         assert_eq!(count, 2, "only .txt files should match");
+    }
+
+    #[test]
+    fn find_by_regex_preserves_regex_escapes() {
+        let dir = TempDir::new("vfs_newmethods_regex_escapes");
+        dir.write("textures/foo.dds", b"a");
+        dir.write("textures/foo_dds", b"b");
+        let vfs = VFS::from_directories(vec![dir.path()], None);
+
+        let tree = vfs.find_by_regex(r"textures/.*\.dds$", true).unwrap();
+        assert_eq!(count_files_in_tree(&tree), 1);
     }
 
     #[test]
@@ -1807,6 +1897,32 @@ mod loose_tests {
 
         assert!(extracted.exists());
         assert_eq!(fs::read(&extracted).unwrap(), b"hello extract");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn extract_file_does_not_follow_existing_destination_symlink() {
+        let src = TempDir::new("vfs_newmethods_extract_symlink_src");
+        src.write("data.bin", b"safe");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("vfs_newmethods_extract_symlink_dest");
+        let outside = dest.write("outside.bin", b"outside");
+        std::os::unix::fs::symlink(&outside, dest.path().join("data.bin")).unwrap();
+
+        let extracted = vfs
+            .extract_file(Path::new("data.bin"), dest.path())
+            .unwrap()
+            .expect("file should be extracted");
+
+        assert_eq!(fs::read(&outside).unwrap(), b"outside");
+        assert_eq!(fs::read(&extracted).unwrap(), b"safe");
+        assert!(
+            !fs::symlink_metadata(&extracted)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[test]
@@ -1923,6 +2039,27 @@ mod zip_tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    fn tree_contains_file(node: &DirectoryNode, name: &str) -> bool {
+        node.files
+            .iter()
+            .any(|f| f.file_name().is_some_and(|n| n == name))
+            || node
+                .subdirs
+                .values()
+                .any(|sub| tree_contains_file(sub, name))
+    }
+
+    fn find_tree_file<'a>(node: &'a DirectoryNode, name: &str) -> Option<&'a VfsFile> {
+        node.files
+            .iter()
+            .find(|f| f.file_name().is_some_and(|n| n == name))
+            .or_else(|| {
+                node.subdirs
+                    .values()
+                    .find_map(|sub| find_tree_file(sub, name))
+            })
     }
 
     // ---- Construction ----
@@ -2149,15 +2286,8 @@ mod zip_tests {
         let tree = vfs.tree(true);
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
 
-        fn find_file(node: &DirectoryNode, name: &str) -> bool {
-            node.files
-                .iter()
-                .any(|f| f.file_name().is_some_and(|n| n == name))
-                || node.subdirs.values().any(|sub| find_file(sub, name))
-        }
-
         assert!(
-            find_file(root, "sky.dds"),
+            tree_contains_file(root, "sky.dds"),
             "ZIP entry should appear in tree"
         );
     }
@@ -2171,14 +2301,7 @@ mod zip_tests {
         let tree = vfs.tree(true);
         let root = tree.get(&PathBuf::from("Data Files")).unwrap();
 
-        fn find_file<'a>(node: &'a DirectoryNode, name: &str) -> Option<&'a VfsFile> {
-            node.files
-                .iter()
-                .find(|f| f.file_name().is_some_and(|n| n == name))
-                .or_else(|| node.subdirs.values().find_map(|sub| find_file(sub, name)))
-        }
-
-        let file = find_file(root, "sky.dds").expect("tree should include zip file");
+        let file = find_tree_file(root, "sky.dds").expect("tree should include zip file");
         let mut buf = Vec::new();
         std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
         assert_eq!(buf, b"sky");
@@ -2507,6 +2630,44 @@ mod dump_tests {
 
         vfs.dump_to_directory(dest.path(), false).unwrap();
         assert_eq!(fs::read(dest.path().join("f.txt")).unwrap(), b"new_content");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dump_copy_does_not_follow_existing_destination_symlink() {
+        let src = TempDir::new("dump_symlink_src");
+        src.write("f.txt", b"new_content");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_symlink_dest");
+        let outside = dest.write("outside.txt", b"outside");
+        std::os::unix::fs::symlink(&outside, dest.path().join("f.txt")).unwrap();
+
+        vfs.dump_to_directory(dest.path(), false).unwrap();
+        assert_eq!(fs::read(&outside).unwrap(), b"outside");
+        assert_eq!(fs::read(dest.path().join("f.txt")).unwrap(), b"new_content");
+        assert!(
+            !fs::symlink_metadata(dest.path().join("f.txt"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dump_hardlink_overwrites_existing() {
+        use std::os::unix::fs::MetadataExt;
+        let src = TempDir::new("dump_hardlink_overwrite_src");
+        src.write("f.txt", b"new_content");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let dest = TempDir::new("dump_hardlink_overwrite_dest");
+        dest.write("f.txt", b"old_content");
+
+        vfs.dump_to_directory(dest.path(), true).unwrap();
+        assert_eq!(fs::read(dest.path().join("f.txt")).unwrap(), b"new_content");
+        assert!(fs::metadata(dest.path().join("f.txt")).unwrap().nlink() >= 2);
     }
 
     #[test]

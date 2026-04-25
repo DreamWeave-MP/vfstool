@@ -228,9 +228,13 @@ pub mod archives {
     /// Ordered list of open archive handles.
     pub type ArchiveList = Vec<Arc<StoredArchive>>;
 
-    fn normalized_archive_key(raw: &str) -> Option<PathBuf> {
+    pub(crate) fn normalized_archive_key(raw: &str) -> Option<PathBuf> {
         let mut normalized = PathBuf::from(raw);
         crate::normalize_path_in_place(&mut normalized);
+        let normalized_text = normalized.to_string_lossy();
+        if normalized_text.as_bytes().get(1) == Some(&b':') {
+            return None;
+        }
 
         let mut safe = PathBuf::new();
         for component in normalized.components() {
@@ -251,7 +255,7 @@ pub mod archives {
             .iter()
             .copied()
             .filter_map(|archive| {
-                let archive_path = PathBuf::from(archive.to_ascii_lowercase());
+                let archive_path = crate::normalize_path(archive).into_owned();
 
                 let Some(valid_archive) = file_map.get(&archive_path) else {
                     eprintln!("vfstool: warning: archive '{archive}' not found in any data directory, skipping");
@@ -268,7 +272,7 @@ pub mod archives {
     /// ZIP/PK3 files are identified by extension; BSA/BA2 files are identified by
     /// magic bytes. Returns `None` with a warning on any failure.
     #[allow(unreachable_code)]
-    fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
+    pub(crate) fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
         // ZIP / PK3 — detect by extension before touching file content.
         #[cfg(feature = "zip")]
         if crate::is_zip_or_pk3(path) {
@@ -402,7 +406,9 @@ pub mod archives {
                 .collect(),
             #[cfg(feature = "zip")]
             TypedArchive::Zip(archive) => {
-                let guard = archive.lock().expect("zip mutex should not be poisoned");
+                let Ok(guard) = archive.lock() else {
+                    return Vec::new();
+                };
                 guard
                     .file_names()
                     .filter(|name| !name.ends_with('/'))
@@ -422,78 +428,67 @@ pub mod archives {
                     .archive
                 {
                     #[cfg(feature = "bsa")]
-                    TypedArchive::Tes3(data) => Box::new(
-                        data.iter()
-                            .map(|(key, _value)| {
-                                let name_string = key.name().to_string();
-                                normalized_archive_key(&name_string).map(|normalized| {
-                                    (
-                                        normalized,
-                                        VfsFile::from_archive(
-                                            &name_string,
-                                            Arc::clone(stored_archive),
-                                        ),
-                                    )
-                                })
+                    TypedArchive::Tes3(data) => {
+                        Box::new(data.iter().filter_map(|(key, _value)| {
+                            let name_string = key.name().to_string();
+                            normalized_archive_key(&name_string).map(|normalized| {
+                                (
+                                    normalized,
+                                    VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
+                                )
                             })
-                            .flatten(),
-                    ),
+                        }))
+                    }
                     #[cfg(feature = "bsa")]
                     TypedArchive::Tes4(data) => {
                         Box::new(data.iter().flat_map(move |(dir_key, dir)| {
                             let dir_string = dir_key.name();
-                            dir.iter()
-                                .map(move |(key, _value)| {
-                                    let archive_path = format!("{}\\{}", dir_string, key.name());
-                                    normalized_archive_key(&archive_path).map(|normalized| {
-                                        let vfs_file = VfsFile::from_archive(
-                                            archive_path.as_str(),
-                                            Arc::clone(stored_archive),
-                                        );
-                                        (normalized, vfs_file)
-                                    })
-                                })
-                                .flatten()
-                        }))
-                    }
-                    #[cfg(feature = "bsa")]
-                    TypedArchive::Fo4(data) => Box::new(
-                        data.iter()
-                            .map(|(key, _value)| {
-                                let name_string = key.name().to_string();
-                                normalized_archive_key(&name_string).map(|normalized| {
-                                    (
-                                        normalized,
-                                        VfsFile::from_archive(
-                                            &name_string,
-                                            Arc::clone(stored_archive),
-                                        ),
-                                    )
-                                })
-                            })
-                            .flatten(),
-                    ),
-                    #[cfg(feature = "zip")]
-                    TypedArchive::Zip(archive) => {
-                        // Collect eagerly — the iterator borrows from the MutexGuard
-                        // which is local and cannot escape the match arm.
-                        let guard = archive.lock().expect("zip mutex should not be poisoned");
-                        let entries: Vec<(PathBuf, VfsFile)> = guard
-                            .file_names()
-                            .filter(|name| !name.ends_with('/'))
-                            .filter_map(|name| {
-                                // Keep the original name for lookup in open(); normalize
-                                // separately for the VFS HashMap key.
-                                let original_name = name.to_string();
-                                normalized_archive_key(name).map(|normalized| {
+                            dir.iter().filter_map(move |(key, _value)| {
+                                let archive_path = format!("{}\\{}", dir_string, key.name());
+                                normalized_archive_key(&archive_path).map(|normalized| {
                                     let vfs_file = VfsFile::from_archive(
-                                        &original_name,
+                                        archive_path.as_str(),
                                         Arc::clone(stored_archive),
                                     );
                                     (normalized, vfs_file)
                                 })
                             })
-                            .collect();
+                        }))
+                    }
+                    #[cfg(feature = "bsa")]
+                    TypedArchive::Fo4(data) => Box::new(data.iter().filter_map(|(key, _value)| {
+                        let name_string = key.name().to_string();
+                        normalized_archive_key(&name_string).map(|normalized| {
+                            (
+                                normalized,
+                                VfsFile::from_archive(&name_string, Arc::clone(stored_archive)),
+                            )
+                        })
+                    })),
+                    #[cfg(feature = "zip")]
+                    TypedArchive::Zip(archive) => {
+                        // Collect eagerly — the iterator borrows from the MutexGuard
+                        // which is local and cannot escape the match arm.
+                        let entries: Vec<(PathBuf, VfsFile)> = if let Ok(guard) = archive.lock() {
+                            guard
+                                .file_names()
+                                .filter(|name| !name.ends_with('/'))
+                                .filter_map(|name| {
+                                    // Keep the original name for lookup in open(); normalize
+                                    // separately for the VFS HashMap key.
+                                    let original_name = name.to_string();
+                                    normalized_archive_key(name).map(|normalized| {
+                                        let vfs_file = VfsFile::from_archive(
+                                            &original_name,
+                                            Arc::clone(stored_archive),
+                                        );
+                                        (normalized, vfs_file)
+                                    })
+                                })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
                         Box::new(entries.into_iter())
                     }
                 };
@@ -636,5 +631,18 @@ mod tests {
                 "in_place and allocating versions disagree for input {case:?}",
             );
         }
+    }
+
+    #[test]
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    fn archive_keys_reject_absolute_parent_and_drive_paths() {
+        assert_eq!(
+            archives::normalized_archive_key("Textures\\Foo.DDS"),
+            Some(PathBuf::from("textures/foo.dds"))
+        );
+        assert!(archives::normalized_archive_key("../foo.dds").is_none());
+        assert!(archives::normalized_archive_key("/foo.dds").is_none());
+        assert!(archives::normalized_archive_key("C:\\foo.dds").is_none());
+        assert!(archives::normalized_archive_key("c:/foo.dds").is_none());
     }
 }

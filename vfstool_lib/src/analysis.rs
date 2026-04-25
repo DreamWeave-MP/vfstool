@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::{
-    ContentDigest, NormalizedKey, SourceId, VFS, normalize_path_in_place, path_glob_matches,
+    ContentDigest, NormalizedKey, SourceId, VFS, VfsFile, normalize_path, normalize_path_in_place,
+    path_glob_matches,
     semantic::{AssetClass, SemanticDelta, analyze_pair},
 };
 use ahash::{AHashMap, AHashSet};
@@ -38,6 +39,7 @@ pub struct LayerIndex {
     /// Sources in load-order position.
     pub sources: Vec<SourceMeta>,
     path_to_sources: AHashMap<NormalizedKey, Vec<usize>>,
+    provider_paths: AHashMap<(usize, NormalizedKey), PathBuf>,
 }
 
 /// One provider in a per-key provenance chain.
@@ -453,6 +455,7 @@ impl LayerIndex {
     pub fn from_file_lists(sources: impl IntoIterator<Item = (SourceMeta, Vec<PathBuf>)>) -> Self {
         let mut source_paths = Vec::new();
         let mut path_to_sources: AHashMap<NormalizedKey, Vec<usize>> = AHashMap::new();
+        let mut provider_paths: AHashMap<(usize, NormalizedKey), PathBuf> = AHashMap::new();
 
         for (source_meta, files) in sources {
             let idx = source_paths.len();
@@ -460,8 +463,9 @@ impl LayerIndex {
             let mut seen = AHashSet::new();
 
             for path in files {
-                let key = NormalizedKey::new(path);
+                let key = NormalizedKey::new(&path);
                 if seen.insert(key.clone()) {
+                    provider_paths.insert((idx, key.clone()), path);
                     path_to_sources.entry(key).or_default().push(idx);
                 }
             }
@@ -470,6 +474,7 @@ impl LayerIndex {
         Self {
             sources: source_paths,
             path_to_sources,
+            provider_paths,
         }
     }
 
@@ -528,7 +533,7 @@ impl LayerIndex {
             return Ok(None);
         }
 
-        let Some(winner_idx) = provider_indices.last().copied() else {
+        let Some(winner_idx) = self.current_winner_source_idx(vfs, &key, provider_indices) else {
             return Ok(None);
         };
         let winner = self.sources[winner_idx].clone();
@@ -557,7 +562,7 @@ impl LayerIndex {
             };
 
             let resolved_path = match src.kind {
-                SourceKind::LooseDir => src.path.join(&key).display().to_string(),
+                SourceKind::LooseDir => self.provider_path(idx, &key).display().to_string(),
                 SourceKind::Archive => format!("{}::{}", src.path.display(), key.display()),
             };
 
@@ -643,7 +648,7 @@ impl LayerIndex {
             return Ok(None);
         }
 
-        let Some(winner_idx) = provider_indices.last().copied() else {
+        let Some(winner_idx) = self.current_winner_source_idx(vfs, key, provider_indices) else {
             return Ok(None);
         };
 
@@ -721,7 +726,7 @@ impl LayerIndex {
             winner: winner_source,
             providers,
             asset_class: inferred_asset_class,
-            all_identical: !seen_hashes.is_empty() && seen_hashes.len() == 1,
+            all_identical: winner_fp.is_some() && seen_hashes.len() == 1,
             distinct_versions: seen_hashes.len(),
         }))
     }
@@ -754,7 +759,7 @@ impl LayerIndex {
             return Ok(None);
         }
 
-        let Some(winner_idx) = providers.last().copied() else {
+        let Some(winner_idx) = self.current_winner_source_idx(vfs, key, providers) else {
             return Ok(None);
         };
         let winner_source = &self.sources[winner_idx];
@@ -876,32 +881,16 @@ impl LayerIndex {
     ) -> io::Result<ImpactReport> {
         let mut all_opts = opts.clone();
         all_opts.sample_limit = usize::MAX;
-        let delta = self.simulate_with_opts(vfs, op, &all_opts)?;
+        let delta = self.simulate_with_opts(vfs, op.clone(), &all_opts)?;
 
-        let semantic = self.semantic_conflicts_with_opts(
-            vfs,
-            SemanticOpts {
-                include_semantic_deltas: true,
-                ..SemanticOpts::default()
-            },
-        )?;
-        let behavior_changing: AHashSet<PathBuf> = semantic
-            .entries
-            .into_iter()
-            .filter_map(|entry| {
-                let has_behavior_change = entry.providers.iter().any(|provider| {
-                    matches!(
-                        provider.semantic_delta_to_winner,
-                        Some(SemanticDelta::BehaviorChanging { .. })
-                    )
-                });
-                if has_behavior_change {
-                    Some(entry.key)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let needs_semantic = profile.heuristics.iter().any(|heuristic| {
+            heuristic.condition == HeuristicCondition::WinnerChangedAndSemanticBehaviorChanging
+        });
+        let behavior_changing = if needs_semantic {
+            self.behavior_changing_after_reorder(vfs, op)?
+        } else {
+            AHashSet::new()
+        };
 
         let mut scored = Vec::<RiskyChange>::new();
         for key in delta.changed_keys_sample {
@@ -965,6 +954,45 @@ impl LayerIndex {
             by_bucket,
             top_risky_changes: scored.into_iter().take(100).collect(),
         })
+    }
+
+    fn behavior_changing_after_reorder(
+        &self,
+        vfs: &VFS,
+        op: ReorderOp,
+    ) -> io::Result<AHashSet<PathBuf>> {
+        let order = self.reordered_indices(op)?;
+        let rank_by_source = self.rank_by_source(&order);
+        let mut behavior_changing = AHashSet::new();
+
+        for key in self.keys() {
+            let providers = self.sources_containing(&key);
+            let before_idx = self.current_winner_source_idx(vfs, &key, providers);
+            let Some(after_idx) = providers
+                .iter()
+                .copied()
+                .max_by_key(|idx| rank_by_source[*idx])
+            else {
+                continue;
+            };
+            let Some(before_idx) = before_idx else {
+                continue;
+            };
+            if before_idx == after_idx {
+                continue;
+            }
+
+            let before_bytes = self.read_provider_bytes(vfs, before_idx, &key)?;
+            let after_bytes = self.read_provider_bytes(vfs, after_idx, &key)?;
+            if let (Some(before), Some(after)) = (before_bytes, after_bytes) {
+                let (_, delta) = analyze_pair(&key, &after, &before);
+                if matches!(delta, SemanticDelta::BehaviorChanging { .. }) {
+                    behavior_changing.insert(key);
+                }
+            }
+        }
+
+        Ok(behavior_changing)
     }
 
     /// Compare current VFS state against a lock manifest.
@@ -1220,15 +1248,29 @@ impl LayerIndex {
     ) -> Option<usize> {
         let winner = vfs.get_file(key)?;
         if winner.is_loose() {
-            providers.iter().copied().find(|idx| {
+            let normalized_path = normalize_path(winner.path());
+            if let Some(idx) = providers.iter().copied().find(|idx| {
                 self.sources[*idx].kind == SourceKind::LooseDir
-                    && winner.path().starts_with(&self.sources[*idx].path)
-            })
+                    && normalize_path(&self.provider_path(*idx, key)).as_ref()
+                        == normalized_path.as_ref()
+            }) {
+                return Some(idx);
+            }
+
+            providers
+                .iter()
+                .copied()
+                .filter(|idx| {
+                    self.sources[*idx].kind == SourceKind::LooseDir
+                        && winner.path().starts_with(&self.sources[*idx].path)
+                })
+                .max_by_key(|idx| self.sources[*idx].path.components().count())
         } else {
             let parent = winner.parent_archive_path()?;
+            let parent = normalize_path(Path::new(&parent));
             providers.iter().copied().find(|idx| {
                 self.sources[*idx].kind == SourceKind::Archive
-                    && self.sources[*idx].path.to_string_lossy() == parent
+                    && normalize_path(&self.sources[*idx].path).as_ref() == parent.as_ref()
             })
         }
     }
@@ -1249,7 +1291,7 @@ impl LayerIndex {
         let src = &self.sources[source_idx];
         let fp = match src.kind {
             SourceKind::LooseDir => {
-                let path = src.path.join(key);
+                let path = self.provider_path(source_idx, key);
                 if path.exists() {
                     Some(hash_reader(std::fs::File::open(path)?)?)
                 } else {
@@ -1258,17 +1300,17 @@ impl LayerIndex {
             }
             SourceKind::Archive => match archive_hash_mode {
                 ArchiveHashMode::Disabled => None,
-                ArchiveHashMode::WinnerOnly | ArchiveHashMode::AllProviders => {
-                    match vfs.get_file(key) {
-                        Some(current_winner) => match current_winner.parent_archive_path() {
-                            Some(parent) if parent == src.path.to_string_lossy() => {
-                                Some(hash_reader(current_winner.open()?)?)
-                            }
-                            _ => None,
-                        },
-                        None => None,
-                    }
-                }
+                ArchiveHashMode::WinnerOnly => match vfs.get_file(key) {
+                    Some(current_winner) => match current_winner.parent_archive_path() {
+                        Some(parent) if archive_parent_matches(&parent, &src.path) => {
+                            Some(hash_reader(current_winner.open()?)?)
+                        }
+                        _ => None,
+                    },
+                    None => None,
+                },
+                ArchiveHashMode::AllProviders => archive_provider_file(&src.path, key)
+                    .and_then(|file| file.open().ok().and_then(|reader| hash_reader(reader).ok())),
             },
         };
 
@@ -1287,7 +1329,7 @@ impl LayerIndex {
 
         match src.kind {
             SourceKind::LooseDir => {
-                let path = src.path.join(key);
+                let path = self.provider_path(source_idx, key);
                 if !path.exists() {
                     return Ok(None);
                 }
@@ -1296,13 +1338,19 @@ impl LayerIndex {
                 Ok(Some(out))
             }
             SourceKind::Archive => {
+                if let Some(file) = archive_provider_file(&src.path, key) {
+                    let mut reader = file.open()?;
+                    reader.read_to_end(&mut out)?;
+                    return Ok(Some(out));
+                }
+
                 let Some(winner) = vfs.get_file(key) else {
                     return Ok(None);
                 };
                 let Some(parent) = winner.parent_archive_path() else {
                     return Ok(None);
                 };
-                if parent != src.path.to_string_lossy() {
+                if !archive_parent_matches(&parent, &src.path) {
                     return Ok(None);
                 }
 
@@ -1312,6 +1360,33 @@ impl LayerIndex {
             }
         }
     }
+
+    fn provider_path(&self, source_idx: usize, key: &Path) -> PathBuf {
+        let normalized = NormalizedKey::new(key);
+        self.provider_paths
+            .get(&(source_idx, normalized))
+            .map_or_else(
+                || self.sources[source_idx].path.join(key),
+                |rel| self.sources[source_idx].path.join(rel),
+            )
+    }
+}
+
+fn archive_parent_matches(parent: &str, source_path: &Path) -> bool {
+    normalize_path(Path::new(parent)).as_ref() == normalize_path(source_path).as_ref()
+}
+
+#[cfg(any(feature = "bsa", feature = "zip"))]
+fn archive_provider_file(source_path: &Path, key: &Path) -> Option<VfsFile> {
+    let archive = crate::archives::open_archive(source_path)?;
+    let archive_list = vec![archive];
+    let file_map = crate::archives::file_map(&archive_list);
+    file_map.get(&normalize_path(key).into_owned()).cloned()
+}
+
+#[cfg(not(any(feature = "bsa", feature = "zip")))]
+fn archive_provider_file(_source_path: &Path, _key: &Path) -> Option<VfsFile> {
+    None
 }
 
 fn hash_reader(mut reader: impl Read) -> io::Result<ContentFingerprint> {
@@ -1453,6 +1528,139 @@ mod tests {
         assert_eq!(lock.schema_version, 1);
         assert_eq!(lock.entries[0].key, PathBuf::from("textures/a.dds"));
         assert_eq!(lock.entries[1].key, PathBuf::from("textures/z.dds"));
+    }
+
+    #[test]
+    fn lock_manifest_hashes_mixed_case_loose_winner_path() {
+        let data = TempDir::new("analysis_lock_mixed_case");
+        data.write("Textures/Foo.DDS", b"mixed");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+        let lock = index.lock_manifest(&vfs).expect("lock should build");
+
+        assert_eq!(lock.entries[0].key, PathBuf::from("textures/foo.dds"));
+        assert_eq!(lock.entries[0].winner_size, Some(5));
+        assert!(lock.entries[0].winner_hash_blake3.is_some());
+    }
+
+    #[test]
+    fn semantic_conflicts_reads_mixed_case_loose_provider_paths() {
+        let low = TempDir::new("analysis_semantic_mixed_low");
+        let high = TempDir::new("analysis_semantic_mixed_high");
+        low.write("Textures/Foo.DDS", b"low");
+        high.write("textures/foo.dds", b"high");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        let report = index.semantic_conflicts(&vfs).expect("semantic report");
+        let entry = report
+            .entries
+            .iter()
+            .find(|entry| entry.key == Path::new("textures/foo.dds"))
+            .expect("mixed-case conflict should be reported");
+
+        assert_eq!(entry.distinct_versions, 2);
+        assert!(
+            entry
+                .providers
+                .iter()
+                .all(|provider| provider.hash_blake3.is_some())
+        );
+    }
+
+    #[test]
+    fn semantic_conflict_omits_key_without_actual_vfs_winner() {
+        let low = TempDir::new("analysis_semantic_no_winner_hash_low");
+        low.write("shared.txt", b"same");
+        let index = LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: low.path().to_path_buf(),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("shared.txt")],
+            ),
+            (
+                SourceMeta {
+                    path: PathBuf::from("missing.bsa"),
+                    kind: SourceKind::Archive,
+                },
+                vec![PathBuf::from("shared.txt")],
+            ),
+        ]);
+        let vfs = VFS::new();
+
+        let entry = index
+            .semantic_conflict_for_key_no_cache(
+                &vfs,
+                Path::new("shared.txt"),
+                SemanticOpts::default(),
+            )
+            .expect("semantic conflict should build");
+
+        assert!(entry.is_none());
+    }
+
+    #[test]
+    #[cfg(feature = "zip")]
+    fn semantic_conflicts_all_providers_hashes_zip_archives() {
+        use std::io::Write as _;
+
+        fn write_zip(path: &Path, entry: &str, data: &[u8]) {
+            let file = fs::File::create(path).expect("zip file should be created");
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer
+                .start_file(entry, options)
+                .expect("entry should start");
+            writer.write_all(data).expect("entry should be written");
+            writer.finish().expect("zip should finish");
+        }
+
+        let data = TempDir::new("analysis_semantic_zip_all_providers");
+        write_zip(&data.path().join("low.zip"), "Textures/Foo.DDS", b"low");
+        write_zip(&data.path().join("high.zip"), "textures/foo.dds", b"high");
+
+        let (vfs, index) = VFS::from_directories_with_layer_index(
+            [data.path()],
+            Some(vec!["low.zip", "high.zip"]),
+        );
+        let report = index
+            .semantic_conflicts_with_opts(
+                &vfs,
+                SemanticOpts {
+                    archive_hash_mode: ArchiveHashMode::AllProviders,
+                    include_semantic_deltas: false,
+                },
+            )
+            .expect("semantic report should build");
+        let entry = report
+            .entries
+            .iter()
+            .find(|entry| entry.key == Path::new("textures/foo.dds"))
+            .expect("archive conflict should be reported");
+
+        assert_eq!(entry.distinct_versions, 2);
+        assert!(
+            entry
+                .providers
+                .iter()
+                .all(|provider| provider.hash_blake3.is_some())
+        );
+    }
+
+    #[test]
+    fn lock_manifest_uses_actual_vfs_winner_presence() {
+        let low = TempDir::new("analysis_lock_removed_low");
+        let high = TempDir::new("analysis_lock_removed_high");
+        low.write("shared.txt", b"low");
+        high.write("shared.txt", b"high");
+
+        let (mut vfs, index) =
+            VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+        vfs.remove_file("shared.txt");
+
+        let lock = index.lock_manifest(&vfs).expect("lock should build");
+        assert!(lock.entries.is_empty());
     }
 
     #[test]
@@ -1644,6 +1852,48 @@ mod tests {
         assert!(report.overall_score > 0.0);
         assert!(!report.top_risky_changes.is_empty());
         assert_eq!(report.by_bucket.len(), 1);
+    }
+
+    #[test]
+    fn simulate_impact_semantic_score_uses_before_after_winners_only() {
+        let low = TempDir::new("analysis_impact_semantic_low");
+        let mid = TempDir::new("analysis_impact_semantic_mid");
+        let high = TempDir::new("analysis_impact_semantic_high");
+        low.write("config/test.json", br#"{"value":2}"#);
+        mid.write("config/test.json", br#"{"value":1}"#);
+        high.write(
+            "config/test.json",
+            br#"{
+  "value": 1
+}"#,
+        );
+
+        let (vfs, index) =
+            VFS::from_directories_with_layer_index([low.path(), mid.path(), high.path()], None);
+        let opts = SimOpts {
+            sample_limit: 50,
+            impact_buckets: vec!["config/**".into()],
+        };
+        let profile = ImpactProfile {
+            heuristics: vec![ImpactHeuristic {
+                name: "semantic-change".into(),
+                path_glob: "config/**".into(),
+                weight: 5.0,
+                condition: HeuristicCondition::WinnerChangedAndSemanticBehaviorChanging,
+            }],
+        };
+
+        let report = index
+            .simulate_impact(
+                &vfs,
+                ReorderOp::Swap(mid.path().to_path_buf(), high.path().to_path_buf()),
+                &opts,
+                &profile,
+            )
+            .expect("simulate impact should succeed");
+
+        assert!(report.overall_score.abs() <= f32::EPSILON);
+        assert!(report.top_risky_changes.is_empty());
     }
 
     #[test]

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::normalize_path_in_place;
 use crate::reports::{
     ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport, ShadowedSource, StatsReport,
     StatsRow, WhichResult,
 };
 use crate::vfs::VFS;
+use crate::{normalize_path, normalize_path_in_place};
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -127,8 +127,13 @@ impl ConflictIndex {
             source_paths.push(source_path);
             let mut seen = AHashSet::new();
             for file in files {
-                if seen.insert(file.clone()) {
-                    path_to_sources.entry(file).or_default().push(source_idx);
+                let mut normalized = file;
+                normalize_path_in_place(&mut normalized);
+                if seen.insert(normalized.clone()) {
+                    path_to_sources
+                        .entry(normalized)
+                        .or_default()
+                        .push(source_idx);
                 }
             }
         }
@@ -227,6 +232,31 @@ impl ConflictIndex {
 }
 
 impl ConflictIndex {
+    fn source_idx_for_loose_file(&self, key: Option<&Path>, path: &Path) -> Option<usize> {
+        if let Some(key) = key {
+            let normalized_path = normalize_path(path);
+            if let Some((idx, _)) = self.sources.iter().enumerate().find(|(_, src)| {
+                normalize_path(&src.join(key)).as_ref() == normalized_path.as_ref()
+            }) {
+                return Some(idx);
+            }
+        }
+
+        self.sources
+            .iter()
+            .enumerate()
+            .filter(|(_, src)| path.starts_with(src))
+            .max_by_key(|(_, src)| src.components().count())
+            .map(|(idx, _)| idx)
+    }
+
+    fn source_idx_for_archive_path(&self, archive_path: &str) -> Option<usize> {
+        let archive_path = normalize_path(Path::new(archive_path));
+        self.sources
+            .iter()
+            .position(|src| normalize_path(src).as_ref() == archive_path.as_ref())
+    }
+
     /// Build a [`ConflictsReport`] listing every source's overrides and overridden files.
     ///
     /// When `use_relative` is `true`, paths are relative VFS keys; otherwise
@@ -238,8 +268,7 @@ impl ConflictIndex {
             .iter()
             .enumerate()
             .map(|(i, src)| {
-                let resolve =
-                    |p: &PathBuf| -> PathBuf { if use_relative { p.clone() } else { src.join(p) } };
+                let resolve = |p: &PathBuf| -> PathBuf { report_path(src, p, use_relative) };
                 let mut overrides: Vec<PathBuf> =
                     self.conflicts[i].overrides.iter().map(resolve).collect();
                 let mut overridden_by: Vec<PathBuf> = self.conflicts[i]
@@ -273,8 +302,7 @@ impl ConflictIndex {
                 if !self.conflicts[i].is_overridden() {
                     return None;
                 }
-                let resolve =
-                    |p: &PathBuf| -> PathBuf { if use_relative { p.clone() } else { src.join(p) } };
+                let resolve = |p: &PathBuf| -> PathBuf { report_path(src, p, use_relative) };
                 let mut shadowed_files: Vec<PathBuf> = self.conflicts[i]
                     .overridden_by
                     .iter()
@@ -309,15 +337,11 @@ impl ConflictIndex {
         let source_indices = self.sources_containing(&normalized);
 
         let winner_src_idx = if winner.is_loose() {
-            self.sources
-                .iter()
-                .position(|src| winner.path().starts_with(src))
+            self.source_idx_for_loose_file(Some(&normalized), winner.path())
         } else {
-            winner.parent_archive_path().and_then(|ap| {
-                self.sources
-                    .iter()
-                    .position(|src| src == &PathBuf::from(&ap))
-            })
+            winner
+                .parent_archive_path()
+                .and_then(|ap| self.source_idx_for_archive_path(&ap))
         };
 
         let also_in: Vec<PathBuf> = source_indices
@@ -343,17 +367,12 @@ impl ConflictIndex {
     #[must_use]
     pub fn stats(&self, vfs: &VFS) -> StatsReport {
         let mut wins: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-        for (_, file) in vfs.iter() {
+        for (key, file) in vfs.iter() {
             let source_idx = if file.is_loose() {
-                self.sources
-                    .iter()
-                    .position(|src| file.path().starts_with(src))
+                self.source_idx_for_loose_file(Some(key), file.path())
             } else {
-                file.parent_archive_path().and_then(|ap| {
-                    self.sources
-                        .iter()
-                        .position(|src| src.to_string_lossy() == ap.as_str())
-                })
+                file.parent_archive_path()
+                    .and_then(|ap| self.source_idx_for_archive_path(&ap))
             };
             if let Some(idx) = source_idx {
                 *wins.entry(idx).or_insert(0) += 1;
@@ -416,6 +435,28 @@ impl ConflictIndex {
     }
 }
 
+fn report_path(source: &Path, key: &Path, use_relative: bool) -> PathBuf {
+    if use_relative {
+        return key.to_path_buf();
+    }
+    if is_archive_source(source) {
+        return PathBuf::from(format!("{}::{}", source.display(), key.display()));
+    }
+    source.join(key)
+}
+
+fn is_archive_source(source: &Path) -> bool {
+    source
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "bsa" | "ba2" | "zip" | "pk3"
+            )
+        })
+}
+
 #[cfg(any(feature = "bsa", feature = "zip"))]
 impl ConflictIndex {
     #[cfg(feature = "zip")]
@@ -437,11 +478,7 @@ impl ConflictIndex {
             Ok(archive) => archive
                 .file_names()
                 .filter(|name| !name.ends_with('/'))
-                .map(|name| {
-                    let mut p = PathBuf::from(name);
-                    normalize_path_in_place(&mut p);
-                    p
-                })
+                .filter_map(crate::archives::normalized_archive_key)
                 .collect(),
             Err(e) => {
                 eprintln!(
@@ -481,10 +518,8 @@ impl ConflictIndex {
             ba2::FileFormat::TES3 => match ba2::tes3::Archive::read(&file) {
                 Ok(archive) => archive
                     .iter()
-                    .map(|(key, _)| {
-                        let mut p = PathBuf::from(key.name().to_string());
-                        normalize_path_in_place(&mut p);
-                        p
+                    .filter_map(|(key, _)| {
+                        crate::archives::normalized_archive_key(&key.name().to_string())
                     })
                     .collect(),
                 Err(e) => {
@@ -501,10 +536,12 @@ impl ConflictIndex {
                     .flat_map(|(dir_key, dir)| {
                         let dir_str = dir_key.name().to_string();
                         dir.iter()
-                            .map(move |(key, _)| {
-                                let mut p = PathBuf::from(format!("{}\\{}", dir_str, key.name()));
-                                normalize_path_in_place(&mut p);
-                                p
+                            .filter_map(move |(key, _)| {
+                                crate::archives::normalized_archive_key(&format!(
+                                    "{}\\{}",
+                                    dir_str,
+                                    key.name()
+                                ))
                             })
                             .collect::<Vec<_>>()
                     })
@@ -520,10 +557,8 @@ impl ConflictIndex {
             ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file) {
                 Ok((archive, _)) => archive
                     .iter()
-                    .map(|(key, _)| {
-                        let mut p = PathBuf::from(key.name().to_string());
-                        normalize_path_in_place(&mut p);
-                        p
+                    .filter_map(|(key, _)| {
+                        crate::archives::normalized_archive_key(&key.name().to_string())
                     })
                     .collect(),
                 Err(e) => {
@@ -739,6 +774,27 @@ mod tests {
         assert!(index.sources_containing(Path::new("shared.txt")).is_empty());
         assert!(index.conflicts[0].overrides.is_empty());
         assert!(index.conflicts[0].overridden_by.is_empty());
+    }
+
+    #[test]
+    fn from_file_lists_normalizes_caller_supplied_paths() {
+        let index = ConflictIndex::from_file_lists(vec![
+            (
+                PathBuf::from("/one"),
+                vec![PathBuf::from("Textures/Foo.DDS")],
+            ),
+            (
+                PathBuf::from("/two"),
+                vec![PathBuf::from("textures\\foo.dds")],
+            ),
+        ]);
+
+        assert_eq!(
+            index.sources_containing(Path::new("textures/foo.dds")),
+            &[0, 1]
+        );
+        assert!(index.conflicts[1].has_overrides());
+        assert!(index.conflicts[0].is_overridden());
     }
 
     #[test]
@@ -975,6 +1031,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn conflicts_report_formats_archive_sources_as_entries() {
+        let index = ConflictIndex::from_file_lists(vec![
+            (
+                PathBuf::from("/data/archive.zip"),
+                vec![PathBuf::from("textures/foo.dds")],
+            ),
+            (
+                PathBuf::from("/data/mod"),
+                vec![PathBuf::from("textures/foo.dds")],
+            ),
+        ]);
+
+        let report = index.conflicts_report(false);
+        assert_eq!(
+            report.sources[0].overridden_by,
+            vec![PathBuf::from("/data/archive.zip::textures/foo.dds")]
+        );
+    }
+
     // ---- shadowed_report ----
 
     #[test]
@@ -1085,6 +1161,21 @@ mod tests {
         assert_eq!(row_d2.overrides, 1, "d2 overrides one file");
         // d1 is overridden on shared.txt
         assert!(row_d1.overridden > 0, "d1 should have overridden > 0");
+    }
+
+    #[test]
+    fn stats_attributes_nested_loose_files_to_most_specific_source() {
+        let parent = TempDir::new("ci_report_st_nested_parent");
+        let child = TempDir(parent.path().join("child"));
+        child.write("foo.txt", b"child");
+
+        let index = ConflictIndex::from_directories(vec![parent.path(), child.path()]);
+        let (vfs, _) =
+            VFS::from_directories_with_conflict_index(vec![parent.path(), child.path()], None);
+        let report = index.stats(&vfs);
+
+        assert_eq!(report.rows[0].wins, 1, "parent should win child/foo.txt");
+        assert_eq!(report.rows[1].wins, 1, "child should win foo.txt");
     }
 
     // ---- diff_report ----

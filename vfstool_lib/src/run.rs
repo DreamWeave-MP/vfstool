@@ -18,6 +18,9 @@ pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 /// [`run_finalize`]. The caller is responsible for executing the subprocess
 /// between these two calls.
 ///
+/// `merged_dir` is created if needed. Existing contents are cleared before the
+/// dump so child processes see only the current VFS contents.
+///
 /// When `use_hardlinks` is `true`, loose files are hardlinked into `merged_dir`.
 /// This is intentional for speed and disk usage, but child processes that edit
 /// files in place may mutate the original source files through those hardlinks.
@@ -30,6 +33,9 @@ pub fn run_setup(
     merged_dir: &Path,
     use_hardlinks: bool,
 ) -> io::Result<(usize, Snapshot)> {
+    if merged_dir.exists() {
+        std::fs::remove_dir_all(merged_dir)?;
+    }
     std::fs::create_dir_all(merged_dir)?;
     let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
     let baseline = snapshot_directory(merged_dir)?;
@@ -66,7 +72,7 @@ pub fn run_finalize(
 }
 
 /// Compute the BLAKE3 hash of a file's contents.
-/// Uses a 64 KiB stack buffer — avoids loading the whole file into memory.
+/// Uses a 64 KiB heap buffer to avoid loading the whole file into memory.
 ///
 /// # Errors
 ///
@@ -124,7 +130,7 @@ pub fn changed_files<S: BuildHasher + Sync>(
     dir: &Path,
     baseline: &HashMap<PathBuf, [u8; 32], S>,
 ) -> io::Result<Vec<PathBuf>> {
-    WalkDir::new(dir)
+    let mut changed = WalkDir::new(dir)
         .into_iter()
         .filter_map(|entry| match entry.map_err(io::Error::other) {
             Ok(entry) if entry.file_type().is_file() => Some(Ok(entry)),
@@ -151,7 +157,9 @@ pub fn changed_files<S: BuildHasher + Sync>(
             };
             if is_changed { Some(Ok(rel)) } else { None }
         })
-        .collect::<io::Result<Vec<_>>>()
+        .collect::<io::Result<Vec<_>>>()?;
+    changed.sort();
+    Ok(changed)
 }
 
 #[cfg(test)]
@@ -269,6 +277,24 @@ mod tests {
         assert_eq!(changed.len(), 2);
     }
 
+    #[test]
+    fn changed_files_are_sorted() {
+        let dir = TempDir::new("runtest_changed_sorted");
+        dir.write("z.txt", b"z");
+        dir.write("a.txt", b"a");
+        dir.write("m.txt", b"m");
+
+        let changed = changed_files(dir.path(), &HashMap::new()).unwrap();
+        assert_eq!(
+            changed,
+            vec![
+                PathBuf::from("a.txt"),
+                PathBuf::from("m.txt"),
+                PathBuf::from("z.txt")
+            ]
+        );
+    }
+
     // ---- run_setup ----
 
     #[test]
@@ -310,6 +336,21 @@ mod tests {
             !snapshot.is_empty(),
             "snapshot should contain entries after setup"
         );
+    }
+
+    #[test]
+    fn run_setup_clears_preexisting_merged_files() {
+        let src = TempDir::new("run_new_setup_existing_src");
+        src.write("file.txt", b"data");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_setup_existing_merged");
+        merged.write("preexisting.txt", b"keep");
+
+        let (_, snapshot) = run_setup(&vfs, merged.path(), false).unwrap();
+        assert!(snapshot.contains_key(Path::new("file.txt")));
+        assert!(!snapshot.contains_key(Path::new("preexisting.txt")));
+        assert!(!merged.path().join("preexisting.txt").exists());
     }
 
     // ---- run_finalize ----

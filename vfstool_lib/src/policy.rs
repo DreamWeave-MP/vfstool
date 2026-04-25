@@ -2,7 +2,7 @@
 use crate::{
     VFS,
     analysis::{LayerIndex, SourceKind},
-    path_glob_matches, source_glob_matches,
+    matchers::CompiledGlob,
 };
 use std::{io, path::PathBuf};
 
@@ -94,7 +94,8 @@ impl Policy {
     /// Returns an error when provider/provenance resolution fails.
     #[allow(clippy::too_many_lines)]
     pub fn evaluate(&self, index: &LayerIndex, vfs: &VFS) -> io::Result<PolicyResult> {
-        let keys = index.keys();
+        let mut keys: Vec<PathBuf> = vfs.iter().map(|(key, _)| key.clone()).collect();
+        keys.sort();
         let mut violations = Vec::new();
 
         for rule in &self.rules {
@@ -103,18 +104,27 @@ impl Policy {
                     path_glob,
                     source_glob,
                 } => {
-                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
+                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    let source_glob_text = source_glob;
+                    let source_glob = CompiledGlob::new(source_glob_text).ok();
+                    for key in keys
+                        .iter()
+                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
+                    {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
-                        if !source_glob_matches(source_glob, &prov.winner.path) {
+                        if !source_glob
+                            .as_ref()
+                            .is_some_and(|glob| glob.is_match(&prov.winner.path))
+                        {
                             violations.push(Violation {
                                 rule: "winner_must_match".into(),
                                 key: Some(key.clone()),
                                 message: format!(
                                     "winner '{}' does not match source glob '{}'",
                                     prov.winner.path.display(),
-                                    source_glob
+                                    source_glob_text
                                 ),
                                 severity: Severity::Error,
                             });
@@ -125,18 +135,27 @@ impl Policy {
                     path_glob,
                     source_glob,
                 } => {
-                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
+                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    let source_glob_text = source_glob;
+                    let source_glob = CompiledGlob::new(source_glob_text).ok();
+                    for key in keys
+                        .iter()
+                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
+                    {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
-                        if source_glob_matches(source_glob, &prov.winner.path) {
+                        if source_glob
+                            .as_ref()
+                            .is_some_and(|glob| glob.is_match(&prov.winner.path))
+                        {
                             violations.push(Violation {
                                 rule: "winner_must_not_match".into(),
                                 key: Some(key.clone()),
                                 message: format!(
                                     "winner '{}' matches forbidden source glob '{}'",
                                     prov.winner.path.display(),
-                                    source_glob
+                                    source_glob_text
                                 ),
                                 severity: Severity::Error,
                             });
@@ -144,18 +163,26 @@ impl Policy {
                     }
                 }
                 Rule::MustExist { path_glob } => {
-                    let exists = keys.iter().any(|k| path_glob_matches(path_glob, k));
+                    let path_glob_text = path_glob;
+                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    let exists = keys
+                        .iter()
+                        .any(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)));
                     if !exists {
                         violations.push(Violation {
                             rule: "must_exist".into(),
                             key: None,
-                            message: format!("no key matched '{path_glob}'"),
+                            message: format!("no key matched '{path_glob_text}'"),
                             severity: Severity::Error,
                         });
                     }
                 }
                 Rule::MustBeUnique { path_glob } => {
-                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
+                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    for key in keys
+                        .iter()
+                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
+                    {
                         let provider_count = index.sources_containing(key).len();
                         if provider_count > 1 {
                             violations.push(Violation {
@@ -168,7 +195,11 @@ impl Policy {
                     }
                 }
                 Rule::WinnerKindMustBe { path_glob, kind } => {
-                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
+                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    for key in keys
+                        .iter()
+                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
+                    {
                         let Some(prov) = index.provenance(vfs, key, false)? else {
                             continue;
                         };
@@ -186,7 +217,11 @@ impl Policy {
                     }
                 }
                 Rule::MaxOverrideDepth { path_glob, max } => {
-                    for key in keys.iter().filter(|k| path_glob_matches(path_glob, k)) {
+                    let path_glob = CompiledGlob::new(path_glob).ok();
+                    for key in keys
+                        .iter()
+                        .filter(|k| path_glob.as_ref().is_some_and(|glob| glob.is_match(k)))
+                    {
                         let provider_count = index.sources_containing(key).len();
                         if provider_count > *max {
                             violations.push(Violation {
@@ -226,6 +261,7 @@ impl Policy {
 mod tests {
     use super::*;
     use crate::analysis::{LayerIndex, SourceMeta};
+    use crate::path_glob_matches;
     use std::{fs, path::Path};
 
     struct TempDir(PathBuf);
@@ -239,6 +275,14 @@ mod tests {
 
         fn path(&self) -> &Path {
             &self.0
+        }
+
+        fn write(&self, rel: &str, data: &[u8]) {
+            let target = self.0.join(rel);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).expect("failed to create parent dir");
+            }
+            fs::write(target, data).expect("failed to write file");
         }
     }
 
@@ -286,5 +330,59 @@ mod tests {
             .expect("policy evaluate should not fail");
         assert_eq!(result.violations.len(), 1);
         assert_eq!(result.violations[0].rule, "must_exist");
+    }
+
+    #[test]
+    fn must_exist_uses_actual_vfs_keys() {
+        let index = LayerIndex::from_file_lists(vec![(
+            SourceMeta {
+                path: PathBuf::from("/a"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("missing.txt")],
+        )]);
+        let vfs = VFS::new();
+        let policy = Policy {
+            rules: vec![Rule::MustExist {
+                path_glob: "missing.txt".into(),
+            }],
+        };
+
+        let result = policy.evaluate(&index, &vfs).expect("policy should run");
+        assert_eq!(result.violations.len(), 1);
+    }
+
+    #[test]
+    fn winner_rules_use_actual_vfs_winner() {
+        let low = TempDir::new("policy_actual_winner_low");
+        let high = TempDir::new("policy_actual_winner_high");
+        low.write("shared.txt", b"low");
+
+        let index = LayerIndex::from_file_lists(vec![
+            (
+                SourceMeta {
+                    path: low.path().to_path_buf(),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("shared.txt")],
+            ),
+            (
+                SourceMeta {
+                    path: high.path().to_path_buf(),
+                    kind: SourceKind::LooseDir,
+                },
+                vec![PathBuf::from("shared.txt")],
+            ),
+        ]);
+        let vfs = VFS::from_directories([low.path()], None::<Vec<&str>>);
+        let policy = Policy {
+            rules: vec![Rule::WinnerMustMatch {
+                path_glob: "shared.txt".into(),
+                source_glob: format!("{}", low.path().display()),
+            }],
+        };
+
+        let result = policy.evaluate(&index, &vfs).expect("policy should run");
+        assert!(result.violations.is_empty());
     }
 }

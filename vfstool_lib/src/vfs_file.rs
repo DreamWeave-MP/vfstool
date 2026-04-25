@@ -141,22 +141,22 @@ impl ArchiveReference {
     ///
     /// Returns an error if the path has no parent directory or file name.
     pub fn tes4_keys(path: &Path) -> io::Result<(Tes4ArchiveKey<'_>, Tes4DirKey<'_>)> {
-        let dir_key: Tes4ArchiveKey = path
-            .parent()
-            .map(|p| p.to_string_lossy().into_owned().into())
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "Missing parent directory in TES4 archive",
-                )
-            })?;
+        let path = path.to_string_lossy();
+        let Some((dir, file)) = path.rsplit_once(['/', '\\']) else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Missing parent directory in TES4 archive",
+            ));
+        };
+        if dir.is_empty() || file.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Missing TES4 archive directory or file name",
+            ));
+        }
 
-        let file_key: Tes4DirKey = path
-            .file_name()
-            .map(|f| f.to_string_lossy().into_owned().into())
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::NotFound, "Missing file name in TES4 archive")
-            })?;
+        let dir_key: Tes4ArchiveKey = dir.to_owned().into();
+        let file_key: Tes4DirKey = file.to_owned().into();
 
         Ok((dir_key, file_key))
     }
@@ -392,14 +392,16 @@ impl VfsFile {
 
                     #[cfg(feature = "zip")]
                     TypedArchive::Zip(archive) => {
-                        let mut guard = archive.lock().map_err(|_| {
-                            io::Error::new(io::ErrorKind::Other, "zip mutex poisoned")
-                        })?;
+                        let mut guard = archive
+                            .lock()
+                            .map_err(|_| io::Error::other("zip mutex poisoned"))?;
                         let buf = {
                             let mut entry = guard.by_name(&path_string).map_err(|e| {
                                 io::Error::new(io::ErrorKind::NotFound, e.to_string())
                             })?;
-                            let mut buf = Vec::with_capacity(entry.size() as usize);
+                            let mut buf = Vec::with_capacity(
+                                usize::try_from(entry.size()).unwrap_or_default(),
+                            );
                             io::copy(&mut entry, &mut buf)?;
                             buf
                         };
@@ -502,6 +504,8 @@ impl VfsFile {
 
 #[cfg(test)]
 mod read {
+    #[cfg(feature = "bsa")]
+    use super::ArchiveReference;
     use super::VfsFile;
     use crate::normalize_path;
     use std::{
@@ -550,6 +554,14 @@ END OF ACT IV, SCENE III";
     /// It contains a reference to the real path, and some helpers to interact with it
     /// Its parent struct, `VFSFiles`, uses the normalized path as a `HashMap` key to refer to the
     /// `VFSFile`
+
+    #[test]
+    #[cfg(feature = "bsa")]
+    fn tes4_keys_split_backslash_paths_on_unix() {
+        assert!(ArchiveReference::tes4_keys(PathBuf::from("meshes\\foo.nif").as_path()).is_ok());
+        assert!(ArchiveReference::tes4_keys(PathBuf::from("meshes/foo.nif").as_path()).is_ok());
+        assert!(ArchiveReference::tes4_keys(PathBuf::from("foo.nif").as_path()).is_err());
+    }
     /// Thus, we should ensure that the path contained in the `VFSFile` is not already normalized
     /// but instead refers to the literal path on the user's system
     #[test]
