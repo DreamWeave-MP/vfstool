@@ -6,20 +6,14 @@ use std::{
     path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    CandidatePlanOpts, CollapseOptions, ConflictFingerprint, ConflictIndex, ImpactProfile,
-    KnowledgeEntry, KnowledgeStore, KnownOutcome, LayerIndex, LocalKnowledgeStore, OrderConstraint,
-    Policy, ReorderOp, Rule, SemanticConflictReport, SemanticOpts, SerializeType, SimOpts,
-    SimulationDelta, SolveObjective, SolveRequest, SolveStatus, SourceKind, VfsLock,
-    conflict_fingerprints_from_report, normalize_path, run_finalize, run_setup, serialize_value,
-    vfs::VFS,
+    CollapseOptions, ConflictIndex, LayerIndex, SerializeType, VfsLock, normalize_path,
+    run_finalize, run_setup, serialize_value, vfs::VFS,
 };
 
 pub enum VFSToolExitCode {
     FindFailed = 1,
     FileNotInLooseDirectories = 2,
-    VerifyFailed = 3,
     DriftDetected = 4,
-    SolveUnsatisfiable = 5,
     BadRegex = 6,
     FailedToLoadOpenMWConfig = 7,
     InvalidInput = 8,
@@ -31,9 +25,7 @@ impl From<VFSToolExitCode> for i32 {
         match value {
             VFSToolExitCode::FindFailed => 1,
             VFSToolExitCode::FileNotInLooseDirectories => 2,
-            VFSToolExitCode::VerifyFailed => 3,
             VFSToolExitCode::DriftDetected => 4,
-            VFSToolExitCode::SolveUnsatisfiable => 5,
             VFSToolExitCode::BadRegex => 6,
             VFSToolExitCode::FailedToLoadOpenMWConfig => 7,
             VFSToolExitCode::InvalidInput => 8,
@@ -240,137 +232,8 @@ enum Commands {
         #[arg(long)]
         working_dir: Option<PathBuf>,
     },
-    /// Show full provider chain for one VFS path.
-    Provenance {
-        /// Relative VFS path to query.
-        path: PathBuf,
-        /// Include content hashes where available.
-        #[arg(long)]
-        hashes: bool,
-        /// Output format when serializing as text.
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        /// Optional path to save the output.
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Report semantic (content-aware) conflicts.
-    SemanticConflicts {
-        /// Include semantic analyzer deltas where possible.
-        #[arg(long)]
-        enrich: bool,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
     /// Emit deterministic lock manifest for current winners.
     Lock {
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Evaluate a YAML policy document against the current VFS.
-    Verify {
-        /// Path to YAML policy file.
-        policy: PathBuf,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Simulate swapping two sources in load order.
-    SimulateSwap {
-        /// Source path A.
-        source_a: PathBuf,
-        /// Source path B.
-        source_b: PathBuf,
-        /// Optional impact bucket globs (repeat this flag).
-        #[arg(long = "bucket")]
-        buckets: Vec<String>,
-        /// Maximum number of changed keys included in output sample.
-        #[arg(long, default_value_t = 100)]
-        sample_limit: usize,
-        /// Optional impact profile YAML for weighted risk scoring.
-        #[arg(long)]
-        impact_profile: Option<PathBuf>,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Simulate moving one source before another in load order.
-    SimulateMoveBefore {
-        /// Source path to move.
-        source: PathBuf,
-        /// Destination source before which `source` is inserted.
-        before: PathBuf,
-        /// Optional impact bucket globs (repeat this flag).
-        #[arg(long = "bucket")]
-        buckets: Vec<String>,
-        /// Maximum number of changed keys included in output sample.
-        #[arg(long, default_value_t = 100)]
-        sample_limit: usize,
-        /// Optional impact profile YAML for weighted risk scoring.
-        #[arg(long)]
-        impact_profile: Option<PathBuf>,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Simulate moving one source after another in load order.
-    SimulateMoveAfter {
-        /// Source path to move.
-        source: PathBuf,
-        /// Destination source after which `source` is inserted.
-        after: PathBuf,
-        /// Optional impact bucket globs (repeat this flag).
-        #[arg(long = "bucket")]
-        buckets: Vec<String>,
-        /// Maximum number of changed keys included in output sample.
-        #[arg(long, default_value_t = 100)]
-        sample_limit: usize,
-        /// Optional impact profile YAML for weighted risk scoring.
-        #[arg(long)]
-        impact_profile: Option<PathBuf>,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Simulate a full explicit source order from a file.
-    SimulateFullOrder {
-        /// Text file with one absolute source path per line.
-        ///
-        /// Empty lines and lines beginning with '#' are ignored.
-        #[arg(long)]
-        order_file: PathBuf,
-        /// Optional impact bucket globs (repeat this flag).
-        #[arg(long = "bucket")]
-        buckets: Vec<String>,
-        /// Maximum number of changed keys included in output sample.
-        #[arg(long, default_value_t = 100)]
-        sample_limit: usize,
-        /// Optional impact profile YAML for weighted risk scoring.
-        #[arg(long)]
-        impact_profile: Option<PathBuf>,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Solve load-order constraints and suggest a valid order.
-    Solve {
-        /// Path to YAML constraints file.
-        constraints: PathBuf,
-        /// Optimization objective.
-        #[arg(long, value_enum, default_value = "min_moves")]
-        objective: SolveObjectiveArg,
-        /// Optional path to write solved order (one path per line).
-        #[arg(long)]
-        write_order: Option<PathBuf>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
@@ -388,113 +251,6 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Preflight one candidate directory before adding it to the load order.
-    PlanCandidate {
-        /// Candidate data directory to evaluate.
-        candidate_dir: PathBuf,
-        /// Disable semantic (content hash) comparison for conflicts.
-        #[arg(long)]
-        no_semantic: bool,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Lookup known outcomes for conflict fingerprints.
-    KbLookup {
-        /// Path to local knowledge store TSV file.
-        store: PathBuf,
-        /// Path to semantic conflict report (yaml/json/toml).
-        conflicts: PathBuf,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Add or update one knowledge-base entry.
-    KbAdd {
-        /// Path to local knowledge store TSV file.
-        store: PathBuf,
-        /// Lower-priority source path.
-        low_source: PathBuf,
-        /// Higher-priority source path.
-        high_source: PathBuf,
-        /// Key pattern or exact key.
-        key_pattern: String,
-        /// Optional lower hash.
-        #[arg(long)]
-        low_hash: Option<String>,
-        /// Optional higher hash.
-        #[arg(long)]
-        high_hash: Option<String>,
-        /// Known outcome class.
-        #[arg(long, value_enum)]
-        outcome: KnownOutcomeArg,
-        /// Confidence in [0.0, 1.0].
-        #[arg(long, default_value_t = 1.0)]
-        confidence: f32,
-        /// Optional notes.
-        #[arg(long, default_value = "")]
-        notes: String,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-}
-
-#[derive(serde::Deserialize)]
-struct PolicyDoc {
-    rules: Vec<PolicyRuleDoc>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum PolicyRuleDoc {
-    WinnerMustMatch {
-        path_glob: String,
-        source_glob: String,
-    },
-    WinnerMustNotMatch {
-        path_glob: String,
-        source_glob: String,
-    },
-    MustExist {
-        path_glob: String,
-    },
-    MustBeUnique {
-        path_glob: String,
-    },
-    WinnerKindMustBe {
-        path_glob: String,
-        kind: String,
-    },
-    MaxOverrideDepth {
-        path_glob: String,
-        max: usize,
-    },
-}
-
-#[derive(serde::Deserialize)]
-struct SolveDoc {
-    constraints: Vec<SolveConstraintDoc>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum SolveConstraintDoc {
-    SourceBefore {
-        a: PathBuf,
-        b: PathBuf,
-    },
-    SourceAfter {
-        a: PathBuf,
-        b: PathBuf,
-    },
-    WinnerMustBe {
-        path_glob: String,
-        source_glob: String,
-    },
 }
 
 /// Supported output formats
@@ -503,40 +259,6 @@ enum OutputFormat {
     Json,
     Yaml,
     Toml,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-#[value(rename_all = "snake_case")]
-enum SolveObjectiveArg {
-    MinMoves,
-}
-
-impl From<SolveObjectiveArg> for SolveObjective {
-    fn from(value: SolveObjectiveArg) -> Self {
-        match value {
-            SolveObjectiveArg::MinMoves => SolveObjective::MinMovesFromCurrent,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-#[value(rename_all = "snake_case")]
-enum KnownOutcomeArg {
-    SafeNoOp,
-    SafeIntentionalOverride,
-    RequiresManualPatch,
-    KnownBreakage,
-}
-
-impl From<KnownOutcomeArg> for KnownOutcome {
-    fn from(value: KnownOutcomeArg) -> Self {
-        match value {
-            KnownOutcomeArg::SafeNoOp => KnownOutcome::SafeNoOp,
-            KnownOutcomeArg::SafeIntentionalOverride => KnownOutcome::SafeIntentionalOverride,
-            KnownOutcomeArg::RequiresManualPatch => KnownOutcome::RequiresManualPatch,
-            KnownOutcomeArg::KnownBreakage => KnownOutcome::KnownBreakage,
-        }
-    }
 }
 
 // --- Helpers ---
@@ -589,95 +311,6 @@ fn build_layer_index(config_path: PathBuf) -> (VFS, LayerIndex) {
     VFS::from_directories_with_layer_index(data_paths, Some(archives))
 }
 
-fn parse_policy(path: &PathBuf) -> io::Result<Policy> {
-    let text = std::fs::read_to_string(path)?;
-    let doc: PolicyDoc = serde_yaml::from_str(&text).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid policy yaml: {e}"),
-        )
-    })?;
-
-    let mut rules = Vec::with_capacity(doc.rules.len());
-    for rule in doc.rules {
-        let mapped = match rule {
-            PolicyRuleDoc::WinnerMustMatch {
-                path_glob,
-                source_glob,
-            } => Rule::WinnerMustMatch {
-                path_glob,
-                source_glob,
-            },
-            PolicyRuleDoc::WinnerMustNotMatch {
-                path_glob,
-                source_glob,
-            } => Rule::WinnerMustNotMatch {
-                path_glob,
-                source_glob,
-            },
-            PolicyRuleDoc::MustExist { path_glob } => Rule::MustExist { path_glob },
-            PolicyRuleDoc::MustBeUnique { path_glob } => Rule::MustBeUnique { path_glob },
-            PolicyRuleDoc::WinnerKindMustBe { path_glob, kind } => {
-                let kind = match kind.as_str() {
-                    "loose_dir" => SourceKind::LooseDir,
-                    "archive" => SourceKind::Archive,
-                    _ => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!(
-                                "invalid winner kind '{kind}', expected 'loose_dir' or 'archive'"
-                            ),
-                        ));
-                    }
-                };
-                Rule::WinnerKindMustBe { path_glob, kind }
-            }
-            PolicyRuleDoc::MaxOverrideDepth { path_glob, max } => {
-                Rule::MaxOverrideDepth { path_glob, max }
-            }
-        };
-        rules.push(mapped);
-    }
-
-    Ok(Policy { rules })
-}
-
-fn parse_solve_constraints(path: &Path) -> io::Result<Vec<OrderConstraint>> {
-    let text = fs::read_to_string(path)?;
-    let doc: SolveDoc = serde_yaml::from_str(&text).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid constraints yaml: {e}"),
-        )
-    })?;
-
-    Ok(doc
-        .constraints
-        .into_iter()
-        .map(|constraint| match constraint {
-            SolveConstraintDoc::SourceBefore { a, b } => OrderConstraint::SourceBefore { a, b },
-            SolveConstraintDoc::SourceAfter { a, b } => OrderConstraint::SourceAfter { a, b },
-            SolveConstraintDoc::WinnerMustBe {
-                path_glob,
-                source_glob,
-            } => OrderConstraint::WinnerMustBe {
-                path_glob,
-                source_glob,
-            },
-        })
-        .collect())
-}
-
-fn parse_order_file(path: &Path) -> io::Result<Vec<PathBuf>> {
-    let content = fs::read_to_string(path)?;
-    Ok(content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(PathBuf::from)
-        .collect())
-}
-
 fn parse_lock_file(path: &Path) -> io::Result<VfsLock> {
     let content = fs::read_to_string(path)?;
     match path.extension().and_then(std::ffi::OsStr::to_str) {
@@ -699,98 +332,6 @@ fn parse_lock_file(path: &Path) -> io::Result<VfsLock> {
                 format!("invalid YAML lock file '{}': {e}", path.display()),
             )
         }),
-    }
-}
-
-fn parse_impact_profile(path: &Path) -> io::Result<ImpactProfile> {
-    let content = fs::read_to_string(path)?;
-    serde_yaml::from_str(&content).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid impact profile yaml '{}': {e}", path.display()),
-        )
-    })
-}
-
-fn parse_semantic_report(path: &Path) -> io::Result<SemanticConflictReport> {
-    let content = fs::read_to_string(path)?;
-    match path.extension().and_then(std::ffi::OsStr::to_str) {
-        Some("json") => serde_json::from_str(&content).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid JSON semantic report '{}': {e}", path.display()),
-            )
-        }),
-        Some("toml") => toml::from_str(&content).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid TOML semantic report '{}': {e}", path.display()),
-            )
-        }),
-        _ => serde_yaml::from_str(&content).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid YAML semantic report '{}': {e}", path.display()),
-            )
-        }),
-    }
-}
-
-#[derive(serde::Serialize)]
-struct KbLookupResult {
-    matches: Vec<KnowledgeEntry>,
-}
-
-#[derive(serde::Serialize)]
-struct SimulationOutput {
-    simulation: SimulationDelta,
-    impact: Option<vfstool_lib::ImpactReport>,
-}
-
-fn run_simulation_command(
-    resolved_config_dir: PathBuf,
-    op: ReorderOp,
-    buckets: Vec<String>,
-    sample_limit: usize,
-    impact_profile: Option<PathBuf>,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> io::Result<()> {
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
-    let opts = SimOpts {
-        sample_limit,
-        impact_buckets: buckets,
-    };
-
-    match layer.simulate_with_opts(&vfs, op.clone(), &opts) {
-        Ok(delta) => {
-            if let Some(profile_path) = impact_profile {
-                let profile = parse_impact_profile(&profile_path)?;
-                let impact = layer.simulate_impact(&vfs, op, &opts, &profile)?;
-                write_serialized(
-                    output,
-                    format,
-                    &SimulationOutput {
-                        simulation: delta,
-                        impact: Some(impact),
-                    },
-                )
-            } else {
-                write_serialized(
-                    output,
-                    format,
-                    &SimulationOutput {
-                        simulation: delta,
-                        impact: None,
-                    },
-                )
-            }
-        }
-        Err(err) if err.kind() == io::ErrorKind::InvalidInput => {
-            eprintln!("{}{}", print::err_prefix(), err);
-            std::process::exit(VFSToolExitCode::InvalidInput.into());
-        }
-        Err(err) => Err(err),
     }
 }
 
@@ -1132,26 +673,6 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
     );
 }
 
-fn handle_provenance(
-    resolved_config_dir: PathBuf,
-    path: &PathBuf,
-    hashes: bool,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
-    let normalized = normalize_path(&path).into_owned();
-    let Some(chain) = layer.provenance(&vfs, &normalized, hashes)? else {
-        eprintln!(
-            "{}VFS path '{}' not found.",
-            print::err_prefix(),
-            path.display()
-        );
-        std::process::exit(VFSToolExitCode::FindFailed.into());
-    };
-    write_serialized(output, format, &chain)
-}
-
 fn handle_conflicts(
     resolved_config_dir: PathBuf,
     use_relative: bool,
@@ -1187,23 +708,6 @@ fn handle_diff(
     write_serialized(output, format, &report)
 }
 
-fn handle_semantic(
-    resolved_config_dir: PathBuf,
-    enrich: bool,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
-    let report = layer.semantic_conflicts_with_opts(
-        &vfs,
-        SemanticOpts {
-            include_semantic_deltas: enrich,
-            ..SemanticOpts::default()
-        },
-    )?;
-    write_serialized(output, format, &report)
-}
-
 fn handle_lock(
     resolved_config_dir: PathBuf,
     format: OutputFormat,
@@ -1212,23 +716,6 @@ fn handle_lock(
     let (vfs, layer) = build_layer_index(resolved_config_dir);
     let lock = layer.lock_manifest(&vfs)?;
     write_serialized(output, format, &lock)
-}
-
-fn handle_verify(
-    resolved_config_dir: PathBuf,
-    policy: &PathBuf,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
-    let policy = parse_policy(policy)?;
-    let result = policy.evaluate(&layer, &vfs)?;
-    let has_violations = !result.violations.is_empty();
-    write_serialized(output, format, &result)?;
-    if has_violations {
-        std::process::exit(VFSToolExitCode::VerifyFailed.into());
-    }
-    Ok(())
 }
 
 fn handle_drift(
@@ -1245,107 +732,6 @@ fn handle_drift(
     write_serialized(output, format, &report)?;
     if has_drift && fail_on_drift {
         std::process::exit(VFSToolExitCode::DriftDetected.into());
-    }
-    Ok(())
-}
-
-fn handle_plan_candidate(
-    resolved_config_dir: PathBuf,
-    candidate_dir: &Path,
-    no_semantic: bool,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
-    let plan = layer.plan_candidate_directory(
-        &vfs,
-        candidate_dir,
-        CandidatePlanOpts {
-            include_semantic: !no_semantic,
-        },
-    )?;
-    write_serialized(output, format, &plan)
-}
-
-fn handle_kb_lookup(
-    store_path: &Path,
-    conflicts_path: &Path,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let report = parse_semantic_report(conflicts_path)?;
-    let store = LocalKnowledgeStore::new(store_path.to_path_buf());
-    let mut matches = Vec::new();
-    for fingerprint in conflict_fingerprints_from_report(&report) {
-        matches.extend(store.lookup(&fingerprint)?);
-    }
-    write_serialized(output, format, &KbLookupResult { matches })
-}
-
-fn handle_kb_add(
-    store_path: &Path,
-    fingerprint: ConflictFingerprint,
-    outcome: KnownOutcome,
-    confidence: f32,
-    notes: String,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let mut store = LocalKnowledgeStore::new(store_path.to_path_buf());
-    let entry = KnowledgeEntry {
-        fingerprint,
-        outcome,
-        confidence,
-        notes,
-    };
-    store.upsert(entry)?;
-    let entries = store.all()?;
-    write_serialized(output, format, &entries)
-}
-
-fn write_order_file(path: &Path, order: &[PathBuf]) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let content = order
-        .iter()
-        .map(|entry| entry.display().to_string())
-        .collect::<Vec<_>>()
-        .join("\n");
-    fs::write(path, format!("{content}\n"))
-}
-
-fn handle_solve(
-    resolved_config_dir: PathBuf,
-    constraints_path: &Path,
-    objective: SolveObjectiveArg,
-    write_order: Option<&PathBuf>,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let (_vfs, layer) = build_layer_index(resolved_config_dir);
-    let constraints = parse_solve_constraints(constraints_path)?;
-    let current_order = layer
-        .sources
-        .iter()
-        .map(|source| source.path.clone())
-        .collect();
-
-    let result = layer.solve_order(&SolveRequest {
-        current_order,
-        constraints,
-        objective: objective.into(),
-    })?;
-
-    if let Some(path) = write_order
-        && let Some(ref order) = result.order
-    {
-        write_order_file(path, order)?;
-    }
-
-    write_serialized(output, format, &result)?;
-    if result.status == SolveStatus::Unsatisfiable {
-        std::process::exit(VFSToolExitCode::SolveUnsatisfiable.into());
     }
     Ok(())
 }
@@ -1473,25 +859,9 @@ fn run_analysis_primary(
             output,
         )
         .map(|()| None),
-        Commands::Provenance {
-            path,
-            hashes,
-            format,
-            output,
-        } => handle_provenance(resolved_config_dir, &path, hashes, format, output).map(|()| None),
-        Commands::SemanticConflicts {
-            enrich,
-            format,
-            output,
-        } => handle_semantic(resolved_config_dir, enrich, format, output).map(|()| None),
         Commands::Lock { format, output } => {
             handle_lock(resolved_config_dir, format, output).map(|()| None)
         }
-        Commands::Verify {
-            policy,
-            format,
-            output,
-        } => handle_verify(resolved_config_dir, &policy, format, output).map(|()| None),
         Commands::Drift {
             lock_file,
             fail_on_drift,
@@ -1505,73 +875,7 @@ fn run_analysis_primary(
             output,
         )
         .map(|()| None),
-        Commands::PlanCandidate {
-            candidate_dir,
-            no_semantic,
-            format,
-            output,
-        } => handle_plan_candidate(
-            resolved_config_dir,
-            candidate_dir.as_path(),
-            no_semantic,
-            format,
-            output,
-        )
-        .map(|()| None),
         other => Ok(Some(other)),
-    }
-}
-
-fn run_analysis_secondary(command: Commands, resolved_config_dir: PathBuf) -> Result<()> {
-    match command {
-        Commands::KbLookup {
-            store,
-            conflicts,
-            format,
-            output,
-        } => handle_kb_lookup(store.as_path(), conflicts.as_path(), format, output),
-        Commands::KbAdd {
-            store,
-            low_source,
-            high_source,
-            key_pattern,
-            low_hash,
-            high_hash,
-            outcome,
-            confidence,
-            notes,
-            format,
-            output,
-        } => handle_kb_add(
-            store.as_path(),
-            ConflictFingerprint {
-                low_source,
-                high_source,
-                key_pattern,
-                low_hash,
-                high_hash,
-            },
-            outcome.into(),
-            confidence,
-            notes,
-            format,
-            output,
-        ),
-        Commands::Solve {
-            constraints,
-            objective,
-            write_order,
-            format,
-            output,
-        } => handle_solve(
-            resolved_config_dir,
-            constraints.as_path(),
-            objective,
-            write_order.as_ref(),
-            format,
-            output,
-        ),
-        _ => Ok(()),
     }
 }
 
@@ -1584,7 +888,8 @@ fn run_analysis_command(
     else {
         return Ok(());
     };
-    run_analysis_secondary(command, resolved_config_dir)
+    let _ = (command, resolved_config_dir);
+    Ok(())
 }
 
 fn run_command(
@@ -1599,79 +904,7 @@ fn run_command(
         return Ok(());
     };
 
-    match command {
-        Commands::SimulateSwap {
-            source_a,
-            source_b,
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        } => run_simulation_command(
-            resolved_config_dir,
-            ReorderOp::Swap(source_a, source_b),
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        ),
-        Commands::SimulateMoveBefore {
-            source,
-            before,
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        } => run_simulation_command(
-            resolved_config_dir,
-            ReorderOp::MoveBefore { source, before },
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        ),
-        Commands::SimulateMoveAfter {
-            source,
-            after,
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        } => run_simulation_command(
-            resolved_config_dir,
-            ReorderOp::MoveAfter { source, after },
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        ),
-        Commands::SimulateFullOrder {
-            order_file,
-            buckets,
-            sample_limit,
-            impact_profile,
-            format,
-            output,
-        } => {
-            let order = parse_order_file(&order_file)?;
-            run_simulation_command(
-                resolved_config_dir,
-                ReorderOp::FullOrder(order),
-                buckets,
-                sample_limit,
-                impact_profile,
-                format,
-                output,
-            )
-        }
-        _ => run_analysis_command(command, use_relative, resolved_config_dir),
-    }
+    run_analysis_command(command, use_relative, resolved_config_dir)
 }
 
 fn main() -> Result<()> {
