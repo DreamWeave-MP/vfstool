@@ -32,6 +32,80 @@
 //! the resolved view; it does not reveal a lower-priority provider. Use [`MutableVfs`] if removal
 //! should expose the next provider in the low-to-high priority stack.
 //!
+//! # Examples
+//!
+//! Build a VFS from two data directories and query the winner. Later directories have higher
+//! priority, so the second directory wins when both provide the same normalized key.
+//!
+//! ```
+//! use std::{fs, path::Path};
+//! use vfstool_lib::VFS;
+//!
+//! # fn unique_dir(name: &str) -> std::path::PathBuf {
+//! #     let dir = std::env::temp_dir().join(format!(
+//! #         "vfstool_doc_{name}_{}_{}",
+//! #         std::process::id(),
+//! #         std::time::SystemTime::now()
+//! #             .duration_since(std::time::UNIX_EPOCH)
+//! #             .unwrap()
+//! #             .as_nanos()
+//! #     ));
+//! #     fs::create_dir_all(&dir).unwrap();
+//! #     dir
+//! # }
+//! # let low = unique_dir("low");
+//! # let high = unique_dir("high");
+//! # fs::create_dir_all(low.join("Textures")).unwrap();
+//! # fs::create_dir_all(high.join("textures")).unwrap();
+//! # fs::write(low.join("Textures/Foo.DDS"), b"low").unwrap();
+//! # fs::write(high.join("textures/foo.dds"), b"high").unwrap();
+//! let vfs = VFS::from_directories([&low, &high], None);
+//!
+//! let winner = vfs.get_file("TEXTURES\\FOO.DDS").unwrap();
+//! assert_eq!(winner.path(), high.join("textures/foo.dds"));
+//! assert!(vfs.contains(Path::new("textures/foo.dds")));
+//! # let _ = fs::remove_dir_all(low);
+//! # let _ = fs::remove_dir_all(high);
+//! ```
+//!
+//! Ask the provider index why a key resolves the way it does.
+//!
+//! ```
+//! use std::path::{Path, PathBuf};
+//! use vfstool_lib::{LayerIndex, SourceKind, SourceMeta};
+//!
+//! let layer = LayerIndex::from_file_lists([
+//!     (
+//!         SourceMeta { path: PathBuf::from("base"), kind: SourceKind::LooseDir },
+//!         vec![PathBuf::from("textures/foo.dds")],
+//!     ),
+//!     (
+//!         SourceMeta { path: PathBuf::from("mod"), kind: SourceKind::LooseDir },
+//!         vec![PathBuf::from("textures/foo.dds")],
+//!     ),
+//! ]);
+//!
+//! let chain = layer.provider_chain(Path::new("textures/foo.dds"));
+//! assert_eq!(chain.len(), 2);
+//! assert_eq!(chain.last().unwrap().source.path, PathBuf::from("mod"));
+//! ```
+//!
+//! Use semantic analysis for modest, content-aware comparisons. This is not clairvoyance; it is
+//! deliberately scoped classification for formats the library understands.
+//!
+//! ```
+//! use vfstool_lib::{analyze_pair, AssetClass, SemanticDelta};
+//!
+//! let (class, delta) = analyze_pair(
+//!     std::path::Path::new("settings.ini"),
+//!     b"[section]\na = 1\nb = 2\n",
+//!     b"# reordered\n[section]\nb = 2\na = 1\n",
+//! );
+//!
+//! assert_eq!(class, AssetClass::Ini);
+//! assert_eq!(delta, SemanticDelta::CosmeticOnly);
+//! ```
+//!
 //! # Feature flags
 //!
 //! - `bsa`: BSA/BA2 archive support.

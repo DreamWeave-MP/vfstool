@@ -304,7 +304,27 @@ mod tests {
 
     impl TempDir {
         fn new(name: &str) -> Self {
-            let dir = std::env::current_dir().unwrap().join(name);
+            let dir = std::env::temp_dir().join(format!(
+                "{name}_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn new_in_current_dir(name: &str) -> Self {
+            let dir = std::env::current_dir().unwrap().join(format!(
+                "{name}_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
             fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }
@@ -392,7 +412,7 @@ mod tests {
 
     #[test]
     fn remove_source_uses_lexical_source_paths() {
-        let data = TempDir::new("mutable_vfs_lexical_source");
+        let data = TempDir::new_in_current_dir("mutable_vfs_lexical_source");
         data.write("file.txt", b"data");
         let relative = PathBuf::from(data.path().file_name().unwrap());
         let mut mutable = MutableVfs::from_directories([relative.as_path()]).unwrap();

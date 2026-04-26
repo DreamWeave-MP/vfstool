@@ -105,10 +105,24 @@ let contributions = layer.source_contributions();
 use vfstool_lib::{SerializeType, VFS};
 
 let vfs = VFS::from_directories(vec!["path/to/data"], None);
-let tree = vfs.tree(false, None);
+let tree = vfs.tree(false);
 let json = vfs.serialize_from_tree(&tree, SerializeType::Json).unwrap();
 println!("{json}");
 ```
+
+### Runnable examples
+
+The crate includes small examples that compile against the public 1.0 API:
+
+```bash
+cargo run -p vfstool_lib --example basic_vfs
+cargo run -p vfstool_lib --example provider_reports
+cargo run -p vfstool_lib --example semantic_analysis
+cargo run -p vfstool_lib --example mutable_vfs
+```
+
+These examples intentionally use temporary fixtures rather than a real OpenMW install, so they are
+safe starting points for application code.
 
 ### Mutating VFS contents
 
@@ -193,6 +207,24 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
 | `bsa` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
 | `zip` | ZIP/PK3 archive support |
 | `serialize` | JSON/YAML/TOML output via serde |
+
+---
+
+## Benchmarks
+
+The library benchmark suite covers common VFS operations and several release-sensitive large-loadout
+paths:
+
+```bash
+cargo bench -p vfstool_lib --bench vfs_benchmarks
+cargo bench -p vfstool_lib --bench vfs_benchmarks --features zip,serialize
+```
+
+The suite includes normalization, construction, lookup, tree building, diffing, conflict indexing,
+serialization, ZIP materialization, semantic conflict analysis, dump/run setup, sparse tracked
+finalization, and high-conflict-density load orders. BSA/BA2 performance still depends on real archive
+fixtures; if you are optimizing that path, measure with representative game archives rather than
+pretending a synthetic ZIP is the same thing. It is not.
 
 ---
 

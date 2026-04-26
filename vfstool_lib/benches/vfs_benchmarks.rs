@@ -7,12 +7,14 @@ use std::{
 };
 use vfstool_lib::{
     CollapseOptions, ConflictIndex, VFS, changed_files, changed_files_metadata, normalize_path,
-    normalize_path_in_place, run_setup, run_setup_tracked, snapshot_directory,
-    snapshot_directory_metadata,
+    normalize_path_in_place, run_finalize_tracked, run_setup, run_setup_tracked,
+    snapshot_directory, snapshot_directory_metadata,
 };
 
+use vfstool_lib::SemanticOpts;
+
 #[cfg(feature = "zip")]
-use vfstool_lib::{ArchiveHashMode, SemanticOpts};
+use vfstool_lib::ArchiveHashMode;
 
 #[cfg(feature = "zip")]
 use std::io::Write as IoWrite;
@@ -506,6 +508,58 @@ fn bench_conflict_index(c: &mut Criterion) {
         b.iter(|| black_box(&vfs).source_contributions());
     });
 
+    let dense_dirs: Vec<TempDir> = (0..50)
+        .map(|source| {
+            let dir = TempDir::new(&format!("vfsbench_ci_dense_{source}"));
+            for i in 0..250 {
+                dir.write(&format!("textures/shared_{i:05}.dds"), b"x");
+            }
+            for i in 0..25 {
+                dir.write(&format!("meshes/source_{source:02}_{i:05}.nif"), b"x");
+            }
+            dir
+        })
+        .collect();
+    let dense_paths: Vec<&Path> = dense_dirs.iter().map(TempDir::path).collect();
+
+    g.bench_function("high_conflict_density_50_dirs", |b| {
+        b.iter(|| ConflictIndex::from_directories(black_box(dense_paths.clone())));
+    });
+
+    g.finish();
+}
+
+fn bench_loose_semantics(c: &mut Criterion) {
+    let mut g = c.benchmark_group("loose_semantics");
+    g.sample_size(10);
+
+    for &n in &[100usize, 500] {
+        let low = TempDir::new(&format!("vfsbench_loose_semantics_low_{n}"));
+        let high = TempDir::new(&format!("vfsbench_loose_semantics_high_{n}"));
+        for i in 0..n {
+            low.write(&format!("config/conflict_{i:05}.ini"), b"[sec]\na=1\nb=2\n");
+            high.write(
+                &format!("config/conflict_{i:05}.ini"),
+                b"# reordered\n[sec]\nb=2\na=1\n",
+            );
+        }
+        let (vfs, layer) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
+
+        g.bench_with_input(BenchmarkId::new("semantic_deltas", n), &n, |b, _| {
+            b.iter(|| {
+                layer
+                    .semantic_conflicts_with_opts(
+                        black_box(&vfs),
+                        SemanticOpts {
+                            include_semantic_deltas: true,
+                            ..SemanticOpts::default()
+                        },
+                    )
+                    .unwrap()
+            });
+        });
+    }
+
     g.finish();
 }
 
@@ -808,6 +862,29 @@ fn bench_run(c: &mut Criterion) {
         b.iter(|| changed_files(black_box(dir.path()), black_box(&partial)).unwrap());
     });
 
+    let sparse_src = make_fixture("vfsbench_run_sparse_src", 5_000);
+    let sparse_vfs = VFS::from_directories([sparse_src.path()], None);
+    g.bench_function("run_finalize_tracked_sparse_change_5000", |b| {
+        b.iter_batched(
+            || {
+                let merged = TempDir::new("vfsbench_run_sparse_merged");
+                let output = TempDir::new("vfsbench_run_sparse_output");
+                let (_, baseline) = run_setup_tracked(&sparse_vfs, merged.path(), true).unwrap();
+                fs::write(merged.path().join("generated.txt"), b"changed").unwrap();
+                (merged, output, baseline)
+            },
+            |(merged, output, baseline)| {
+                run_finalize_tracked(
+                    black_box(merged.path()),
+                    black_box(&baseline),
+                    output.path(),
+                )
+                .unwrap()
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
     g.finish();
 }
 
@@ -828,6 +905,7 @@ criterion_group!(
     bench_tree,
     bench_diff,
     bench_conflict_index,
+    bench_loose_semantics,
     bench_serialize,
     bench_zip,
     bench_archive_semantics,
@@ -848,6 +926,7 @@ criterion_group!(
     bench_tree,
     bench_diff,
     bench_conflict_index,
+    bench_loose_semantics,
     bench_serialize,
     bench_dump,
     bench_run,
@@ -866,6 +945,7 @@ criterion_group!(
     bench_tree,
     bench_diff,
     bench_conflict_index,
+    bench_loose_semantics,
     bench_zip,
     bench_archive_semantics,
     bench_dump,
@@ -885,6 +965,7 @@ criterion_group!(
     bench_tree,
     bench_diff,
     bench_conflict_index,
+    bench_loose_semantics,
     bench_dump,
     bench_run,
 );

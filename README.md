@@ -304,6 +304,10 @@ vfstool drift [OPTIONS] <LOCK_FILE>
 
 ## Examples
 
+The published rustdoc for the `vfstool` binary also contains operational examples for configuration,
+provider inspection, lock/drift, collapse previews, and `run`. The README is the quick path; rustdoc
+is the self-documenting reference we try not to let rot.
+
 ### Collapse the VFS into a directory with symlinks
 
 ```bash

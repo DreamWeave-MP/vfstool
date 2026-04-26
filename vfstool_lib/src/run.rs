@@ -325,7 +325,14 @@ mod tests {
 
     impl TempDir {
         fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir().join(name);
+            let dir = std::env::temp_dir().join(format!(
+                "{name}_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
             fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }

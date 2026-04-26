@@ -11,7 +11,9 @@ use std::{
 struct Fixture {
     root: PathBuf,
     config_dir: PathBuf,
+    low: PathBuf,
     high: PathBuf,
+    data_local: PathBuf,
 }
 
 impl Fixture {
@@ -49,7 +51,9 @@ impl Fixture {
         Self {
             root,
             config_dir,
+            low,
             high,
+            data_local,
         }
     }
 
@@ -92,6 +96,11 @@ fn stdout_json(output: &Output) -> Value {
     serde_json::from_slice(&output.stdout).expect("stdout should be valid json")
 }
 
+fn read_json(path: &Path) -> Value {
+    serde_json::from_slice(&fs::read(path).expect("json file should be readable"))
+        .expect("file should contain valid json")
+}
+
 #[test]
 fn lock_then_drift_detects_hash_change_and_exits_four() {
     let fixture = Fixture::new("drift");
@@ -130,6 +139,22 @@ fn bad_regex_exit_code_is_six() {
     let output = fixture.run(&["find", "(", "--format", "json"]);
 
     assert_eq!(output.status.code(), Some(6));
+}
+
+#[test]
+fn find_file_missing_exits_one() {
+    let fixture = Fixture::new("find_missing");
+    let output = fixture.run(&["find-file", "meshes/missing.nif", "--simple"]);
+
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn explain_missing_path_exits_one() {
+    let fixture = Fixture::new("explain_missing");
+    let output = fixture.run(&["explain", "meshes/missing.nif", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(1));
 }
 
 #[test]
@@ -185,6 +210,87 @@ fn duplicate_report_lists_shared_vfs_keys() {
 }
 
 #[test]
+fn output_flag_writes_json_file_without_stdout_payload() {
+    let fixture = Fixture::new("output_flag");
+    let output_path = fixture.path("duplicates.json");
+    let output = fixture.run(&[
+        "duplicates",
+        "--format",
+        "json",
+        "--output",
+        output_path.to_str().expect("output path should be utf-8"),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stdout.is_empty());
+    let payload = read_json(&output_path);
+    assert!(
+        payload["entries"]
+            .as_array()
+            .is_some_and(|entries| !entries.is_empty())
+    );
+}
+
+#[test]
+fn validate_reports_file_directory_conflict_json() {
+    let fixture = Fixture::new("validate_conflict");
+    write_file(&fixture.low.join("blocked"), b"file");
+    write_file(&fixture.high.join("blocked/child.txt"), b"child");
+
+    let output = fixture.run(&["validate", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    let issues = payload["issues"]
+        .as_array()
+        .expect("issues should be array");
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.get("FileDirectoryConflict").is_some())
+    );
+}
+
+#[test]
+fn diff_between_sources_reports_shared_and_unique_keys() {
+    let fixture = Fixture::new("diff");
+    write_file(&fixture.low.join("only-low.txt"), b"low");
+    write_file(&fixture.high.join("only-high.txt"), b"high");
+
+    let output = fixture.run(&[
+        "diff",
+        fixture.low.to_str().expect("low path should be utf-8"),
+        fixture.high.to_str().expect("high path should be utf-8"),
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    assert!(
+        payload["shared"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|key| key == "textures/a.dds")
+    );
+    assert!(
+        payload["only_in_a"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|key| key == "only-low.txt")
+    );
+    assert!(
+        payload["only_in_b"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|key| key == "only-high.txt")
+    );
+}
+
+#[test]
 fn collapse_dry_run_prints_plan_without_writing_target() {
     let fixture = Fixture::new("collapse_dry_run");
     let target = fixture.path("merged");
@@ -205,4 +311,32 @@ fn collapse_dry_run_prints_plan_without_writing_target() {
             .is_some_and(|actions| !actions.is_empty())
     );
     assert!(!target.exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn run_captures_new_file_to_data_local_and_removes_merged_dir() {
+    let fixture = Fixture::new("run_capture");
+    let merged = fixture.path("merged");
+
+    let output = fixture.run(&[
+        "run",
+        "--copy",
+        merged.to_str().expect("merged path should be utf-8"),
+        "--",
+        "sh",
+        "-c",
+        "printf captured > \"$1/generated.txt\"",
+        "sh",
+        "{}",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(!merged.exists());
+    assert_eq!(
+        fs::read_to_string(fixture.data_local.join("generated.txt"))
+            .expect("captured file should exist")
+            .trim(),
+        "captured"
+    );
 }

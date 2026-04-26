@@ -213,7 +213,14 @@ mod tests {
     #[cfg(feature = "serialize")]
     #[test]
     fn upsert_replaces_matching_fingerprint() {
-        let path = std::env::temp_dir().join("kb_upsert_replaces.yaml");
+        let path = std::env::temp_dir().join(format!(
+            "kb_upsert_replaces_{}_{}.yaml",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
         let _ = std::fs::remove_file(&path);
         let mut store = LocalKnowledgeStore::new(path.clone());
 
