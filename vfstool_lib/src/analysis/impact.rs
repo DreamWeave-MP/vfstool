@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+use super::provider_io::ProviderIoCache;
 use super::{
     BucketImpact, HeuristicCondition, ImpactProfile, ImpactReport, LayerIndex, ReorderOp,
     RiskLevel, RiskyChange, SimOpts,
@@ -108,6 +109,7 @@ impl LayerIndex {
         let order = self.reordered_indices(op)?;
         let rank_by_source = self.rank_by_source(&order);
         let mut behavior_changing = AHashSet::new();
+        let mut provider_cache = ProviderIoCache::new();
 
         for key in self.keys() {
             let providers = self.sources_containing(&key);
@@ -122,8 +124,10 @@ impl LayerIndex {
                 continue;
             }
 
-            let before_bytes = self.read_provider_bytes(vfs, before_idx, &key)?;
-            let after_bytes = self.read_provider_bytes(vfs, after_idx, &key)?;
+            let before_bytes =
+                self.read_provider_bytes(vfs, before_idx, &key, &mut provider_cache)?;
+            let after_bytes =
+                self.read_provider_bytes(vfs, after_idx, &key, &mut provider_cache)?;
             if let (Some(before), Some(after)) = (before_bytes, after_bytes) {
                 let (_, delta) = analyze_pair(&key, &after, &before);
                 if matches!(delta, SemanticDelta::BehaviorChanging { .. }) {

@@ -9,7 +9,7 @@ use vfstool_lib::{CollapseOptions, normalize_path, run_finalize, run_setup, vfs:
 
 use crate::{
     cli::{Commands, OutputFormat},
-    config::{build_conflict_index, build_layer_index, load_openmw_config},
+    config::{build_conflict_index, build_layer_index, construct_vfs, load_openmw_config},
     exit::VFSToolExitCode,
     output::{parse_lock_file, write_serialized, write_serialized_vfs},
     print,
@@ -504,10 +504,24 @@ pub fn run_command(
     command: Commands,
     use_relative: bool,
     resolved_config_dir: PathBuf,
-    vfs: &VFS,
 ) -> Result<()> {
+    let needs_plain_vfs = matches!(
+        command,
+        Commands::Collapse { .. }
+            | Commands::Extract { .. }
+            | Commands::Find { .. }
+            | Commands::FindFile { .. }
+            | Commands::Remaining { .. }
+            | Commands::Run { .. }
+    );
+
+    if !needs_plain_vfs {
+        return run_analysis_command(command, use_relative, resolved_config_dir);
+    }
+
+    let vfs = construct_vfs(resolved_config_dir.clone());
     let Some(command) =
-        run_core_vfs_command(command, vfs, use_relative, resolved_config_dir.clone())?
+        run_core_vfs_command(command, &vfs, use_relative, resolved_config_dir.clone())?
     else {
         return Ok(());
     };

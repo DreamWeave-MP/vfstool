@@ -11,11 +11,10 @@ use std::io::Result;
 
 use cli::Cli;
 use commands::run_command;
-use config::{construct_vfs, resolve_config_path};
+use config::resolve_config_path;
 
 fn main() -> Result<()> {
     let args = Cli::parse();
     let resolved_config_dir = resolve_config_path(args.config)?;
-    let vfs = construct_vfs(resolved_config_dir.clone());
-    run_command(args.command, args.use_relative, resolved_config_dir, &vfs)
+    run_command(args.command, args.use_relative, resolved_config_dir)
 }

@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{ArchiveHashMode, LayerIndex, ProvenanceChain, ProviderRecord, SourceKind};
 use crate::{VFS, normalize_path_in_place};
-use ahash::AHashMap;
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{io, path::Path};
 
-use super::provider_io::ContentFingerprint;
+use super::provider_io::ProviderIoCache;
 
 impl LayerIndex {
     /// Return the full source chain for one key.
@@ -33,8 +29,7 @@ impl LayerIndex {
             return Ok(None);
         };
         let winner = self.sources[winner_idx].clone();
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
-            AHashMap::new();
+        let mut hash_cache = ProviderIoCache::new();
 
         let mut providers = Vec::with_capacity(provider_indices.len());
         for &idx in provider_indices {

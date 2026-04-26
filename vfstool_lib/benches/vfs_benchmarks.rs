@@ -5,8 +5,12 @@ use std::{
     path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    ConflictIndex, VFS, changed_files, normalize_path, normalize_path_in_place, snapshot_directory,
+    ConflictIndex, VFS, changed_files, normalize_path, normalize_path_in_place, run_setup,
+    snapshot_directory,
 };
+
+#[cfg(feature = "zip")]
+use vfstool_lib::analysis::{ArchiveHashMode, SemanticOpts};
 
 #[cfg(feature = "zip")]
 use std::io::Write as IoWrite;
@@ -226,6 +230,49 @@ fn bench_construction(c: &mut Criterion) {
             b.iter(|| VFS::from_directories(vec![black_box(dir.path())], None));
         });
     }
+
+    g.finish();
+}
+
+fn bench_construction_reuse(c: &mut Criterion) {
+    let mut g = c.benchmark_group("vfs_construction_reuse");
+    g.sample_size(20);
+
+    let base = make_fixture("vfsbench_reuse_base", 1000);
+    let high = make_fixture("vfsbench_reuse_high", 500);
+
+    g.bench_function("plain_vfs_only", |b| {
+        b.iter(|| VFS::from_directories([black_box(base.path()), black_box(high.path())], None));
+    });
+
+    g.bench_function("conflict_index_combined", |b| {
+        b.iter(|| {
+            VFS::from_directories_with_conflict_index(
+                [black_box(base.path()), black_box(high.path())],
+                None,
+            )
+        });
+    });
+
+    g.bench_function("redundant_plain_then_conflict", |b| {
+        b.iter(|| {
+            let vfs = VFS::from_directories([black_box(base.path()), black_box(high.path())], None);
+            let indexed = VFS::from_directories_with_conflict_index(
+                [black_box(base.path()), black_box(high.path())],
+                None,
+            );
+            (vfs, indexed)
+        });
+    });
+
+    g.bench_function("layer_index_combined", |b| {
+        b.iter(|| {
+            VFS::from_directories_with_layer_index(
+                [black_box(base.path()), black_box(high.path())],
+                None,
+            )
+        });
+    });
 
     g.finish();
 }
@@ -553,6 +600,65 @@ fn bench_zip(c: &mut Criterion) {
     g.finish();
 }
 
+#[cfg(feature = "zip")]
+fn make_text_zip_fixture(dir: &TempDir, filename: &str, n: usize, suffix: &str) {
+    let path = dir.path().join(filename);
+    let file = fs::File::create(&path).unwrap();
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    for i in 0..n {
+        zip.start_file(format!("scripts/conflict_{i:05}.txt"), options)
+            .unwrap();
+        write!(zip, "value={i}\nsource={suffix}\n").unwrap();
+    }
+    zip.finish().unwrap();
+}
+
+#[cfg(feature = "zip")]
+fn bench_archive_semantics(c: &mut Criterion) {
+    let mut g = c.benchmark_group("archive_semantics");
+    g.sample_size(10);
+
+    for &n in &[100usize, 500] {
+        let dir = TempDir::new(&format!("vfsbench_archive_semantics_{n}"));
+        make_text_zip_fixture(&dir, "low.zip", n, "low");
+        make_text_zip_fixture(&dir, "high.zip", n, "high");
+        let (vfs, layer) =
+            VFS::from_directories_with_layer_index([dir.path()], Some(vec!["low.zip", "high.zip"]));
+
+        g.bench_with_input(BenchmarkId::new("all_provider_hashes", n), &n, |b, _| {
+            b.iter(|| {
+                layer
+                    .semantic_conflicts_with_opts(
+                        black_box(&vfs),
+                        SemanticOpts {
+                            archive_hash_mode: ArchiveHashMode::AllProviders,
+                            include_semantic_deltas: false,
+                        },
+                    )
+                    .unwrap()
+            });
+        });
+
+        g.bench_with_input(BenchmarkId::new("semantic_deltas", n), &n, |b, _| {
+            b.iter(|| {
+                layer
+                    .semantic_conflicts_with_opts(
+                        black_box(&vfs),
+                        SemanticOpts {
+                            archive_hash_mode: ArchiveHashMode::AllProviders,
+                            include_semantic_deltas: true,
+                        },
+                    )
+                    .unwrap()
+            });
+        });
+    }
+
+    g.finish();
+}
+
 // ---------------------------------------------------------------------------
 // bench_dump
 // ---------------------------------------------------------------------------
@@ -603,6 +709,18 @@ fn bench_run(c: &mut Criterion) {
         });
     }
 
+    for &n in &[100usize, 500] {
+        let src = make_fixture(&format!("vfsbench_run_setup_src_{n}"), n);
+        let vfs = VFS::from_directories([src.path()], None);
+        g.bench_with_input(BenchmarkId::new("run_setup_hardlink", n), &n, |b, _| {
+            b.iter_batched(
+                || TempDir::new(&format!("vfsbench_run_setup_dest_{n}")),
+                |dest| run_setup(black_box(&vfs), black_box(dest.path()), true).unwrap(),
+                BatchSize::PerIteration,
+            );
+        });
+    }
+
     let dir = make_fixture("vfsbench_run_changed_base", 500);
     let baseline = snapshot_directory(dir.path()).unwrap();
 
@@ -639,6 +757,7 @@ criterion_group!(
     bench_normalize_in_place,
     bench_normalize_comparison,
     bench_construction,
+    bench_construction_reuse,
     bench_lookup,
     bench_search,
     bench_tree,
@@ -646,6 +765,7 @@ criterion_group!(
     bench_conflict_index,
     bench_serialize,
     bench_zip,
+    bench_archive_semantics,
     bench_dump,
     bench_run,
 );
@@ -657,6 +777,7 @@ criterion_group!(
     bench_normalize_in_place,
     bench_normalize_comparison,
     bench_construction,
+    bench_construction_reuse,
     bench_lookup,
     bench_search,
     bench_tree,
@@ -674,12 +795,14 @@ criterion_group!(
     bench_normalize_in_place,
     bench_normalize_comparison,
     bench_construction,
+    bench_construction_reuse,
     bench_lookup,
     bench_search,
     bench_tree,
     bench_diff,
     bench_conflict_index,
     bench_zip,
+    bench_archive_semantics,
     bench_dump,
     bench_run,
 );
@@ -691,6 +814,7 @@ criterion_group!(
     bench_normalize_in_place,
     bench_normalize_comparison,
     bench_construction,
+    bench_construction_reuse,
     bench_lookup,
     bench_search,
     bench_tree,

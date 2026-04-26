@@ -7,14 +7,16 @@ use crate::{
     VFS,
     semantic::{AssetClass, analyze_pair},
 };
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashSet;
 use rayon::prelude::*;
 use std::{
     io,
     path::{Path, PathBuf},
 };
 
-use super::provider_io::ContentFingerprint;
+#[cfg(any(feature = "bsa", feature = "zip"))]
+use super::provider_io::SharedArchiveFileCache;
+use super::provider_io::{ProviderIoCache, fingerprint_bytes};
 
 impl LayerIndex {
     /// Build semantic conflicts for all paths with multiple providers.
@@ -49,9 +51,26 @@ impl LayerIndex {
             .collect();
         keys.sort();
 
+        #[cfg(any(feature = "bsa", feature = "zip"))]
+        let archive_cache = ProviderIoCache::new_shared_archive_file_cache();
+
         let mut entries: Vec<SemanticConflict> = keys
             .par_iter()
-            .map(|key| self.semantic_conflict_for_key_no_cache(vfs, key, opts))
+            .map(|key| {
+                #[cfg(any(feature = "bsa", feature = "zip"))]
+                {
+                    self.semantic_conflict_for_key_with_archive_cache(
+                        vfs,
+                        key,
+                        opts,
+                        archive_cache.clone(),
+                    )
+                }
+                #[cfg(not(any(feature = "bsa", feature = "zip")))]
+                {
+                    self.semantic_conflict_for_key_no_cache(vfs, key, opts)
+                }
+            })
             .collect::<io::Result<Vec<_>>>()?
             .into_iter()
             .flatten()
@@ -61,14 +80,26 @@ impl LayerIndex {
         Ok(SemanticConflictReport { entries })
     }
 
+    #[cfg(any(test, not(any(feature = "bsa", feature = "zip"))))]
     pub(super) fn semantic_conflict_for_key_no_cache(
         &self,
         vfs: &VFS,
         key: &Path,
         opts: SemanticOpts,
     ) -> io::Result<Option<SemanticConflict>> {
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
-            AHashMap::new();
+        let mut hash_cache = ProviderIoCache::new();
+        self.semantic_conflict_for_key(vfs, key, opts, &mut hash_cache)
+    }
+
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    fn semantic_conflict_for_key_with_archive_cache(
+        &self,
+        vfs: &VFS,
+        key: &Path,
+        opts: SemanticOpts,
+        archive_cache: SharedArchiveFileCache,
+    ) -> io::Result<Option<SemanticConflict>> {
+        let mut hash_cache = ProviderIoCache::with_shared_archive_file_cache(archive_cache);
         self.semantic_conflict_for_key(vfs, key, opts, &mut hash_cache)
     }
 
@@ -77,7 +108,7 @@ impl LayerIndex {
         vfs: &VFS,
         key: &Path,
         opts: SemanticOpts,
-        hash_cache: &mut AHashMap<(usize, PathBuf), Option<ContentFingerprint>>,
+        hash_cache: &mut ProviderIoCache,
     ) -> io::Result<Option<SemanticConflict>> {
         let provider_indices = self.sources_containing(key);
         if provider_indices.len() < 2 {
@@ -89,18 +120,16 @@ impl LayerIndex {
         };
 
         let winner_source = self.sources[winner_idx].clone();
-        let winner_fp = self.fingerprint_for_provider(
-            vfs,
-            winner_idx,
-            key,
-            hash_cache,
-            opts.archive_hash_mode,
-        )?;
         let winner_bytes = if opts.include_semantic_deltas {
-            self.read_provider_bytes(vfs, winner_idx, key)
+            self.read_provider_bytes(vfs, winner_idx, key, hash_cache)
         } else {
             Ok(None)
         }?;
+        let winner_fp = if let Some(bytes) = &winner_bytes {
+            Some(fingerprint_bytes(bytes))
+        } else {
+            self.fingerprint_for_provider(vfs, winner_idx, key, hash_cache, opts.archive_hash_mode)?
+        };
 
         let mut seen_hashes = AHashSet::<String>::new();
         let mut providers = Vec::with_capacity(provider_indices.len());
@@ -108,11 +137,18 @@ impl LayerIndex {
 
         for &idx in provider_indices {
             let src = self.sources[idx].clone();
-            let current =
-                self.fingerprint_for_provider(vfs, idx, key, hash_cache, opts.archive_hash_mode)?;
+            let current_bytes = if opts.include_semantic_deltas {
+                self.read_provider_bytes(vfs, idx, key, hash_cache)?
+            } else {
+                None
+            };
+            let current = if let Some(bytes) = &current_bytes {
+                Some(fingerprint_bytes(bytes))
+            } else {
+                self.fingerprint_for_provider(vfs, idx, key, hash_cache, opts.archive_hash_mode)?
+            };
 
             let semantic_delta_to_winner = if opts.include_semantic_deltas {
-                let current_bytes = self.read_provider_bytes(vfs, idx, key)?;
                 match (&winner_bytes, &current_bytes) {
                     (Some(winner), Some(current)) => {
                         let (asset_class, delta) = analyze_pair(key, current, winner);

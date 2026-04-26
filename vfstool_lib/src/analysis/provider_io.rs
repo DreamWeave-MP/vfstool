@@ -7,6 +7,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(any(feature = "bsa", feature = "zip"))]
+use std::sync::{Arc, Mutex};
+
 #[derive(Clone)]
 pub(super) struct ContentFingerprint {
     pub(super) digest: [u8; 32],
@@ -19,17 +22,53 @@ impl ContentFingerprint {
     }
 }
 
+pub(super) struct ProviderIoCache {
+    fingerprints: AHashMap<(usize, PathBuf), Option<ContentFingerprint>>,
+    bytes: AHashMap<(usize, PathBuf), Option<Vec<u8>>>,
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    archive_files: SharedArchiveFileCache,
+}
+
+#[cfg(any(feature = "bsa", feature = "zip"))]
+pub(super) type SharedArchiveFileCache =
+    Arc<Mutex<AHashMap<PathBuf, Option<AHashMap<PathBuf, VfsFile>>>>>;
+
+impl ProviderIoCache {
+    pub(super) fn new() -> Self {
+        Self {
+            fingerprints: AHashMap::new(),
+            bytes: AHashMap::new(),
+            #[cfg(any(feature = "bsa", feature = "zip"))]
+            archive_files: Self::new_shared_archive_file_cache(),
+        }
+    }
+
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    pub(super) fn with_shared_archive_file_cache(archive_files: SharedArchiveFileCache) -> Self {
+        Self {
+            fingerprints: AHashMap::new(),
+            bytes: AHashMap::new(),
+            archive_files,
+        }
+    }
+
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    pub(super) fn new_shared_archive_file_cache() -> SharedArchiveFileCache {
+        Arc::new(Mutex::new(AHashMap::new()))
+    }
+}
+
 impl LayerIndex {
     pub(super) fn fingerprint_for_provider(
         &self,
         vfs: &VFS,
         source_idx: usize,
         key: &Path,
-        cache: &mut AHashMap<(usize, PathBuf), Option<ContentFingerprint>>,
+        cache: &mut ProviderIoCache,
         archive_hash_mode: ArchiveHashMode,
     ) -> io::Result<Option<ContentFingerprint>> {
         let cache_key = (source_idx, key.to_path_buf());
-        if let Some(hit) = cache.get(&cache_key) {
+        if let Some(hit) = cache.fingerprints.get(&cache_key) {
             return Ok(hit.clone());
         }
 
@@ -54,12 +93,12 @@ impl LayerIndex {
                     },
                     None => None,
                 },
-                ArchiveHashMode::AllProviders => archive_provider_file(&src.path, key)
+                ArchiveHashMode::AllProviders => archive_provider_file(&src.path, key, cache)
                     .and_then(|file| file.open().ok().and_then(|reader| hash_reader(reader).ok())),
             },
         };
 
-        cache.insert(cache_key, fp.clone());
+        cache.fingerprints.insert(cache_key, fp.clone());
         Ok(fp)
     }
 
@@ -68,42 +107,55 @@ impl LayerIndex {
         vfs: &VFS,
         source_idx: usize,
         key: &Path,
+        cache: &mut ProviderIoCache,
     ) -> io::Result<Option<Vec<u8>>> {
+        let cache_key = (source_idx, key.to_path_buf());
+        if let Some(hit) = cache.bytes.get(&cache_key) {
+            return Ok(hit.clone());
+        }
+
         let src = &self.sources[source_idx];
         let mut out = Vec::new();
 
-        match src.kind {
+        let bytes = match src.kind {
             SourceKind::LooseDir => {
                 let path = self.provider_path(source_idx, key);
-                if !path.exists() {
-                    return Ok(None);
+                if path.exists() {
+                    let mut file = std::fs::File::open(path)?;
+                    file.read_to_end(&mut out)?;
+                    Some(out)
+                } else {
+                    None
                 }
-                let mut file = std::fs::File::open(path)?;
-                file.read_to_end(&mut out)?;
-                Ok(Some(out))
             }
             SourceKind::Archive => {
-                if let Some(file) = archive_provider_file(&src.path, key) {
+                if let Some(file) = archive_provider_file(&src.path, key, cache) {
                     let mut reader = file.open()?;
                     reader.read_to_end(&mut out)?;
-                    return Ok(Some(out));
-                }
+                    Some(out)
+                } else {
+                    let Some(winner) = vfs.get_file(key) else {
+                        cache.bytes.insert(cache_key, None);
+                        return Ok(None);
+                    };
+                    let Some(parent) = winner.parent_archive_path() else {
+                        cache.bytes.insert(cache_key, None);
+                        return Ok(None);
+                    };
+                    if !archive_parent_matches(&parent, &src.path) {
+                        cache.bytes.insert(cache_key, None);
+                        return Ok(None);
+                    }
 
-                let Some(winner) = vfs.get_file(key) else {
-                    return Ok(None);
-                };
-                let Some(parent) = winner.parent_archive_path() else {
-                    return Ok(None);
-                };
-                if !archive_parent_matches(&parent, &src.path) {
-                    return Ok(None);
+                    let mut reader = winner.open()?;
+                    reader.read_to_end(&mut out)?;
+                    Some(out)
                 }
-
-                let mut reader = winner.open()?;
-                reader.read_to_end(&mut out)?;
-                Ok(Some(out))
             }
-        }
+        };
+
+        cache.bytes.insert(cache_key, bytes.clone());
+        Ok(bytes)
     }
 
     pub(super) fn provider_path(&self, source_idx: usize, key: &Path) -> PathBuf {
@@ -122,16 +174,62 @@ fn archive_parent_matches(parent: &str, source_path: &Path) -> bool {
 }
 
 #[cfg(any(feature = "bsa", feature = "zip"))]
-fn archive_provider_file(source_path: &Path, key: &Path) -> Option<VfsFile> {
-    let archive = crate::archives::open_archive(source_path)?;
-    let archive_list = vec![archive];
-    let file_map = crate::archives::file_map(&archive_list);
-    file_map.get(&normalize_path(key).into_owned()).cloned()
+fn archive_provider_file(
+    source_path: &Path,
+    key: &Path,
+    cache: &mut ProviderIoCache,
+) -> Option<VfsFile> {
+    let normalized_source = normalize_path(source_path).into_owned();
+    if let Some(hit) = cache
+        .archive_files
+        .lock()
+        .ok()?
+        .get(&normalized_source)
+        .cloned()
+    {
+        return hit
+            .as_ref()?
+            .get(&normalize_path(key).into_owned())
+            .cloned();
+    }
+
+    {
+        let files = crate::archives::open_archive(source_path).map(|archive| {
+            let archive_list = vec![archive];
+            crate::archives::file_map(&archive_list)
+        });
+        cache
+            .archive_files
+            .lock()
+            .ok()?
+            .insert(normalized_source.clone(), files);
+    }
+    cache
+        .archive_files
+        .lock()
+        .ok()?
+        .get(&normalized_source)?
+        .clone()
+        .as_ref()?
+        .get(&normalize_path(key).into_owned())
+        .cloned()
 }
 
 #[cfg(not(any(feature = "bsa", feature = "zip")))]
-fn archive_provider_file(_source_path: &Path, _key: &Path) -> Option<VfsFile> {
+fn archive_provider_file(
+    _source_path: &Path,
+    _key: &Path,
+    _cache: &mut ProviderIoCache,
+) -> Option<VfsFile> {
     None
+}
+
+pub(super) fn fingerprint_bytes(bytes: &[u8]) -> ContentFingerprint {
+    let digest = blake3::hash(bytes);
+    ContentFingerprint {
+        digest: *digest.as_bytes(),
+        size: bytes.len() as u64,
+    }
 }
 
 pub(super) fn hash_reader(mut reader: impl Read) -> io::Result<ContentFingerprint> {

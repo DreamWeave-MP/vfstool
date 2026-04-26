@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{ArchiveHashMode, LayerIndex, VfsLock, VfsLockEntry};
 use crate::VFS;
-use ahash::AHashMap;
 use rayon::prelude::*;
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{io, path::Path};
 
-use super::provider_io::ContentFingerprint;
+use super::provider_io::ProviderIoCache;
 
 impl LayerIndex {
     /// Build deterministic lock manifest from current winners.
@@ -43,8 +39,7 @@ impl LayerIndex {
             return Ok(None);
         };
         let winner_source = &self.sources[winner_idx];
-        let mut hash_cache: AHashMap<(usize, PathBuf), Option<ContentFingerprint>> =
-            AHashMap::new();
+        let mut hash_cache = ProviderIoCache::new();
         let winner_fp = self.fingerprint_for_provider(
             vfs,
             winner_idx,
