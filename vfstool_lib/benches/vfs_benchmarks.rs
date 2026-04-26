@@ -5,8 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 use vfstool_lib::{
-    ConflictIndex, VFS, changed_files, normalize_path, normalize_path_in_place, run_setup,
-    snapshot_directory,
+    CollapseOptions, ConflictIndex, VFS, changed_files, changed_files_metadata, normalize_path,
+    normalize_path_in_place, run_setup, run_setup_tracked, snapshot_directory,
+    snapshot_directory_metadata,
 };
 
 #[cfg(feature = "zip")]
@@ -597,6 +598,39 @@ fn bench_zip(c: &mut Criterion) {
         });
     }
 
+    // --- Extract many ZIP entries through VFS materialization ---
+    for &n in &[100usize, 500] {
+        let dir = TempDir::new(&format!("vfsbench_zip_extract_src_{n}"));
+        make_zip_fixture(&dir, "data.zip", n);
+        let vfs = VFS::from_directories([dir.path()], Some(vec!["data.zip"]));
+
+        g.bench_with_input(BenchmarkId::new("dump_extract_zip", n), &n, |b, _| {
+            b.iter_batched(
+                || TempDir::new(&format!("vfsbench_zip_extract_dest_{n}")),
+                |dest| vfs.dump_to_directory(black_box(dest.path()), true).unwrap(),
+                BatchSize::PerIteration,
+            );
+        });
+
+        g.bench_with_input(BenchmarkId::new("collapse_extract_zip", n), &n, |b, _| {
+            b.iter_batched(
+                || TempDir::new(&format!("vfsbench_zip_collapse_dest_{n}")),
+                |dest| {
+                    vfs.collapse_into(
+                        black_box(dest.path()),
+                        &CollapseOptions {
+                            allow_copying: false,
+                            extract_archives: true,
+                            use_symlinks: false,
+                        },
+                    )
+                    .unwrap();
+                },
+                BatchSize::PerIteration,
+            );
+        });
+    }
+
     g.finish();
 }
 
@@ -719,13 +753,34 @@ fn bench_run(c: &mut Criterion) {
                 BatchSize::PerIteration,
             );
         });
+
+        g.bench_with_input(
+            BenchmarkId::new("run_setup_tracked_hardlink", n),
+            &n,
+            |b, _| {
+                b.iter_batched(
+                    || TempDir::new(&format!("vfsbench_run_setup_tracked_dest_{n}")),
+                    |dest| {
+                        run_setup_tracked(black_box(&vfs), black_box(dest.path()), true).unwrap()
+                    },
+                    BatchSize::PerIteration,
+                );
+            },
+        );
     }
 
     let dir = make_fixture("vfsbench_run_changed_base", 500);
     let baseline = snapshot_directory(dir.path()).unwrap();
+    let metadata_baseline = snapshot_directory_metadata(dir.path()).unwrap();
 
     g.bench_function("changed_files_no_changes", |b| {
         b.iter(|| changed_files(black_box(dir.path()), black_box(&baseline)).unwrap());
+    });
+
+    g.bench_function("changed_files_metadata_no_changes", |b| {
+        b.iter(|| {
+            changed_files_metadata(black_box(dir.path()), black_box(&metadata_baseline)).unwrap()
+        });
     });
 
     g.bench_function("changed_files_all_changes", |b| {

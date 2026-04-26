@@ -16,7 +16,7 @@ use std::{
 };
 
 #[cfg(feature = "bsa")]
-use std::path::Path;
+use std::{borrow::Cow, path::Path};
 
 use crate::archives::{StoredArchive, TypedArchive};
 
@@ -85,12 +85,12 @@ impl Read for Fo4FileReader<'_> {
 
 /// Reader over a TES4 (Oblivion/Skyrim BSA) file, decompressing on construction if needed.
 #[cfg(feature = "bsa")]
-pub struct TES4FileReader {
-    data: Cursor<Vec<u8>>, // Cursor over the file's data (decompressed or raw)
+pub struct TES4FileReader<'a> {
+    data: Cursor<Cow<'a, [u8]>>, // Borrow raw files; own decompressed data only when required.
 }
 
 #[cfg(feature = "bsa")]
-impl TES4FileReader {
+impl<'a> TES4FileReader<'a> {
     /// Creates a new `TES4FileReader` for a TES4 file.
     ///
     /// If the file is compressed, it will be decompressed before being wrapped in the reader.
@@ -98,14 +98,16 @@ impl TES4FileReader {
     /// # Errors
     ///
     /// Returns an error if decompression fails.
-    pub fn new(file: &Tes4File) -> io::Result<Self> {
+    pub fn new(file: &'a Tes4File) -> io::Result<Self> {
         let data = if file.is_compressed() {
-            file.decompress(&Tes4CompressionOptions::default())
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-                .as_bytes()
-                .to_vec()
+            Cow::Owned(
+                file.decompress(&Tes4CompressionOptions::default())
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+                    .as_bytes()
+                    .to_vec(),
+            )
         } else {
-            file.as_bytes().to_vec()
+            Cow::Borrowed(file.as_bytes())
         };
 
         Ok(Self {
@@ -115,7 +117,7 @@ impl TES4FileReader {
 }
 
 #[cfg(feature = "bsa")]
-impl Read for TES4FileReader {
+impl Read for TES4FileReader<'_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.data.read(buf)
     }
@@ -174,13 +176,10 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
         #[cfg(feature = "bsa")]
         TypedArchive::Tes3(archive) => {
             let key: Tes3Key = path_string.into();
-            let bytes = archive
-                .get(&key)
-                .map(|data| data.as_bytes().to_vec())
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::NotFound, "File not found in TES3 archive")
-                })?;
-            Ok(Box::new(Cursor::new(bytes)))
+            let file = archive.get(&key).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, "File not found in TES3 archive")
+            })?;
+            Ok(Box::new(Cursor::new(file.as_bytes())))
         }
 
         #[cfg(feature = "bsa")]

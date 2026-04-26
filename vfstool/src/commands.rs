@@ -5,7 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use vfstool_lib::{CollapseOptions, normalize_path, run_finalize, run_setup, vfs::VFS};
+use vfstool_lib::{
+    CollapseOptions, normalize_path, run_finalize_tracked, run_setup_tracked, vfs::VFS,
+};
 
 use crate::{
     cli::{Commands, OutputFormat},
@@ -219,7 +221,7 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
     let (inner_result, subprocess_status) =
         (|| -> (Result<()>, Option<std::process::ExitStatus>) {
             eprintln!("Dumping VFS to {}...", merged.display());
-            let (count, baseline) = match run_setup(vfs, &merged, !params.copy) {
+            let (count, baseline) = match run_setup_tracked(vfs, &merged, !params.copy) {
                 Ok(r) => r,
                 Err(e) => return (Err(e), None),
             };
@@ -252,7 +254,7 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
                 return (Ok(()), Some(status));
             }
 
-            let copied = match run_finalize(&merged, &baseline, &data_local) {
+            let copied = match run_finalize_tracked(&merged, &baseline, &data_local) {
                 Ok(c) => c,
                 Err(e) => return (Err(e), Some(status)),
             };

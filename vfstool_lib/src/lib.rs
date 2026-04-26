@@ -94,7 +94,11 @@ pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource, StatsReport, StatsRow, WhichResult,
 };
-pub use run::{Snapshot, changed_files, run_finalize, run_setup, snapshot_directory};
+pub use run::{
+    MetadataSnapshot, Snapshot, SnapshotEntry, changed_files, changed_files_metadata, run_finalize,
+    run_finalize_tracked, run_setup, run_setup_tracked, snapshot_directory,
+    snapshot_directory_metadata,
+};
 pub use vfs::{DirectoryDiff, VFS};
 pub use vfs_file::VfsFile;
 

@@ -6,11 +6,26 @@ use std::{
     hash::BuildHasher,
     io::{self, BufReader, Read},
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 use walkdir::WalkDir;
 
 /// Map from relative file path to its BLAKE3 digest, used to detect changes after a subprocess run.
 pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
+
+/// One baseline row for metadata-prefiltered run change detection.
+#[derive(Debug, Clone)]
+pub struct SnapshotEntry {
+    /// BLAKE3 digest captured at baseline time.
+    pub hash: [u8; 32],
+    /// File size captured at baseline time.
+    pub size: u64,
+    /// Modification time captured at baseline time, when the platform provides it.
+    pub modified: Option<SystemTime>,
+}
+
+/// Snapshot with both content hashes and cheap metadata for prefiltering changed files.
+pub type MetadataSnapshot = HashMap<PathBuf, SnapshotEntry>;
 
 /// Dump the VFS to `merged_dir` and capture a baseline snapshot.
 ///
@@ -44,6 +59,28 @@ pub fn run_setup(
     Ok((count, baseline))
 }
 
+/// Dump the VFS to `merged_dir` and capture a metadata-prefiltering baseline snapshot.
+///
+/// This is the faster variant used by the CLI `run` command. It still records content hashes at
+/// baseline time, but later finalization hashes only files whose size or modification time changed.
+///
+/// # Errors
+///
+/// Returns an error if writing merged files or capturing baseline metadata/hashes fails.
+pub fn run_setup_tracked(
+    vfs: &VFS,
+    merged_dir: &Path,
+    use_hardlinks: bool,
+) -> io::Result<(usize, MetadataSnapshot)> {
+    if merged_dir.exists() {
+        std::fs::remove_dir_all(merged_dir)?;
+    }
+    std::fs::create_dir_all(merged_dir)?;
+    let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
+    let baseline = snapshot_directory_metadata(merged_dir)?;
+    Ok((count, baseline))
+}
+
 /// Copy files changed since `baseline` from `merged_dir` into `output_dir`.
 ///
 /// Returns a list of `(relative_path, destination_path)` pairs for every file
@@ -59,6 +96,34 @@ pub fn run_finalize(
     output_dir: &Path,
 ) -> io::Result<Vec<(PathBuf, PathBuf)>> {
     let changed = changed_files(merged_dir, baseline)?;
+    let mut copied = Vec::new();
+
+    for rel in changed {
+        let dest = output_dir.join(&rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(merged_dir.join(&rel), &dest)?;
+        copied.push((rel, dest));
+    }
+
+    Ok(copied)
+}
+
+/// Copy files changed since `baseline` from `merged_dir` into `output_dir`.
+///
+/// Uses file metadata as a prefilter and hashes only new files or files whose metadata differs
+/// from the baseline. Deletions are still ignored.
+///
+/// # Errors
+///
+/// Returns an error if reading metadata, hashing changed candidates, or copying outputs fails.
+pub fn run_finalize_tracked(
+    merged_dir: &Path,
+    baseline: &MetadataSnapshot,
+    output_dir: &Path,
+) -> io::Result<Vec<(PathBuf, PathBuf)>> {
+    let changed = changed_files_metadata(merged_dir, baseline)?;
     let mut copied = Vec::new();
 
     for rel in changed {
@@ -94,6 +159,15 @@ pub fn hash_file(path: &Path) -> io::Result<[u8; 32]> {
     Ok(*hasher.finalize().as_bytes())
 }
 
+fn snapshot_entry(path: &Path) -> io::Result<SnapshotEntry> {
+    let metadata = std::fs::metadata(path)?;
+    Ok(SnapshotEntry {
+        hash: hash_file(path)?,
+        size: metadata.len(),
+        modified: metadata.modified().ok(),
+    })
+}
+
 /// Hash every file under `dir` in parallel.
 /// Returns a map from relative path to its BLAKE3 digest.
 ///
@@ -120,6 +194,33 @@ pub fn snapshot_directory(dir: &Path) -> io::Result<Snapshot> {
             Ok((rel, hash))
         })
         .collect::<io::Result<Snapshot>>()
+}
+
+/// Hash every file under `dir` in parallel and record cheap metadata alongside the digest.
+///
+/// # Errors
+///
+/// Returns an error if directory traversal, metadata reads, or hashing fails.
+pub fn snapshot_directory_metadata(dir: &Path) -> io::Result<MetadataSnapshot> {
+    WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|entry| match entry.map_err(io::Error::other) {
+            Ok(entry) if entry.file_type().is_file() => Some(Ok(entry)),
+            Ok(_) => None,
+            Err(err) => Some(Err(err)),
+        })
+        .par_bridge()
+        .map(|entry| {
+            let entry = entry?;
+            let rel = entry
+                .path()
+                .strip_prefix(dir)
+                .map_err(|_| io::Error::other("walkdir entry should be under root"))?
+                .to_path_buf();
+            let snapshot = snapshot_entry(entry.path())?;
+            Ok((rel, snapshot))
+        })
+        .collect::<io::Result<MetadataSnapshot>>()
 }
 
 /// Walk `dir` and return relative paths of files whose content differs from `baseline`.
@@ -158,6 +259,57 @@ pub fn changed_files<S: BuildHasher + Sync>(
                 Some(bh) => &hash != bh,
             };
             if is_changed { Some(Ok(rel)) } else { None }
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    changed.sort();
+    Ok(changed)
+}
+
+/// Walk `dir` and return relative paths whose metadata or content differs from `baseline`.
+///
+/// Files whose size and modification time match the baseline are treated as unchanged without
+/// rehashing. Files with changed metadata are hashed to avoid reporting metadata-only touches.
+///
+/// # Errors
+///
+/// Returns an error if directory traversal, metadata reads, or hashing changed candidates fails.
+pub fn changed_files_metadata<S: BuildHasher + Sync>(
+    dir: &Path,
+    baseline: &HashMap<PathBuf, SnapshotEntry, S>,
+) -> io::Result<Vec<PathBuf>> {
+    let mut changed = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|entry| match entry.map_err(io::Error::other) {
+            Ok(entry) if entry.file_type().is_file() => Some(Ok(entry)),
+            Ok(_) => None,
+            Err(err) => Some(Err(err)),
+        })
+        .par_bridge()
+        .filter_map(|entry| {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => return Some(Err(err)),
+            };
+            let rel = match entry.path().strip_prefix(dir) {
+                Ok(path) => path.to_path_buf(),
+                Err(_) => return Some(Err(io::Error::other("walkdir entry should be under root"))),
+            };
+            let Some(baseline_entry) = baseline.get(&rel) else {
+                return Some(Ok(rel));
+            };
+            let metadata = match std::fs::metadata(entry.path()) {
+                Ok(metadata) => metadata,
+                Err(err) => return Some(Err(err)),
+            };
+            let modified = metadata.modified().ok();
+            if metadata.len() == baseline_entry.size && modified == baseline_entry.modified {
+                return None;
+            }
+            let hash = match hash_file(entry.path()) {
+                Ok(hash) => hash,
+                Err(err) => return Some(Err(err)),
+            };
+            (hash != baseline_entry.hash).then_some(Ok(rel))
         })
         .collect::<io::Result<Vec<_>>>()?;
     changed.sort();
@@ -297,6 +449,52 @@ mod tests {
         );
     }
 
+    #[test]
+    fn metadata_snapshot_captures_hash_and_size() {
+        let dir = TempDir::new("runtest_metadata_snapshot");
+        dir.write("a.txt", b"hello");
+
+        let snapshot = snapshot_directory_metadata(dir.path()).unwrap();
+
+        let entry = snapshot.get(Path::new("a.txt")).unwrap();
+        assert_eq!(entry.size, 5);
+        assert_eq!(entry.hash, hash_file(&dir.path().join("a.txt")).unwrap());
+    }
+
+    #[test]
+    fn changed_files_metadata_reports_new_files() {
+        let dir = TempDir::new("runtest_metadata_changed_new");
+        let baseline = snapshot_directory_metadata(dir.path()).unwrap();
+        dir.write("new.txt", b"hello");
+
+        let changed = changed_files_metadata(dir.path(), &baseline).unwrap();
+
+        assert_eq!(changed, vec![PathBuf::from("new.txt")]);
+    }
+
+    #[test]
+    fn changed_files_metadata_ignores_unchanged_files() {
+        let dir = TempDir::new("runtest_metadata_changed_unchanged");
+        dir.write("same.txt", b"hello");
+        let baseline = snapshot_directory_metadata(dir.path()).unwrap();
+
+        let changed = changed_files_metadata(dir.path(), &baseline).unwrap();
+
+        assert!(changed.is_empty());
+    }
+
+    #[test]
+    fn changed_files_metadata_reports_modified_size() {
+        let dir = TempDir::new("runtest_metadata_changed_size");
+        dir.write("f.txt", b"hello");
+        let baseline = snapshot_directory_metadata(dir.path()).unwrap();
+        dir.write("f.txt", b"hello world");
+
+        let changed = changed_files_metadata(dir.path(), &baseline).unwrap();
+
+        assert_eq!(changed, vec![PathBuf::from("f.txt")]);
+    }
+
     // ---- run_setup ----
 
     #[test]
@@ -338,6 +536,18 @@ mod tests {
             !snapshot.is_empty(),
             "snapshot should contain entries after setup"
         );
+    }
+
+    #[test]
+    fn run_setup_tracked_returns_metadata_snapshot() {
+        let src = TempDir::new("run_new_setup_tracked_src");
+        src.write("file.txt", b"data");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_setup_tracked_merged");
+        let (_, snapshot) = run_setup_tracked(&vfs, merged.path(), false).unwrap();
+
+        assert!(snapshot.contains_key(Path::new("file.txt")));
     }
 
     #[test]
@@ -393,5 +603,25 @@ mod tests {
         let (rel, dest) = &copied[0];
         assert_eq!(rel, &PathBuf::from("file.txt"));
         assert_eq!(fs::read(dest).unwrap(), b"modified");
+    }
+
+    #[test]
+    fn run_finalize_tracked_copies_modified_file() {
+        let src = TempDir::new("run_new_finalize_tracked_mod_src");
+        src.write("file.txt", b"original");
+        let vfs = VFS::from_directories(vec![src.path()], None);
+
+        let merged = TempDir::new("run_new_finalize_tracked_mod_merged");
+        let (_, baseline) = run_setup_tracked(&vfs, merged.path(), false).unwrap();
+
+        fs::write(merged.path().join("file.txt"), b"modified with new size").unwrap();
+
+        let output = TempDir::new("run_new_finalize_tracked_mod_out");
+        let copied = run_finalize_tracked(merged.path(), &baseline, output.path()).unwrap();
+
+        assert_eq!(copied.len(), 1);
+        let (rel, dest) = &copied[0];
+        assert_eq!(rel, &PathBuf::from("file.txt"));
+        assert_eq!(fs::read(dest).unwrap(), b"modified with new size");
     }
 }
