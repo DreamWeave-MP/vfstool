@@ -403,10 +403,9 @@ impl VFS {
         }
         let keys: Vec<_> = self.file_map.keys().collect();
         for key in &keys {
-            let prefix = format!("{}/", key.display());
             if let Some(child) = keys
                 .iter()
-                .find(|candidate| candidate.to_string_lossy().starts_with(&prefix))
+                .find(|candidate| *candidate != key && candidate.starts_with(key))
             {
                 issues.push(ValidationIssue::FileDirectoryConflict {
                     file_key: (*key).clone(),
@@ -440,10 +439,9 @@ impl VFS {
         let keys: Vec<_> = self.file_map.keys().cloned().collect();
         for (key, file) in &self.file_map {
             let target = dest.join(key);
-            let child_prefix = format!("{}/", key.display());
             if keys
                 .iter()
-                .any(|candidate| candidate.to_string_lossy().starts_with(&child_prefix))
+                .any(|candidate| candidate != key && candidate.starts_with(key))
             {
                 issues.push(MaterializationIssue::FileDirectoryConflict {
                     key: key.clone(),
