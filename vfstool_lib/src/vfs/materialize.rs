@@ -317,10 +317,7 @@ impl VFS {
         let relative = output
             .strip_prefix(root)
             .map_err(|_| io::Error::other("output path should be under root"))?;
-        if std::fs::symlink_metadata(root)
-            .map(|meta| meta.file_type().is_symlink())
-            .unwrap_or(false)
-        {
+        if std::fs::symlink_metadata(root).is_ok_and(|meta| meta.file_type().is_symlink()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("output root is a symlink: {}", root.display()),

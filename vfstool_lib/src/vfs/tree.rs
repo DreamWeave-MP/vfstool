@@ -103,12 +103,12 @@ impl VFS {
 
     /// String formatter for the file tree.
     fn file_str<S: AsRef<str> + std::fmt::Display>(file: S) -> String {
-        format!("{}{}\n", Self::FILE_PREFIX, file,)
+        format!("{}{}\n", Self::FILE_PREFIX, file)
     }
 
     /// String formatter for the file tree.
     fn dir_str<S: AsRef<str> + std::fmt::Display>(dir: S) -> String {
-        format!("{}{}/\n", Self::DIR_PREFIX, dir,)
+        format!("{}{}/\n", Self::DIR_PREFIX, dir)
     }
 
     /// Returns the formatted file tree for a filtered subset.

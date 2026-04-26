@@ -36,7 +36,9 @@ impl VFS {
         let re = regex::RegexBuilder::new(pattern)
             .case_insensitive(true)
             .build()?;
-        Ok(self.tree_filtered(relative, |key, _file| re.is_match(&key.to_string_lossy())))
+        Ok(self.tree_filtered(relative, |key, _file| {
+            re.is_match(&normalize_path(key).to_string_lossy())
+        }))
     }
 
     /// Return a filtered tree showing files from or replacing `filter_path`.

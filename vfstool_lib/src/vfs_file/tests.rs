@@ -119,6 +119,10 @@ END OF ACT IV, SCENE III";
 
     #[test]
     fn open_loose_file_with_weird_chars() -> std::io::Result<()> {
+        #[cfg(windows)]
+        let test_path =
+            "##$$&&&%%&^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&^^^^!!!___++_==_----.txt";
+        #[cfg(not(windows))]
         let test_path = "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt";
 
         let mut fd = File::create(test_path)?;
