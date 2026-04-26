@@ -156,3 +156,53 @@ fn malformed_openmw_config_exits_seven() {
 
     assert_eq!(output.status.code(), Some(7));
 }
+
+#[test]
+fn explain_reports_winner_and_overridden_providers() {
+    let fixture = Fixture::new("explain");
+    let output = fixture.run(&["explain", "textures/a.dds", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    assert_eq!(
+        payload["winner"]["source"]["path"],
+        fixture.high.display().to_string()
+    );
+    assert_eq!(payload["overridden"].as_array().map(Vec::len), Some(1));
+}
+
+#[test]
+fn duplicate_report_lists_shared_vfs_keys() {
+    let fixture = Fixture::new("duplicates");
+    let output = fixture.run(&["duplicates", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    let entries = payload["entries"]
+        .as_array()
+        .expect("entries should be an array");
+    assert!(entries.iter().any(|entry| entry["key"] == "textures/a.dds"));
+}
+
+#[test]
+fn collapse_dry_run_prints_plan_without_writing_target() {
+    let fixture = Fixture::new("collapse_dry_run");
+    let target = fixture.path("merged");
+    let output = fixture.run(&[
+        "collapse",
+        target.to_str().expect("target path should be utf-8"),
+        "--dry-run",
+        "--allow-copying",
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    assert!(
+        payload["actions"]
+            .as_array()
+            .is_some_and(|actions| !actions.is_empty())
+    );
+    assert!(!target.exists());
+}

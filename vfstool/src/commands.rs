@@ -17,21 +17,21 @@ use crate::{
     print,
 };
 
-fn handle_collapse(
-    vfs: &VFS,
-    collapse_into: &Path,
-    allow_copying: bool,
-    extract_archives: bool,
-    symbolic: bool,
-) -> Result<()> {
-    vfs.collapse_into(
-        collapse_into,
-        &CollapseOptions {
-            allow_copying,
-            extract_archives,
-            use_symlinks: symbolic,
-        },
-    )
+struct CollapseParams {
+    collapse_into: PathBuf,
+    options: CollapseOptions,
+    dry_run: bool,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+}
+
+fn handle_collapse(vfs: &VFS, params: CollapseParams) -> Result<()> {
+    if params.dry_run {
+        let plan = vfs.materialization_plan(&params.collapse_into, &params.options);
+        write_serialized(params.output, params.format, &plan)
+    } else {
+        vfs.collapse_into(&params.collapse_into, &params.options)
+    }
 }
 
 fn handle_extract(vfs: &VFS, source_file: &Path, target_dir: &Path) -> Result<()> {
@@ -165,6 +165,94 @@ fn handle_which(resolved_config_dir: PathBuf, path: &PathBuf) {
         for src in &result.also_in {
             println!("  also in {} (overridden)", src.display());
         }
+    }
+}
+
+fn handle_explain(
+    vfs: &VFS,
+    path: &Path,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let Some(report) = vfs.explain(path) else {
+        eprintln!(
+            "{}VFS path '{}' not found.",
+            print::err_prefix(),
+            path.display()
+        );
+        std::process::exit(VFSToolExitCode::FindFailed.into());
+    };
+    write_serialized(output, format, &report)
+}
+
+fn handle_duplicates(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    write_serialized(output, format, &vfs.duplicates())
+}
+
+fn handle_archives(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    write_serialized(output, format, &vfs.archives())
+}
+
+fn handle_archive_list(
+    vfs: &VFS,
+    archive: &Path,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    write_serialized(output, format, &vfs.archive_entries(archive))
+}
+
+fn handle_case_collisions(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    write_serialized(output, format, &vfs.case_collisions())
+}
+
+fn handle_contributions(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    write_serialized(output, format, &vfs.source_contributions())
+}
+
+fn handle_validate(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
+    write_serialized(output, format, &vfs.validate())
+}
+
+fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Commands>> {
+    match command {
+        Commands::Explain {
+            path,
+            format,
+            output,
+        } => {
+            handle_explain(vfs, path.as_path(), format, output)?;
+            Ok(None)
+        }
+        Commands::Duplicates { format, output } => {
+            handle_duplicates(vfs, format, output)?;
+            Ok(None)
+        }
+        Commands::Archives { format, output } => {
+            handle_archives(vfs, format, output)?;
+            Ok(None)
+        }
+        Commands::ArchiveList {
+            archive,
+            format,
+            output,
+        } => {
+            handle_archive_list(vfs, archive.as_path(), format, output)?;
+            Ok(None)
+        }
+        Commands::CaseCollisions { format, output } => {
+            handle_case_collisions(vfs, format, output)?;
+            Ok(None)
+        }
+        Commands::Contributions { format, output } => {
+            handle_contributions(vfs, format, output)?;
+            Ok(None)
+        }
+        Commands::Validate { format, output } => {
+            handle_validate(vfs, format, output)?;
+            Ok(None)
+        }
+        other => Ok(Some(other)),
     }
 }
 
@@ -360,13 +448,23 @@ fn run_core_vfs_command(
             allow_copying,
             extract_archives,
             symbolic,
+            dry_run,
+            format,
+            output,
         } => {
             handle_collapse(
                 vfs,
-                collapse_into.as_path(),
-                allow_copying,
-                extract_archives,
-                symbolic,
+                CollapseParams {
+                    collapse_into,
+                    options: CollapseOptions {
+                        allow_copying,
+                        extract_archives,
+                        use_symlinks: symbolic,
+                    },
+                    dry_run,
+                    format,
+                    output,
+                },
             )?;
             Ok(None)
         }
@@ -432,7 +530,7 @@ fn run_core_vfs_command(
             )?;
             Ok(None)
         }
-        other => Ok(Some(other)),
+        other => run_provider_vfs_command(other, vfs),
     }
 }
 
@@ -515,6 +613,13 @@ pub fn run_command(
             | Commands::FindFile { .. }
             | Commands::Remaining { .. }
             | Commands::Run { .. }
+            | Commands::Explain { .. }
+            | Commands::Duplicates { .. }
+            | Commands::Archives { .. }
+            | Commands::ArchiveList { .. }
+            | Commands::CaseCollisions { .. }
+            | Commands::Contributions { .. }
+            | Commands::Validate { .. }
     );
 
     if !needs_plain_vfs {

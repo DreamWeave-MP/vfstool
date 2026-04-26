@@ -52,6 +52,18 @@ pub enum Commands {
         /// Use symbolic instead of hardlinks, to allow cross-device links
         #[arg(short, long)]
         symbolic: bool,
+
+        /// Print the materialization plan instead of writing files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Output format for --dry-run.
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+
+        /// Path to save the --dry-run plan to.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Extract a given file from the VFS into a given directory
     Extract {
@@ -132,6 +144,59 @@ pub enum Commands {
     Which {
         /// Relative VFS path to query, e.g. `textures/tx_bc_mudcrab.dds`
         path: PathBuf,
+    },
+    /// Explain the full provider chain for a VFS path
+    Explain {
+        /// Relative VFS path to query, e.g. `textures/tx_bc_mudcrab.dds`
+        path: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// List VFS keys with more than one provider
+    Duplicates {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// List loaded archives and winning entry counts
+    Archives {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// List entries supplied by one archive
+    ArchiveList {
+        /// Archive path as listed in the loaded VFS
+        archive: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Report paths whose original spellings collide after VFS normalization
+    CaseCollisions {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Report per-source provider contribution counts
+    Contributions {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Validate the resolved VFS and provider index
+    Validate {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Per-source statistics: wins, overrides, overridden file counts
     Stats,

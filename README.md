@@ -9,7 +9,7 @@
 - **Find Files**: Locate files in the VFS by name, extension, or other criteria.
 - **Serialize the VFS**: Output the VFS structure in JSON, YAML, or TOML formats.
 - **Filter Remaining Files**: Identify files in a directory that are replaced or not replaced by the VFS.
-- **Conflict reports**: Inspect winners, shadowed files, per-source stats, and source-to-source diffs.
+- **Conflict and provider reports**: Inspect winners, shadowed files, duplicates, archives, per-source stats, and source-to-source diffs.
 - **Lock/drift checks**: Emit a deterministic winner manifest and compare later VFS state against it.
 - **Run tools against a merged VFS**: Dump a merged tree, execute a child command, then capture new or modified output files.
 
@@ -74,6 +74,9 @@ vfstool collapse [OPTIONS] <COLLAPSE_INTO>
 - `-a, --allow-copying`: Fall back to copying files if linking fails.
 - `-e, --extract-archives`: Extract files from BSA/BA2 archives during collapsing.
 - `-s, --symbolic`: Use symbolic links instead of hardlinks.
+- `--dry-run`: Print the planned materialization actions instead of writing files.
+- `-f, --format <FORMAT>`: Output format for `--dry-run` (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the `--dry-run` plan. If omitted, results are printed to stdout.
 
 ---
 
@@ -187,6 +190,37 @@ Show the winning source for one VFS path and any lower-priority providers.
 ```bash
 vfstool which <PATH>
 ```
+
+---
+
+#### Provider reports
+
+Inspect the provider index used by the resolved VFS. These commands are projections over the same VFS provider data; they are not a second conflict system wearing a fake moustache.
+
+```bash
+vfstool explain [OPTIONS] <PATH>
+vfstool duplicates [OPTIONS]
+vfstool archives [OPTIONS]
+vfstool archive-list [OPTIONS] <ARCHIVE>
+vfstool case-collisions [OPTIONS]
+vfstool contributions [OPTIONS]
+vfstool validate [OPTIONS]
+```
+
+**Commands**:
+
+- `explain <PATH>`: Show the winning provider and lower-priority providers for one VFS key.
+- `duplicates`: List VFS keys with more than one provider.
+- `archives`: List loaded archives and how many entries currently win.
+- `archive-list <ARCHIVE>`: List VFS entries supplied by one archive.
+- `case-collisions`: Report distinct original path spellings that normalize to the same VFS key.
+- `contributions`: Report per-source provider counts, wins, overridden files, unique files, and duplicates.
+- `validate`: Report missing loose winners, file/directory materialization conflicts, and case collisions.
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
 
 ---
 
