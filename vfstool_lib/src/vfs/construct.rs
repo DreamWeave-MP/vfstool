@@ -67,13 +67,6 @@ impl VFS {
 
     fn append_sources(&mut self, sources: &[SourceEntries]) {
         for source in sources {
-            let source_idx = self
-                .provider_index
-                .add_source(source.source.path.clone(), source.source.kind);
-            for (key, file) in &source.entries {
-                self.provider_index
-                    .add_provider(source_idx, key.clone(), file);
-            }
             self.file_map.extend(source.entries.iter().cloned());
         }
     }
@@ -161,6 +154,7 @@ impl VFS {
             .collect();
 
         let loose_sources = Self::collect_loose_sources(dirs);
+        let dir_sources = Self::layer_sources_from(&loose_sources);
 
         #[cfg(any(feature = "bsa", feature = "zip"))]
         let archive_sources = Self::collect_archive_sources(&loose_sources, archive_list);
@@ -174,6 +168,15 @@ impl VFS {
         // Merge directories in order: later directories override earlier ones,
         // matching OpenMW's VFS semantics (last data= entry wins).
         vfs.append_sources(&loose_sources);
+
+        #[cfg(any(feature = "bsa", feature = "zip"))]
+        let all_sources = Self::layer_sources_from(&archive_sources)
+            .into_iter()
+            .chain(dir_sources)
+            .collect::<Vec<_>>();
+        #[cfg(not(any(feature = "bsa", feature = "zip")))]
+        let all_sources = dir_sources;
+        vfs.layer_index = LayerIndex::from_file_lists(all_sources);
 
         vfs
     }
@@ -226,6 +229,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
+        vfs.layer_index = layer_index;
         (vfs, conflict_index)
     }
 
@@ -267,6 +271,7 @@ impl VFS {
         let all_sources = dir_sources;
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
+        vfs.layer_index = layer_index.clone();
         (vfs, layer_index)
     }
 }

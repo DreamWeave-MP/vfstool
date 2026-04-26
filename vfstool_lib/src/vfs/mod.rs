@@ -18,7 +18,7 @@ pub use self::providers::{
     VfsProviderRecord,
 };
 
-use crate::VfsFile;
+use crate::{LayerIndex, VfsFile};
 use std::path::{Path, PathBuf};
 
 // Owned
@@ -32,7 +32,7 @@ type VFSFiles = AHashMap<PathBuf, VfsFile>;
 /// files have higher priority, matching `OpenMW`'s `data=` semantics.
 pub struct VFS {
     file_map: VFSFiles,
-    provider_index: providers::VfsProviderIndex,
+    layer_index: LayerIndex,
 }
 
 #[cfg(test)]

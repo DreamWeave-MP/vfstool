@@ -67,4 +67,40 @@ impl LayerIndex {
             .get(&normalized)
             .map_or(&[], Vec::as_slice)
     }
+
+    /// Returns the original provider path recorded for `source_index` and `path`.
+    pub(crate) fn provider_original_path(&self, source_index: usize, path: &Path) -> Option<&Path> {
+        let normalized = NormalizedKey::new(path);
+        self.provider_paths
+            .get(&(source_index, normalized))
+            .map(PathBuf::as_path)
+    }
+
+    /// Replace the provider chain for `key` with a single winner provider.
+    pub(crate) fn set_single_provider(
+        &mut self,
+        key: &Path,
+        source: SourceMeta,
+        provider_path: PathBuf,
+    ) {
+        self.remove_key(key);
+        let normalized = NormalizedKey::new(key);
+        let source_index = self.sources.len();
+        self.sources.push(source);
+        self.path_to_sources
+            .insert(normalized.clone(), vec![source_index]);
+        self.provider_paths
+            .insert((source_index, normalized), provider_path);
+    }
+
+    /// Remove all providers for `key` from the index.
+    pub(crate) fn remove_key(&mut self, key: &Path) {
+        let normalized = NormalizedKey::new(key);
+        if let Some(source_indices) = self.path_to_sources.remove(&normalized) {
+            for source_index in source_indices {
+                self.provider_paths
+                    .remove(&(source_index, normalized.clone()));
+            }
+        }
+    }
 }

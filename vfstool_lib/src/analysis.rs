@@ -39,6 +39,7 @@ pub struct SourceMeta {
 /// Canonical provider index for all normalized VFS keys.
 ///
 /// `path_to_sources[key]` is ordered low -> high priority.
+#[derive(Debug, Clone)]
 pub struct LayerIndex {
     /// Sources in load-order position.
     pub sources: Vec<SourceMeta>,

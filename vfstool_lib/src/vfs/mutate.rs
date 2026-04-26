@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::VFS;
-use crate::{VfsFile, normalize_path, path_glob_matches, paths::normalized_safe_key};
+use crate::{
+    SourceKind, SourceMeta, VfsFile, normalize_path, path_glob_matches, paths::normalized_safe_key,
+};
 use std::path::{Path, PathBuf};
 
 impl VFS {
@@ -10,8 +12,9 @@ impl VFS {
     /// providers that may have existed when the VFS was originally constructed.
     pub fn insert_file<P: AsRef<Path>>(&mut self, key: P, file: VfsFile) -> Option<VfsFile> {
         let normalized = normalized_safe_key(key.as_ref())?;
-        self.provider_index
-            .set_single_winner(normalized.clone(), &file);
+        let (source, provider_path) = provider_source_and_path(&file);
+        self.layer_index
+            .set_single_provider(&normalized, source, provider_path);
         self.file_map.insert(normalized, file)
     }
 
@@ -30,7 +33,7 @@ impl VFS {
     /// map entirely.
     pub fn remove_file<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsFile> {
         let normalized = normalize_path(key.as_ref()).into_owned();
-        self.provider_index.remove_key(&normalized);
+        self.layer_index.remove_key(&normalized);
         self.file_map.remove(&normalized)
     }
 
@@ -53,7 +56,7 @@ impl VFS {
 
         keys.into_iter()
             .filter_map(|key| {
-                self.provider_index.remove_key(&key);
+                self.layer_index.remove_key(&key);
                 self.file_map.remove(&key).map(|file| (key, file))
             })
             .collect()
@@ -62,5 +65,33 @@ impl VFS {
     /// Remove every current winner whose normalized key matches `glob`.
     pub fn remove_matching_glob(&mut self, glob: &str) -> Vec<(PathBuf, VfsFile)> {
         self.remove_matching(|key, _| path_glob_matches(glob, key))
+    }
+}
+
+fn provider_source_and_path(file: &VfsFile) -> (SourceMeta, PathBuf) {
+    if file.is_archive() {
+        (
+            SourceMeta {
+                path: PathBuf::from(file.parent_archive_path().unwrap_or_default()),
+                kind: SourceKind::Archive,
+            },
+            file.path().to_path_buf(),
+        )
+    } else {
+        let source_path = file
+            .path()
+            .parent()
+            .map_or_else(PathBuf::new, Path::to_path_buf);
+        let provider_path = file
+            .path()
+            .strip_prefix(&source_path)
+            .map_or_else(|_| file.path().to_path_buf(), Path::to_path_buf);
+        (
+            SourceMeta {
+                path: source_path,
+                kind: SourceKind::LooseDir,
+            },
+            provider_path,
+        )
     }
 }
