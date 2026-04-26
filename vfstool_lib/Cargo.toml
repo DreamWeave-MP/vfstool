@@ -14,6 +14,7 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 ahash = "0.8"
 ba2 = { version = "3.0.1", optional = true }
 blake3 = "1"
+mlua = { version = "0.10", default-features = false, features = ["lua54", "vendored", "serialize"], optional = true }
 zip = { version = "2", optional = true }
 rayon = "1.11.0"
 regex = "1"
@@ -31,6 +32,8 @@ default = []
 bsa = ["dep:ba2"]
 zip = ["dep:zip"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
+lua = ["dep:mlua"]
+lua-vendored = ["lua"]
 
 [[bench]]
 name = "vfs_benchmarks"

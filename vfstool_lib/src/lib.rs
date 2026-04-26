@@ -112,6 +112,8 @@
 //! - `zip`: ZIP/PK3 archive support.
 //! - `serialize`: JSON/YAML/TOML serialization and structured JSON/TOML semantic comparison.
 //!   Without `serialize`, JSON and TOML semantic deltas are reported as unknown rather than parsed.
+//! - `lua`: embedded `mlua` bindings for the promoted stable API surface. This is not a `cdylib`
+//!   Lua module; hosts register `lua::open` or `lua::register` into their own Lua state.
 //!
 //! # Runner warning
 //!
@@ -135,6 +137,9 @@ pub mod experimental;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
 mod kb;
+/// Embedded Lua bindings for the promoted stable API surface.
+#[cfg(feature = "lua")]
+pub mod lua;
 /// Shared glob/path matching utilities.
 pub mod matchers;
 /// Provider-aware mutable VFS that can reveal lower-priority providers after removals.

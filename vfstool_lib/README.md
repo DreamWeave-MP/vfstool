@@ -207,6 +207,8 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
 | `bsa` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
 | `zip` | ZIP/PK3 archive support |
 | `serialize` | JSON/YAML/TOML output via serde |
+| `lua` | Embedded `mlua` bindings for the promoted stable API surface; see [`docs/lua.md`](docs/lua.md) |
+| `lua-vendored` | Alias for `lua`; embedded-only, not a `cdylib` Lua module |
 
 ---
 
