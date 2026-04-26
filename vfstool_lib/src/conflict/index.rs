@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::normalize_path_in_place;
+use crate::{LayerIndex, SourceKind, SourceMeta, normalize_path_in_place};
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -87,6 +87,61 @@ pub struct ConflictIndex {
 }
 
 impl ConflictIndex {
+    /// Derive conflict information from a full provider-chain index.
+    #[must_use]
+    pub fn from_layer_index(layer: &LayerIndex) -> Self {
+        let sources: Vec<PathBuf> = layer
+            .sources
+            .iter()
+            .map(|source| source.path.clone())
+            .collect();
+        let mut source_file_counts = vec![0; sources.len()];
+        let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
+
+        for key in layer.keys() {
+            let providers = layer.sources_containing(&key);
+            for &source_idx in providers {
+                source_file_counts[source_idx] += 1;
+            }
+            if providers.len() > 1 {
+                path_to_sources.insert(key, providers.to_vec());
+            }
+        }
+
+        Self::from_provider_map(sources, source_file_counts, path_to_sources)
+    }
+
+    fn from_provider_map(
+        sources: Vec<PathBuf>,
+        source_file_counts: Vec<usize>,
+        path_to_sources: AHashMap<PathBuf, Vec<usize>>,
+    ) -> Self {
+        let mut conflicts: Vec<SourceConflicts> = (0..sources.len())
+            .map(|_| SourceConflicts::default())
+            .collect();
+
+        for (path, source_indices) in &path_to_sources {
+            // source_indices is sorted ascending (low priority → high priority).
+            // Any entry after the first overrides something earlier (green).
+            // Any entry before the last is overridden by something later (red).
+            for (pos, &src_idx) in source_indices.iter().enumerate() {
+                if pos > 0 {
+                    conflicts[src_idx].overrides.insert(path.clone());
+                }
+                if pos < source_indices.len() - 1 {
+                    conflicts[src_idx].overridden_by.insert(path.clone());
+                }
+            }
+        }
+
+        Self {
+            sources,
+            conflicts,
+            source_file_counts,
+            path_to_sources,
+        }
+    }
+
     /// Walk a single directory and return normalized relative paths.
     pub(super) fn walk_dir(dir: &Path) -> Vec<PathBuf> {
         WalkDir::new(dir)
@@ -115,57 +170,16 @@ impl ConflictIndex {
     /// [`ConflictIndex::from_directories`] and [`ConflictIndex::from_directories_with_archives`]
     /// are thin wrappers around this function.
     pub fn from_file_lists(sources: impl IntoIterator<Item = (PathBuf, Vec<PathBuf>)>) -> Self {
-        let mut source_paths: Vec<PathBuf> = Vec::new();
-        let mut source_file_counts: Vec<usize> = Vec::new();
-        let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
-
-        // Sequential merge preserves source order and therefore priority.
-        for (source_path, files) in sources {
-            let source_idx = source_paths.len();
-            source_paths.push(source_path);
-            let mut seen = AHashSet::new();
-            for file in files {
-                let mut normalized = file;
-                normalize_path_in_place(&mut normalized);
-                if seen.insert(normalized.clone()) {
-                    path_to_sources
-                        .entry(normalized)
-                        .or_default()
-                        .push(source_idx);
-                }
-            }
-            source_file_counts.push(seen.len());
-        }
-
-        let n = source_paths.len();
-
-        // Remove paths that appear in only one source — they have no conflict.
-        path_to_sources.retain(|_, indices| indices.len() > 1);
-
-        // Derive per-source winning/losing sets from the multi-map.
-        let mut conflicts: Vec<SourceConflicts> =
-            (0..n).map(|_| SourceConflicts::default()).collect();
-
-        for (path, source_indices) in &path_to_sources {
-            // source_indices is sorted ascending (low priority → high priority).
-            // Any entry after the first overrides something earlier (green).
-            // Any entry before the last is overridden by something later (red).
-            for (pos, &src_idx) in source_indices.iter().enumerate() {
-                if pos > 0 {
-                    conflicts[src_idx].overrides.insert(path.clone());
-                }
-                if pos < source_indices.len() - 1 {
-                    conflicts[src_idx].overridden_by.insert(path.clone());
-                }
-            }
-        }
-
-        Self {
-            sources: source_paths,
-            conflicts,
-            source_file_counts,
-            path_to_sources,
-        }
+        let layer = LayerIndex::from_file_lists(sources.into_iter().map(|(path, files)| {
+            (
+                SourceMeta {
+                    path,
+                    kind: SourceKind::LooseDir,
+                },
+                files,
+            )
+        }));
+        Self::from_layer_index(&layer)
     }
 
     /// Analyse an ordered list of directories for VFS conflicts.

@@ -69,7 +69,10 @@ pub trait KnowledgeStore {
     fn all(&self) -> io::Result<Vec<KnowledgeEntry>>;
 }
 
-/// File-backed local knowledge store (YAML).
+/// File-backed local knowledge store.
+///
+/// The on-disk format is YAML when the `serialize` feature is enabled. This
+/// module is hidden experimental API, so the schema is not promoted as stable.
 pub struct LocalKnowledgeStore {
     path: PathBuf,
 }
@@ -85,89 +88,58 @@ impl LocalKnowledgeStore {
         if !self.path.exists() {
             return Ok(Vec::new());
         }
-        let content = std::fs::read_to_string(&self.path)?;
-        let mut out = Vec::new();
-        for (line_no, line) in content.lines().enumerate() {
-            if line.trim().is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() < 8 {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "invalid knowledge line {} in '{}': expected 8 columns",
-                        line_no + 1,
-                        self.path.display()
-                    ),
-                ));
-            }
-            out.push(KnowledgeEntry {
-                fingerprint: ConflictFingerprint {
-                    low_source: PathBuf::from(parts[0]),
-                    high_source: PathBuf::from(parts[1]),
-                    key_pattern: parts[2].to_string(),
-                    low_hash: (!parts[3].is_empty()).then(|| parts[3].to_string()),
-                    high_hash: (!parts[4].is_empty()).then(|| parts[4].to_string()),
-                },
-                outcome: parse_outcome(parts[5])?,
-                confidence: parts[6].parse::<f32>().map_err(|e| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("invalid confidence on line {}: {e}", line_no + 1),
-                    )
-                })?,
-                notes: parts[7].replace("\\t", "\t"),
-            });
-        }
-        Ok(out)
+        load_entries_from_yaml(&self.path)
     }
 
     fn save_entries(&self, entries: &[KnowledgeEntry]) -> io::Result<()> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let text = entries
-            .iter()
-            .map(|entry| {
-                format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-                    entry.fingerprint.low_source.display(),
-                    entry.fingerprint.high_source.display(),
-                    entry.fingerprint.key_pattern,
-                    entry.fingerprint.low_hash.clone().unwrap_or_default(),
-                    entry.fingerprint.high_hash.clone().unwrap_or_default(),
-                    outcome_to_str(&entry.outcome),
-                    entry.confidence,
-                    entry.notes.replace('\t', "\\t")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        std::fs::write(&self.path, format!("{text}\n"))
+        save_entries_to_yaml(&self.path, entries)
     }
 }
 
-fn outcome_to_str(outcome: &KnownOutcome) -> &'static str {
-    match outcome {
-        KnownOutcome::SafeNoOp => "safe_no_op",
-        KnownOutcome::SafeIntentionalOverride => "safe_intentional_override",
-        KnownOutcome::RequiresManualPatch => "requires_manual_patch",
-        KnownOutcome::KnownBreakage => "known_breakage",
+#[cfg(feature = "serialize")]
+fn load_entries_from_yaml(path: &std::path::Path) -> io::Result<Vec<KnowledgeEntry>> {
+    let content = std::fs::read_to_string(path)?;
+    if content.trim().is_empty() {
+        return Ok(Vec::new());
     }
-}
-
-fn parse_outcome(raw: &str) -> io::Result<KnownOutcome> {
-    match raw {
-        "safe_no_op" => Ok(KnownOutcome::SafeNoOp),
-        "safe_intentional_override" => Ok(KnownOutcome::SafeIntentionalOverride),
-        "requires_manual_patch" => Ok(KnownOutcome::RequiresManualPatch),
-        "known_breakage" => Ok(KnownOutcome::KnownBreakage),
-        _ => Err(io::Error::new(
+    serde_yaml::from_str(&content).map_err(|e| {
+        io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("unknown outcome '{raw}'"),
-        )),
+            format!("invalid YAML knowledge store '{}': {e}", path.display()),
+        )
+    })
+}
+
+#[cfg(not(feature = "serialize"))]
+fn load_entries_from_yaml(path: &std::path::Path) -> io::Result<Vec<KnowledgeEntry>> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        format!(
+            "YAML knowledge store '{}' requires the serialize feature",
+            path.display()
+        ),
+    ))
+}
+
+#[cfg(feature = "serialize")]
+fn save_entries_to_yaml(path: &std::path::Path, entries: &[KnowledgeEntry]) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
+    let text = serde_yaml::to_string(entries)
+        .map_err(|e| io::Error::other(format!("failed to serialize knowledge store: {e}")))?;
+    std::fs::write(path, text)
+}
+
+#[cfg(not(feature = "serialize"))]
+fn save_entries_to_yaml(path: &std::path::Path, _entries: &[KnowledgeEntry]) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        format!(
+            "YAML knowledge store '{}' requires the serialize feature",
+            path.display()
+        ),
+    ))
 }
 
 impl KnowledgeStore for LocalKnowledgeStore {
@@ -238,6 +210,7 @@ mod tests {
         analysis::{SemanticConflict, SemanticProvider, SemanticRelation, SourceMeta},
     };
 
+    #[cfg(feature = "serialize")]
     #[test]
     fn upsert_replaces_matching_fingerprint() {
         let path = std::env::temp_dir().join("kb_upsert_replaces.yaml");
@@ -271,6 +244,9 @@ mod tests {
         let all = store.all().expect("load all should succeed");
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].outcome, KnownOutcome::KnownBreakage);
+        let yaml = std::fs::read_to_string(&path).expect("knowledge store should be readable");
+        assert!(yaml.contains("fingerprint:"));
+        assert!(yaml.contains("known_breakage"));
         let _ = std::fs::remove_file(path);
     }
 

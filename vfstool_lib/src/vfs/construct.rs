@@ -14,34 +14,92 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
+struct SourceEntries {
+    source: SourceMeta,
+    entries: Vec<(PathBuf, VfsFile)>,
+}
+
 impl VFS {
     #[cfg(any(feature = "bsa", feature = "zip"))]
-    fn add_archive_providers_to_index(&mut self, archive_handles: &archives::ArchiveList) {
-        for stored in archive_handles {
-            let source_idx = self
-                .provider_index
-                .add_source(stored.path().to_path_buf(), SourceKind::Archive);
-            let archive_list = vec![Arc::clone(stored)];
-            for (key, file) in archives::file_map(&archive_list) {
-                self.provider_index.add_provider(source_idx, key, &file);
-            }
-        }
+    fn collect_archive_sources(
+        loose_sources: &[SourceEntries],
+        archive_list: Option<Vec<&str>>,
+    ) -> Vec<SourceEntries> {
+        let Some(list) = archive_list else {
+            return Vec::new();
+        };
+
+        let loose_lookup: AHashMap<PathBuf, VfsFile> = loose_sources
+            .iter()
+            .flat_map(|source| {
+                source
+                    .entries
+                    .iter()
+                    .map(|(key, file)| (key.clone(), VfsFile::from(file.path())))
+            })
+            .collect();
+        archives::from_set(&loose_lookup, &list)
+            .iter()
+            .map(|stored| {
+                let archive_list = vec![Arc::clone(stored)];
+                SourceEntries {
+                    source: SourceMeta {
+                        path: stored.path().to_path_buf(),
+                        kind: SourceKind::Archive,
+                    },
+                    entries: archives::file_map(&archive_list).into_iter().collect(),
+                }
+            })
+            .collect()
     }
 
-    fn add_loose_providers_to_index(
-        &mut self,
-        dirs: &[PathBuf],
-        per_dir: &[Vec<(PathBuf, VfsFile)>],
-    ) {
-        for (dir, entries) in dirs.iter().zip(per_dir) {
+    fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {
+        dirs.into_iter()
+            .map(|dir| SourceEntries {
+                entries: Self::directory_contents_to_file_map(&dir).collect(),
+                source: SourceMeta {
+                    path: dir,
+                    kind: SourceKind::LooseDir,
+                },
+            })
+            .collect()
+    }
+
+    fn append_sources(&mut self, sources: &[SourceEntries]) {
+        for source in sources {
             let source_idx = self
                 .provider_index
-                .add_source(dir.clone(), SourceKind::LooseDir);
-            for (key, file) in entries {
+                .add_source(source.source.path.clone(), source.source.kind);
+            for (key, file) in &source.entries {
                 self.provider_index
                     .add_provider(source_idx, key.clone(), file);
             }
+            self.file_map.extend(source.entries.iter().cloned());
         }
+    }
+
+    fn layer_sources_from(sources: &[SourceEntries]) -> Vec<(SourceMeta, Vec<PathBuf>)> {
+        sources
+            .iter()
+            .map(|source| {
+                (
+                    source.source.clone(),
+                    source
+                        .entries
+                        .iter()
+                        .map(|(key, file)| {
+                            if source.source.kind == SourceKind::LooseDir {
+                                file.path()
+                                    .strip_prefix(&source.source.path)
+                                    .map_or_else(|_| key.clone(), Path::to_path_buf)
+                            } else {
+                                file.path().to_path_buf()
+                            }
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
     }
 
     /// Returns a parallel iterator meant to be fed into `par_extend`
@@ -102,37 +160,20 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let mut vfs = Self::new();
-
-        // Collect each dir as a Vec — rayon's parallel iterator collects into Vec
-        // natively; AHashMap does not implement FromParallelIterator.
-        let dir_entries: Vec<Vec<(PathBuf, VfsFile)>> = dirs
-            .iter()
-            .map(|dir| Self::directory_contents_to_file_map(dir).collect())
-            .collect();
+        let loose_sources = Self::collect_loose_sources(dirs);
 
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        if let Some(list) = archive_list {
-            let loose_lookup: AHashMap<PathBuf, VfsFile> = dir_entries
-                .iter()
-                .flat_map(|entries| {
-                    entries
-                        .iter()
-                        .map(|(k, v)| (k.clone(), VfsFile::from(v.path())))
-                })
-                .collect();
-            let archive_handles = archives::from_set(&loose_lookup, &list);
-            vfs.add_archive_providers_to_index(&archive_handles);
-            vfs.file_map.extend(archives::file_map(&archive_handles));
-        }
+        let archive_sources = Self::collect_archive_sources(&loose_sources, archive_list);
 
-        vfs.add_loose_providers_to_index(&dirs, &dir_entries);
+        let mut vfs = Self::new();
+        #[cfg(any(feature = "bsa", feature = "zip"))]
+        {
+            vfs.append_sources(&archive_sources);
+        }
 
         // Merge directories in order: later directories override earlier ones,
         // matching OpenMW's VFS semantics (last data= entry wins).
-        for entries in dir_entries {
-            vfs.file_map.extend(entries);
-        }
+        vfs.append_sources(&loose_sources);
 
         vfs
     }
@@ -160,67 +201,31 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        // Single walk per directory — results feed both VFS and ConflictIndex.
-        let per_dir: Vec<Vec<(PathBuf, VfsFile)>> = dirs
-            .iter()
-            .map(|dir| Self::directory_contents_to_file_map(dir).collect())
-            .collect();
-
-        // Extract normalized keys for ConflictIndex before consuming per_dir.
-        let conflict_sources: Vec<(PathBuf, Vec<PathBuf>)> = dirs
-            .iter()
-            .zip(per_dir.iter())
-            .map(|(dir, entries)| {
-                (
-                    dir.clone(),
-                    entries.iter().map(|(k, _)| k.clone()).collect(),
-                )
-            })
-            .collect();
+        let loose_sources = Self::collect_loose_sources(dirs);
+        let dir_sources = Self::layer_sources_from(&loose_sources);
 
         let mut vfs = Self::new();
 
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        let archive_conflict_sources: Vec<(PathBuf, Vec<PathBuf>)> = {
-            if let Some(list) = archive_list {
-                let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
-                    .iter()
-                    .flat_map(|entries| {
-                        entries
-                            .iter()
-                            .map(|(k, v)| (k.clone(), VfsFile::from(v.path())))
-                    })
-                    .collect();
-                let archive_handles = archives::from_set(&loose_lookup, &list);
-                vfs.add_archive_providers_to_index(&archive_handles);
-                // Enumerate archive paths before consuming handles into file_map.
-                let sources: Vec<(PathBuf, Vec<PathBuf>)> = archive_handles
-                    .iter()
-                    .map(|stored| (stored.path().to_path_buf(), archives::archive_paths(stored)))
-                    .collect();
-                vfs.file_map.extend(archives::file_map(&archive_handles));
-                sources
-            } else {
-                Vec::new()
-            }
-        };
-
-        vfs.add_loose_providers_to_index(&dirs, &per_dir);
-
-        for entries in per_dir {
-            vfs.file_map.extend(entries);
+        let archive_sources = Self::collect_archive_sources(&loose_sources, archive_list);
+        #[cfg(any(feature = "bsa", feature = "zip"))]
+        {
+            vfs.append_sources(&archive_sources);
         }
+
+        vfs.append_sources(&loose_sources);
 
         // Archives occupy lowest-priority positions (prepended before directories).
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        let all_sources = archive_conflict_sources
+        let all_sources = Self::layer_sources_from(&archive_sources)
             .into_iter()
-            .chain(conflict_sources)
+            .chain(dir_sources)
             .collect::<Vec<_>>();
         #[cfg(not(any(feature = "bsa", feature = "zip")))]
-        let all_sources = conflict_sources;
+        let all_sources = dir_sources;
 
-        let conflict_index = ConflictIndex::from_file_lists(all_sources);
+        let layer_index = LayerIndex::from_file_lists(all_sources);
+        let conflict_index = ConflictIndex::from_layer_index(&layer_index);
         (vfs, conflict_index)
     }
 
@@ -239,74 +244,22 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let per_dir: Vec<Vec<(PathBuf, VfsFile)>> = dirs
-            .iter()
-            .map(|dir| Self::directory_contents_to_file_map(dir).collect())
-            .collect();
-
-        let dir_sources: Vec<(SourceMeta, Vec<PathBuf>)> = dirs
-            .iter()
-            .zip(per_dir.iter())
-            .map(|(dir, entries)| {
-                (
-                    SourceMeta {
-                        path: dir.clone(),
-                        kind: SourceKind::LooseDir,
-                    },
-                    entries
-                        .iter()
-                        .map(|(key, file)| {
-                            file.path()
-                                .strip_prefix(dir)
-                                .map_or_else(|_| key.clone(), Path::to_path_buf)
-                        })
-                        .collect(),
-                )
-            })
-            .collect();
+        let loose_sources = Self::collect_loose_sources(dirs);
+        let dir_sources = Self::layer_sources_from(&loose_sources);
 
         let mut vfs = Self::new();
 
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        let archive_sources: Vec<(SourceMeta, Vec<PathBuf>)> = {
-            if let Some(list) = archive_list {
-                let loose_lookup: AHashMap<PathBuf, VfsFile> = per_dir
-                    .iter()
-                    .flat_map(|entries| {
-                        entries
-                            .iter()
-                            .map(|(k, v)| (k.clone(), VfsFile::from(v.path())))
-                    })
-                    .collect();
-                let archive_handles = archives::from_set(&loose_lookup, &list);
-                vfs.add_archive_providers_to_index(&archive_handles);
-                let sources = archive_handles
-                    .iter()
-                    .map(|stored| {
-                        (
-                            SourceMeta {
-                                path: stored.path().to_path_buf(),
-                                kind: SourceKind::Archive,
-                            },
-                            archives::archive_paths(stored),
-                        )
-                    })
-                    .collect();
-                vfs.file_map.extend(archives::file_map(&archive_handles));
-                sources
-            } else {
-                Vec::new()
-            }
-        };
-
-        vfs.add_loose_providers_to_index(&dirs, &per_dir);
-
-        for entries in per_dir {
-            vfs.file_map.extend(entries);
+        let archive_sources = Self::collect_archive_sources(&loose_sources, archive_list);
+        #[cfg(any(feature = "bsa", feature = "zip"))]
+        {
+            vfs.append_sources(&archive_sources);
         }
 
+        vfs.append_sources(&loose_sources);
+
         #[cfg(any(feature = "bsa", feature = "zip"))]
-        let all_sources = archive_sources
+        let all_sources = Self::layer_sources_from(&archive_sources)
             .into_iter()
             .chain(dir_sources)
             .collect::<Vec<_>>();
