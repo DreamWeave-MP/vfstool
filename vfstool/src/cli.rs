@@ -144,6 +144,10 @@ pub enum Commands {
     Which {
         /// Relative VFS path to query, e.g. `textures/tx_bc_mudcrab.dds`
         path: PathBuf,
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Explain the full provider chain for a VFS path
     Explain {
@@ -199,7 +203,12 @@ pub enum Commands {
         output: Option<PathBuf>,
     },
     /// Per-source statistics: wins, overrides, overridden file counts
-    Stats,
+    Stats {
+        #[arg(short, long, value_enum, default_value = "yaml")]
+        format: OutputFormat,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Compare files between two specific data directories
     Diff {
         /// First directory (absolute path matching a data= entry)

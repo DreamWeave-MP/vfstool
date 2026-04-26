@@ -188,8 +188,13 @@ vfstool shadowed [OPTIONS]
 Show the winning source for one VFS path and any lower-priority providers.
 
 ```bash
-vfstool which <PATH>
+vfstool which [OPTIONS] <PATH>
 ```
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
 
 ---
 
@@ -229,8 +234,16 @@ vfstool validate [OPTIONS]
 Show per-source winner, override, and overridden counts.
 
 ```bash
-vfstool stats
+vfstool stats [OPTIONS]
 ```
+
+`stats` is the legacy name for the same per-source provider contribution report exposed by
+`contributions`.
+
+**Options**:
+
+- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
+- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
 
 ---
 

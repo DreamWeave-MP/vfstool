@@ -53,38 +53,6 @@ pub struct ShadowedSource {
     pub shadowed_files: Vec<PathBuf>,
 }
 
-// --- Which ---
-
-/// Result of a `which` query: the winning file and any lower-priority sources that also have it.
-pub struct WhichResult {
-    /// Display path for the winning file (archive path for archived files, absolute path for loose).
-    pub winner: String,
-    /// Other source directories/archives that also contain this file (lower priority — overridden).
-    pub also_in: Vec<PathBuf>,
-    /// True when no other sources contain this file.
-    pub is_unique: bool,
-}
-
-// --- Stats ---
-
-/// Win/override/overridden counts for a single source in the load order.
-pub struct StatsRow {
-    /// Absolute path to the source directory or archive.
-    pub source: PathBuf,
-    /// Number of VFS files currently served from this source (it "won" on these paths).
-    pub wins: usize,
-    /// Number of files where this source overrides at least one earlier source.
-    pub overrides: usize,
-    /// Number of files where this source is overridden by at least one later source.
-    pub overridden: usize,
-}
-
-/// Aggregated win/conflict statistics across all sources in the load order.
-pub struct StatsReport {
-    /// One row per source, in load-order position.
-    pub rows: Vec<StatsRow>,
-}
-
 // --- Diff ---
 
 /// Comparison report between two source directories.

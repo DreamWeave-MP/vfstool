@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::{LayerIndex, SourceMeta};
+use super::{LayerIndex, LayerProvider, LayerSourceContribution, SourceMeta};
 use crate::{NormalizedKey, SourceId};
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -69,11 +69,85 @@ impl LayerIndex {
     }
 
     /// Returns the original provider path recorded for `source_index` and `path`.
-    pub(crate) fn provider_original_path(&self, source_index: usize, path: &Path) -> Option<&Path> {
+    #[must_use]
+    pub fn provider_original_path(&self, source_index: usize, path: &Path) -> Option<&Path> {
         let normalized = NormalizedKey::new(path);
         self.provider_paths
             .get(&(source_index, normalized))
             .map(PathBuf::as_path)
+    }
+
+    /// Returns the provider chain for `path` in low-to-high priority order.
+    #[must_use]
+    pub fn provider_chain(&self, path: &Path) -> Vec<LayerProvider> {
+        let key = NormalizedKey::new(path).into_path_buf();
+        self.sources_containing(&key)
+            .iter()
+            .filter_map(|&source_index| {
+                let source = self.sources.get(source_index)?.clone();
+                let original_path = self
+                    .provider_original_path(source_index, &key)
+                    .map_or_else(|| key.clone(), Path::to_path_buf);
+                Some(LayerProvider {
+                    source_index,
+                    source,
+                    key: key.clone(),
+                    original_path,
+                })
+            })
+            .collect()
+    }
+
+    /// Returns all keys with more than one provider, sorted by normalized key.
+    #[must_use]
+    pub fn duplicate_keys(&self) -> Vec<PathBuf> {
+        self.keys()
+            .into_iter()
+            .filter(|key| self.sources_containing(key).len() > 1)
+            .collect()
+    }
+
+    /// Returns contribution counts for every source in low-to-high priority order.
+    #[must_use]
+    pub fn source_contributions(&self) -> Vec<LayerSourceContribution> {
+        let mut contributions: Vec<LayerSourceContribution> = self
+            .sources
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(source_index, source)| LayerSourceContribution {
+                source_index,
+                source,
+                winning_files: 0,
+                overriding_files: 0,
+                overridden_files: 0,
+                unique_files: 0,
+                duplicate_files: 0,
+            })
+            .collect();
+
+        for source_indices in self.path_to_sources.values() {
+            let Some((&winner, overridden)) = source_indices.split_last() else {
+                continue;
+            };
+            if let Some(row) = contributions.get_mut(winner) {
+                row.winning_files += 1;
+                if source_indices.len() == 1 {
+                    row.unique_files += 1;
+                } else {
+                    row.duplicate_files += 1;
+                    row.overriding_files += 1;
+                }
+            }
+            for &source_index in overridden {
+                if let Some(row) = contributions.get_mut(source_index) {
+                    row.overridden_files += 1;
+                    row.duplicate_files += 1;
+                }
+            }
+        }
+
+        contributions
     }
 
     /// Replace the provider chain for `key` with a single winner provider.

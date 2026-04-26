@@ -47,6 +47,40 @@ pub struct LayerIndex {
     provider_paths: AHashMap<(usize, NormalizedKey), PathBuf>,
 }
 
+/// One provider entry in a [`LayerIndex`] chain.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct LayerProvider {
+    /// Source index in low-to-high priority order.
+    pub source_index: usize,
+    /// Source metadata.
+    pub source: SourceMeta,
+    /// Normalized VFS key.
+    pub key: std::path::PathBuf,
+    /// Original path recorded for this provider.
+    pub original_path: std::path::PathBuf,
+}
+
+/// Provider contribution counts for one [`LayerIndex`] source.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct LayerSourceContribution {
+    /// Source index in low-to-high priority order.
+    pub source_index: usize,
+    /// Source metadata.
+    pub source: SourceMeta,
+    /// Number of provided keys where this source is the highest-priority provider.
+    pub winning_files: usize,
+    /// Number of provided keys where this source overrides at least one lower-priority provider.
+    pub overriding_files: usize,
+    /// Number of provided keys where this source is overridden by a higher-priority provider.
+    pub overridden_files: usize,
+    /// Number of provided keys that have no other providers.
+    pub unique_files: usize,
+    /// Number of provided keys that share a normalized key with another provider.
+    pub duplicate_files: usize,
+}
+
 /// One provider in a per-key provenance chain.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]

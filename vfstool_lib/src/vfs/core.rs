@@ -24,6 +24,12 @@ impl VFS {
         self.file_map.iter()
     }
 
+    /// Returns the canonical provider-chain index owned by this VFS.
+    #[must_use]
+    pub fn layer_index(&self) -> &LayerIndex {
+        &self.layer_index
+    }
+
     /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.
     #[must_use]
     pub fn par_iter(&self) -> impl ParallelIterator<Item = (&PathBuf, &VfsFile)> {

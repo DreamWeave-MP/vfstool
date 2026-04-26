@@ -141,7 +141,12 @@ fn handle_remaining(
     write_serialized_vfs(output, format, &tree)
 }
 
-fn handle_which(vfs: &VFS, path: &PathBuf) {
+fn handle_which(
+    vfs: &VFS,
+    path: &PathBuf,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
     let normalized = normalize_path(&path).into_owned();
     let Some(result) = vfs.explain(&normalized) else {
         eprintln!(
@@ -151,24 +156,7 @@ fn handle_which(vfs: &VFS, path: &PathBuf) {
         );
         std::process::exit(VFSToolExitCode::FindFailed.into());
     };
-
-    println!("VFS path: {}\n", normalized.display());
-    if result.overridden.is_empty() {
-        println!(
-            "  {}  {} (no conflicts — only source)",
-            print::green("WINNER"),
-            result.winner.source.path.display()
-        );
-    } else {
-        println!(
-            "  {}  {}",
-            print::green("WINNER"),
-            result.winner.source.path.display()
-        );
-        for provider in &result.overridden {
-            println!("  also in {} (overridden)", provider.source.path.display());
-        }
-    }
+    write_serialized(output, format, &result)
 }
 
 fn handle_explain(
@@ -255,33 +243,25 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
             handle_validate(vfs, format, output)?;
             Ok(None)
         }
+        Commands::Which {
+            path,
+            format,
+            output,
+        } => {
+            handle_which(vfs, &path, format, output)?;
+            Ok(None)
+        }
+        Commands::Stats { format, output } => {
+            handle_stats(vfs, format, output)?;
+            Ok(None)
+        }
         other => Ok(Some(other)),
     }
 }
 
-fn handle_stats(vfs: &VFS) {
+fn handle_stats(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
     let report = vfs.source_contributions();
-    let path_width = report
-        .sources
-        .iter()
-        .map(|r| r.source.path.display().to_string().len())
-        .max()
-        .unwrap_or(6)
-        .max(6);
-
-    println!(
-        "{:<path_width$}  {:>6}  {:>9}  {:>10}",
-        "Source", "Wins", "Overrides", "Overridden"
-    );
-    for row in &report.sources {
-        println!(
-            "{:<path_width$}  {:>6}  {:>9}  {:>10}",
-            row.source.path.display(),
-            row.winning_files,
-            row.overriding_files,
-            row.overridden_files,
-        );
-    }
+    write_serialized(output, format, &report)
 }
 
 pub struct RunParams<'a> {
@@ -532,14 +512,6 @@ fn run_core_vfs_command(
             )?;
             Ok(None)
         }
-        Commands::Which { path } => {
-            handle_which(vfs, &path);
-            Ok(None)
-        }
-        Commands::Stats => {
-            handle_stats(vfs);
-            Ok(None)
-        }
         other => run_provider_vfs_command(other, vfs),
     }
 }
@@ -616,7 +588,7 @@ pub fn run_command(
             | Commands::Remaining { .. }
             | Commands::Run { .. }
             | Commands::Which { .. }
-            | Commands::Stats
+            | Commands::Stats { .. }
             | Commands::Explain { .. }
             | Commands::Duplicates { .. }
             | Commands::Archives { .. }

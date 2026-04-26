@@ -1,5 +1,4 @@
 use super::*;
-use crate::VFS;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -468,94 +467,6 @@ fn shadowed_report_excludes_partially_overridden_source() {
     let report = index.shadowed_report(true);
 
     assert!(report.sources.is_empty());
-}
-
-// ---- which ----
-
-#[test]
-fn which_returns_none_for_missing_path() {
-    let d1 = TempDir::new("ci_report_wh_none_d1");
-    d1.write("present.txt", b"");
-
-    let index = ConflictIndex::from_directories(vec![d1.path()]);
-    let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path()], None);
-    let result = index.which(&vfs, Path::new("absent.txt"));
-    assert!(result.is_none());
-}
-
-#[test]
-fn which_unique_file_is_unique() {
-    let d1 = TempDir::new("ci_report_wh_uniq_d1");
-    d1.write("unique.txt", b"x");
-
-    let index = ConflictIndex::from_directories(vec![d1.path()]);
-    let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path()], None);
-    let result = index
-        .which(&vfs, Path::new("unique.txt"))
-        .expect("file should be found");
-    assert!(result.is_unique, "file only in one source should be unique");
-    assert!(result.also_in.is_empty());
-}
-
-#[test]
-fn which_shared_file_has_also_in() {
-    let d1 = TempDir::new("ci_report_wh_shared_d1");
-    let d2 = TempDir::new("ci_report_wh_shared_d2");
-    d1.write("shared.txt", b"d1");
-    d2.write("shared.txt", b"d2");
-
-    let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
-    let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
-    let result = index
-        .which(&vfs, Path::new("shared.txt"))
-        .expect("file should be found");
-    // d2 wins (higher priority), so also_in should contain d1
-    assert!(!result.is_unique);
-    assert!(
-        result.also_in.contains(&d1.path().to_path_buf()),
-        "lower-priority dir should be in also_in"
-    );
-}
-
-// ---- stats ----
-
-#[test]
-fn stats_wins_and_overrides() {
-    let d1 = TempDir::new("ci_report_st_d1");
-    let d2 = TempDir::new("ci_report_st_d2");
-    d1.write("shared.txt", b"d1");
-    d1.write("only1.txt", b"d1");
-    d2.write("shared.txt", b"d2");
-
-    let index = ConflictIndex::from_directories(vec![d1.path(), d2.path()]);
-    let (vfs, _) = VFS::from_directories_with_conflict_index(vec![d1.path(), d2.path()], None);
-    let report = index.stats(&vfs);
-
-    assert_eq!(report.rows.len(), 2);
-    let row_d1 = &report.rows[0]; // d1 = lower priority
-    let row_d2 = &report.rows[1]; // d2 = higher priority
-
-    // d2 serves shared.txt — it wins on that file
-    assert!(row_d2.wins > 0, "d2 should have wins > 0");
-    // d2 overrides d1 on shared.txt
-    assert_eq!(row_d2.overrides, 1, "d2 overrides one file");
-    // d1 is overridden on shared.txt
-    assert!(row_d1.overridden > 0, "d1 should have overridden > 0");
-}
-
-#[test]
-fn stats_attributes_nested_loose_files_to_most_specific_source() {
-    let parent = TempDir::new("ci_report_st_nested_parent");
-    let child = TempDir(parent.path().join("child"));
-    child.write("foo.txt", b"child");
-
-    let index = ConflictIndex::from_directories(vec![parent.path(), child.path()]);
-    let (vfs, _) =
-        VFS::from_directories_with_conflict_index(vec![parent.path(), child.path()], None);
-    let report = index.stats(&vfs);
-
-    assert_eq!(report.rows[0].wins, 1, "parent should win child/foo.txt");
-    assert_eq!(report.rows[1].wins, 1, "child should win foo.txt");
 }
 
 // ---- diff_report ----

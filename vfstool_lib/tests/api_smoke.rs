@@ -50,11 +50,9 @@ fn root_reexports_remain_usable() {
         source.path.clone(),
         vec![PathBuf::from("textures/foo.dds")],
     )]);
-    assert!(
-        conflicts
-            .which(&vfs, Path::new("textures/foo.dds"))
-            .is_some()
-    );
+    assert_eq!(conflicts.sources.len(), 1);
+    assert!(vfs.explain(Path::new("textures/foo.dds")).is_some());
+    assert_eq!(index.provider_chain(Path::new("textures/foo.dds")).len(), 1);
     let key = NormalizedKey::new("Textures/Foo.DDS");
     assert_eq!(key.as_path(), Path::new("textures/foo.dds"));
     let digest = ContentDigest::blake3([0; 32], 0);

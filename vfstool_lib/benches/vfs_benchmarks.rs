@@ -500,11 +500,10 @@ fn bench_conflict_index(c: &mut Criterion) {
         });
     });
 
-    let (vfs, index) =
-        VFS::from_directories_with_conflict_index([base.path(), mod_a.path(), mod_b.path()], None);
+    let vfs = VFS::from_directories([base.path(), mod_a.path(), mod_b.path()], None);
 
-    g.bench_function("stats_three_dirs_1000_200_200", |b| {
-        b.iter(|| index.stats(black_box(&vfs)));
+    g.bench_function("contributions_three_dirs_1000_200_200", |b| {
+        b.iter(|| black_box(&vfs).source_contributions());
     });
 
     g.finish();

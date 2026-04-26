@@ -13,8 +13,9 @@
 //!
 //! - [`VFS`] for the resolved winner map and materialization helpers.
 //! - [`MutableVfs`] and [`VfsProvider`] when provider stacks must survive winner removal.
-//! - [`ConflictIndex`] plus report types such as [`ConflictsReport`], [`ShadowedReport`],
-//!   [`WhichResult`], [`StatsReport`], and [`DiffReport`] for load-order diagnostics.
+//! - [`LayerIndex`] as the canonical provider-chain index and [`ConflictIndex`] as its derived
+//!   conflict projection, plus reports such as [`ConflictsReport`], [`ShadowedReport`], and
+//!   [`DiffReport`] for load-order diagnostics.
 //! - [`LayerIndex`], [`VfsLock`], [`DriftReport`], and related types for provenance, lock, and
 //!   drift workflows.
 //! - [`run_setup`], [`run_finalize`], [`snapshot_directory`], and [`changed_files`] for
@@ -85,7 +86,8 @@ pub mod vfs;
 pub mod vfs_file;
 
 pub use analysis::{
-    DriftEntry, DriftKind, DriftReport, LayerIndex, SourceKind, SourceMeta, VfsLock, VfsLockEntry,
+    DriftEntry, DriftKind, DriftReport, LayerIndex, LayerProvider, LayerSourceContribution,
+    SourceKind, SourceMeta, VfsLock, VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;
@@ -95,7 +97,7 @@ pub use mutable_vfs::{MutableVfs, VfsProvider};
 pub use paths::{normalize_path, normalize_path_in_place};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
-    ShadowedSource, StatsReport, StatsRow, WhichResult,
+    ShadowedSource,
 };
 pub use run::{
     MetadataSnapshot, Snapshot, SnapshotEntry, changed_files, changed_files_metadata, run_finalize,

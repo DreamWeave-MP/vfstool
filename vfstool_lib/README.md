@@ -7,7 +7,9 @@
 ## Features
 
 - **Virtual File System (VFS)**: Build from ordered data directories. Later directories win (matching OpenMW `data=` semantics). Loose files always beat archive files.
-- **Conflict analysis**: Per-source override and overridden-by sets, plus high-level reports for the `conflicts`, `shadowed`, `which`, `stats`, and `diff` queries.
+- **Provider and conflict analysis**: `LayerIndex` stores canonical provider chains; `VFS`
+  resolves winners from that index; `ConflictIndex` is a derived conflict projection for
+  override/overridden reports.
 - **Archive support**: BSA/BA2 (Morrowind, Oblivion, Skyrim, Fallout 4) via the `ba2` crate (`bsa` feature). ZIP/PK3 via the `zip` crate (`zip` feature).
 - **Serialization**: JSON, YAML, TOML output via `serde` (`serialize` feature).
 - **Semantic JSON/TOML analysis**: Structured JSON/TOML comparisons require the `serialize` feature;
@@ -59,13 +61,26 @@ fn main() {
 
 ### Conflict analysis
 
+The analysis model has one source of truth. `LayerIndex` records every provider for every
+normalized VFS key in low-to-high priority order. `VFS` owns a `LayerIndex` and the resolved winner
+map; queries such as `explain`, duplicate keys, source contributions, archives, and case collisions
+are projections over that owned provider index. `ConflictIndex` is intentionally narrower: it is
+derived from `LayerIndex` when callers need MO2-style override/overridden sets or source-to-source
+diffs. If a report needs provider chains, use `LayerIndex`/`VFS`; if it needs only conflict arrows,
+use `ConflictIndex`. Two separate truths would be exciting, in the same way an FBO completeness bug
+is exciting.
+
 ```rust
-use vfstool_lib::VFS;
+use vfstool_lib::{ConflictIndex, LayerIndex, SourceKind, SourceMeta, VFS};
+use std::path::{Path, PathBuf};
 
 let (vfs, ci) = VFS::from_directories_with_conflict_index(
     vec!["path/to/base", "path/to/mod"],
     None,
 );
+
+let provider_chain = vfs.providers_for(Path::new("textures/foo.dds"));
+let duplicate_keys = vfs.layer_index().duplicate_keys();
 
 let report = ci.conflicts_report(true);  // use_relative = true
 for entry in &report.sources {
@@ -74,6 +89,14 @@ for entry in &report.sources {
         entry.overrides.len(),
         entry.overridden_by.len());
 }
+
+let layer = LayerIndex::from_file_lists([(
+    SourceMeta { path: PathBuf::from("path/to/base"), kind: SourceKind::LooseDir },
+    vec![PathBuf::from("textures/foo.dds")],
+)]);
+let conflicts = ConflictIndex::from_layer_index(&layer);
+let contributions = layer.source_contributions();
+# let _ = (vfs, provider_chain, duplicate_keys, conflicts, contributions);
 ```
 
 ### Serialization
