@@ -141,10 +141,9 @@ fn handle_remaining(
     write_serialized_vfs(output, format, &tree)
 }
 
-fn handle_which(resolved_config_dir: PathBuf, path: &PathBuf) {
-    let (vfs, ci) = build_conflict_index(resolved_config_dir);
+fn handle_which(vfs: &VFS, path: &PathBuf) {
     let normalized = normalize_path(&path).into_owned();
-    let Some(result) = ci.which(&vfs, &normalized) else {
+    let Some(result) = vfs.explain(&normalized) else {
         eprintln!(
             "{}VFS path '{}' not found.",
             print::err_prefix(),
@@ -154,16 +153,20 @@ fn handle_which(resolved_config_dir: PathBuf, path: &PathBuf) {
     };
 
     println!("VFS path: {}\n", normalized.display());
-    if result.is_unique {
+    if result.overridden.is_empty() {
         println!(
             "  {}  {} (no conflicts — only source)",
             print::green("WINNER"),
-            result.winner
+            result.winner.source.path.display()
         );
     } else {
-        println!("  {}  {}", print::green("WINNER"), result.winner);
-        for src in &result.also_in {
-            println!("  also in {} (overridden)", src.display());
+        println!(
+            "  {}  {}",
+            print::green("WINNER"),
+            result.winner.source.path.display()
+        );
+        for provider in &result.overridden {
+            println!("  also in {} (overridden)", provider.source.path.display());
         }
     }
 }
@@ -256,13 +259,12 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
     }
 }
 
-fn handle_stats(resolved_config_dir: PathBuf) {
-    let (vfs, ci) = build_conflict_index(resolved_config_dir);
-    let report = ci.stats(&vfs);
+fn handle_stats(vfs: &VFS) {
+    let report = vfs.source_contributions();
     let path_width = report
-        .rows
+        .sources
         .iter()
-        .map(|r| r.source.display().to_string().len())
+        .map(|r| r.source.path.display().to_string().len())
         .max()
         .unwrap_or(6)
         .max(6);
@@ -271,13 +273,13 @@ fn handle_stats(resolved_config_dir: PathBuf) {
         "{:<path_width$}  {:>6}  {:>9}  {:>10}",
         "Source", "Wins", "Overrides", "Overridden"
     );
-    for row in &report.rows {
+    for row in &report.sources {
         println!(
             "{:<path_width$}  {:>6}  {:>9}  {:>10}",
-            row.source.display(),
-            row.wins,
-            row.overrides,
-            row.overridden,
+            row.source.path.display(),
+            row.winning_files,
+            row.overriding_files,
+            row.overridden_files,
         );
     }
 }
@@ -530,6 +532,14 @@ fn run_core_vfs_command(
             )?;
             Ok(None)
         }
+        Commands::Which { path } => {
+            handle_which(vfs, &path);
+            Ok(None)
+        }
+        Commands::Stats => {
+            handle_stats(vfs);
+            Ok(None)
+        }
         other => run_provider_vfs_command(other, vfs),
     }
 }
@@ -546,14 +556,6 @@ fn run_analysis_primary(
         }
         Commands::Shadowed { format, output } => {
             handle_shadowed(resolved_config_dir, use_relative, format, output)?;
-            Ok(None)
-        }
-        Commands::Which { path } => {
-            handle_which(resolved_config_dir, &path);
-            Ok(None)
-        }
-        Commands::Stats => {
-            handle_stats(resolved_config_dir);
             Ok(None)
         }
         Commands::Diff {
@@ -613,6 +615,8 @@ pub fn run_command(
             | Commands::FindFile { .. }
             | Commands::Remaining { .. }
             | Commands::Run { .. }
+            | Commands::Which { .. }
+            | Commands::Stats
             | Commands::Explain { .. }
             | Commands::Duplicates { .. }
             | Commands::Archives { .. }

@@ -52,6 +52,9 @@ pub mod archives;
 pub mod conflict;
 /// Tree node used for display and serialization of VFS directory structure.
 pub mod directory_node;
+/// Experimental analyzers, policies, solver, and knowledge-base helpers.
+#[doc(hidden)]
+pub mod experimental;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
 /// Conflict fingerprint knowledge base types and storage.

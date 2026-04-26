@@ -108,6 +108,8 @@ pub struct SourceContribution {
     pub source: SourceMeta,
     /// Number of files from this source that win.
     pub winning_files: usize,
+    /// Number of files where this source overrides at least one lower-priority provider.
+    pub overriding_files: usize,
     /// Number of files from this source overridden by later sources.
     pub overridden_files: usize,
     /// Number of files unique to this source.
@@ -425,6 +427,7 @@ impl VFS {
                 source_index,
                 source: source.clone(),
                 winning_files: 0,
+                overriding_files: 0,
                 overridden_files: 0,
                 unique_files: 0,
                 duplicate_files: 0,
@@ -439,7 +442,7 @@ impl VFS {
             };
             let is_unique = providers.len() == 1;
             let winner_source_index = winner.source_index;
-            for provider in &providers {
+            for (position, provider) in providers.iter().enumerate() {
                 let row = &mut rows[provider.source_index];
                 if provider.source.kind == SourceKind::Archive {
                     row.archive_files += 1;
@@ -455,6 +458,9 @@ impl VFS {
                     row.winning_files += 1;
                 } else {
                     row.overridden_files += 1;
+                }
+                if position > 0 {
+                    row.overriding_files += 1;
                 }
             }
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use ahash::AHashMap;
 
+mod build;
 mod construct;
 mod core;
 mod diff;
