@@ -205,6 +205,10 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
 
         #[cfg(feature = "zip")]
         TypedArchive::Zip(archive) => {
+            // Deferred optimization: this shared ZipArchive lock serializes reads from the same
+            // archive. If real-world extraction profiles show it matters, use per-worker archive
+            // handles or another independent-entry reader design instead of splitting individual
+            // compressed entries across threads (which is not the useful unit of parallelism here).
             let mut guard = archive
                 .lock()
                 .map_err(|_| io::Error::other("zip mutex poisoned"))?;

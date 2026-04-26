@@ -14,12 +14,13 @@ impl ConflictIndex {
     #[must_use]
     pub fn stats(&self, vfs: &VFS) -> StatsReport {
         let mut wins: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+        let attribution = self.source_attribution_index();
         for (key, file) in vfs.iter() {
             let source_idx = if file.is_loose() {
-                self.source_idx_for_loose_file(Some(key), file.path())
+                attribution.source_idx_for_loose_file(key, file.path())
             } else {
                 file.parent_archive_path()
-                    .and_then(|ap| self.source_idx_for_archive_path(&ap))
+                    .and_then(|ap| attribution.source_idx_for_archive_path(&ap))
             };
             if let Some(idx) = source_idx {
                 *wins.entry(idx).or_insert(0) += 1;

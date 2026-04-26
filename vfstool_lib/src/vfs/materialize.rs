@@ -89,40 +89,43 @@ impl VFS {
         self.validate_materialization_paths()?;
         std::fs::create_dir_all(dest)?;
 
-        for (relative_path, file) in &self.file_map {
-            let merged_path = dest.join(relative_path);
-            Self::ensure_output_parent_safe(dest, &merged_path)?;
-            let Some(merged_dir) = merged_path.parent() else {
-                eprintln!(
-                    "vfstool: failed to resolve parent dir for {}",
-                    merged_path.display()
-                );
-                continue;
-            };
+        self.file_map
+            .par_iter()
+            .map(|(relative_path, file)| -> io::Result<()> {
+                let merged_path = dest.join(relative_path);
+                Self::ensure_output_parent_safe(dest, &merged_path)?;
+                let Some(merged_dir) = merged_path.parent() else {
+                    eprintln!(
+                        "vfstool: failed to resolve parent dir for {}",
+                        merged_path.display()
+                    );
+                    return Ok(());
+                };
 
-            if let Err(e) = std::fs::create_dir_all(merged_dir) {
-                eprintln!(
-                    "vfstool: failed to create directory {}: {}",
-                    merged_dir.display(),
-                    e
-                );
-                continue;
-            }
+                if let Err(e) = std::fs::create_dir_all(merged_dir) {
+                    eprintln!(
+                        "vfstool: failed to create directory {}: {}",
+                        merged_dir.display(),
+                        e
+                    );
+                    return Ok(());
+                }
 
-            if file.is_loose() {
-                Self::collapse_loose_file(file, &merged_path, opts);
-            } else if opts.extract_archives {
-                Self::collapse_archive_file(file, relative_path, &merged_path);
-            } else {
-                eprintln!(
-                    "vfstool: skipping {}, loaded from archive: {}",
-                    relative_path.display(),
-                    file.parent_archive_path().unwrap_or_default()
-                );
-            }
-        }
+                if file.is_loose() {
+                    Self::collapse_loose_file(file, &merged_path, opts);
+                } else if opts.extract_archives {
+                    Self::collapse_archive_file(file, relative_path, &merged_path);
+                } else {
+                    eprintln!(
+                        "vfstool: skipping {}, loaded from archive: {}",
+                        relative_path.display(),
+                        file.parent_archive_path().unwrap_or_default()
+                    );
+                }
 
-        Ok(())
+                Ok(())
+            })
+            .collect()
     }
 
     fn collapse_loose_file(file: &VfsFile, merged_path: &Path, opts: &CollapseOptions) {

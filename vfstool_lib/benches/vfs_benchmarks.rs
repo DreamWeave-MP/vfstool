@@ -3,6 +3,7 @@ use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, c
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 use vfstool_lib::{
     CollapseOptions, ConflictIndex, VFS, changed_files, changed_files_metadata, normalize_path,
@@ -24,9 +25,12 @@ use std::io::Write as IoWrite;
 /// Uses the system temp dir so it doesn't pollute the project tree.
 struct TempDir(PathBuf);
 
+static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 impl TempDir {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(name);
+        let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("{name}_{}_{}", std::process::id(), id));
         fs::create_dir_all(&dir).unwrap();
         Self(dir)
     }
@@ -494,6 +498,13 @@ fn bench_conflict_index(c: &mut Criterion) {
                 mod_b.path(),
             ]))
         });
+    });
+
+    let (vfs, index) =
+        VFS::from_directories_with_conflict_index([base.path(), mod_a.path(), mod_b.path()], None);
+
+    g.bench_function("stats_three_dirs_1000_200_200", |b| {
+        b.iter(|| index.stats(black_box(&vfs)));
     });
 
     g.finish();
