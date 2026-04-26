@@ -204,7 +204,7 @@ impl VFS {
         }
     }
 
-    fn is_archive_file(file: &VfsFile) -> bool {
+    pub(super) fn is_archive_file(file: &VfsFile) -> bool {
         let Some(ext) = file.path().extension() else {
             return false;
         };

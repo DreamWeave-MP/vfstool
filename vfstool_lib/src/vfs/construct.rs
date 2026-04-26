@@ -3,6 +3,8 @@ use super::VFS;
 #[cfg(any(feature = "bsa", feature = "zip"))]
 use ahash::AHashMap;
 use rayon::prelude::*;
+#[cfg(any(feature = "bsa", feature = "zip"))]
+use std::sync::Arc;
 use walkdir::WalkDir;
 
 #[cfg(any(feature = "bsa", feature = "zip"))]
@@ -13,6 +15,35 @@ use crate::{
 use std::path::{Path, PathBuf};
 
 impl VFS {
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    fn add_archive_providers_to_index(&mut self, archive_handles: &archives::ArchiveList) {
+        for stored in archive_handles {
+            let source_idx = self
+                .provider_index
+                .add_source(stored.path().to_path_buf(), SourceKind::Archive);
+            let archive_list = vec![Arc::clone(stored)];
+            for (key, file) in archives::file_map(&archive_list) {
+                self.provider_index.add_provider(source_idx, key, &file);
+            }
+        }
+    }
+
+    fn add_loose_providers_to_index(
+        &mut self,
+        dirs: &[PathBuf],
+        per_dir: &[Vec<(PathBuf, VfsFile)>],
+    ) {
+        for (dir, entries) in dirs.iter().zip(per_dir) {
+            let source_idx = self
+                .provider_index
+                .add_source(dir.clone(), SourceKind::LooseDir);
+            for (key, file) in entries {
+                self.provider_index
+                    .add_provider(source_idx, key.clone(), file);
+            }
+        }
+    }
+
     /// Returns a parallel iterator meant to be fed into `par_extend`
     /// Only used when appending a directory or set of directories into the file map
     fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
@@ -66,12 +97,17 @@ impl VFS {
         #[cfg_attr(not(any(feature = "bsa", feature = "zip")), allow(unused_variables))]
         archive_list: Option<Vec<&str>>,
     ) -> Self {
+        let dirs: Vec<PathBuf> = search_dirs
+            .into_iter()
+            .map(|d| d.as_ref().to_path_buf())
+            .collect();
+
         let mut vfs = Self::new();
 
         // Collect each dir as a Vec — rayon's parallel iterator collects into Vec
         // natively; AHashMap does not implement FromParallelIterator.
-        let dir_entries: Vec<Vec<(PathBuf, VfsFile)>> = search_dirs
-            .into_iter()
+        let dir_entries: Vec<Vec<(PathBuf, VfsFile)>> = dirs
+            .iter()
             .map(|dir| Self::directory_contents_to_file_map(dir).collect())
             .collect();
 
@@ -86,8 +122,11 @@ impl VFS {
                 })
                 .collect();
             let archive_handles = archives::from_set(&loose_lookup, &list);
+            vfs.add_archive_providers_to_index(&archive_handles);
             vfs.file_map.extend(archives::file_map(&archive_handles));
         }
+
+        vfs.add_loose_providers_to_index(&dirs, &dir_entries);
 
         // Merge directories in order: later directories override earlier ones,
         // matching OpenMW's VFS semantics (last data= entry wins).
@@ -153,6 +192,7 @@ impl VFS {
                     })
                     .collect();
                 let archive_handles = archives::from_set(&loose_lookup, &list);
+                vfs.add_archive_providers_to_index(&archive_handles);
                 // Enumerate archive paths before consuming handles into file_map.
                 let sources: Vec<(PathBuf, Vec<PathBuf>)> = archive_handles
                     .iter()
@@ -164,6 +204,8 @@ impl VFS {
                 Vec::new()
             }
         };
+
+        vfs.add_loose_providers_to_index(&dirs, &per_dir);
 
         for entries in per_dir {
             vfs.file_map.extend(entries);
@@ -237,6 +279,7 @@ impl VFS {
                     })
                     .collect();
                 let archive_handles = archives::from_set(&loose_lookup, &list);
+                vfs.add_archive_providers_to_index(&archive_handles);
                 let sources = archive_handles
                     .iter()
                     .map(|stored| {
@@ -255,6 +298,8 @@ impl VFS {
                 Vec::new()
             }
         };
+
+        vfs.add_loose_providers_to_index(&dirs, &per_dir);
 
         for entries in per_dir {
             vfs.file_map.extend(entries);

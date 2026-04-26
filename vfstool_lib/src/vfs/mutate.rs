@@ -10,6 +10,8 @@ impl VFS {
     /// providers that may have existed when the VFS was originally constructed.
     pub fn insert_file<P: AsRef<Path>>(&mut self, key: P, file: VfsFile) -> Option<VfsFile> {
         let normalized = normalized_safe_key(key.as_ref())?;
+        self.provider_index
+            .set_single_winner(normalized.clone(), &file);
         self.file_map.insert(normalized, file)
     }
 
@@ -28,6 +30,7 @@ impl VFS {
     /// map entirely.
     pub fn remove_file<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsFile> {
         let normalized = normalize_path(key.as_ref()).into_owned();
+        self.provider_index.remove_key(&normalized);
         self.file_map.remove(&normalized)
     }
 
@@ -49,7 +52,10 @@ impl VFS {
             .collect::<Vec<_>>();
 
         keys.into_iter()
-            .filter_map(|key| self.file_map.remove(&key).map(|file| (key, file)))
+            .filter_map(|key| {
+                self.provider_index.remove_key(&key);
+                self.file_map.remove(&key).map(|file| (key, file))
+            })
             .collect()
     }
 

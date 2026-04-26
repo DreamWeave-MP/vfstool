@@ -7,9 +7,16 @@ mod diff;
 mod lookup;
 mod materialize;
 mod mutate;
+mod providers;
 mod tree;
 
 pub use self::diff::DirectoryDiff;
+pub use self::providers::{
+    ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DuplicateEntry, DuplicateReport,
+    ExplainReport, MaterializationAction, MaterializationIssue, MaterializationPlan,
+    SourceContribution, SourceContributionReport, ValidationIssue, ValidationReport,
+    VfsProviderRecord,
+};
 
 use crate::VfsFile;
 use std::path::{Path, PathBuf};
@@ -25,6 +32,7 @@ type VFSFiles = AHashMap<PathBuf, VfsFile>;
 /// files have higher priority, matching `OpenMW`'s `data=` semantics.
 pub struct VFS {
     file_map: VFSFiles,
+    provider_index: providers::VfsProviderIndex,
 }
 
 #[cfg(test)]

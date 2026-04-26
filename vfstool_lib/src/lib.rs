@@ -99,7 +99,12 @@ pub use run::{
     run_finalize_tracked, run_setup, run_setup_tracked, snapshot_directory,
     snapshot_directory_metadata,
 };
-pub use vfs::{DirectoryDiff, VFS};
+pub use vfs::{
+    ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DirectoryDiff, DuplicateEntry,
+    DuplicateReport, ExplainReport, MaterializationAction, MaterializationIssue,
+    MaterializationPlan, SourceContribution, SourceContributionReport, VFS, ValidationIssue,
+    ValidationReport, VfsProviderRecord,
+};
 pub use vfs_file::VfsFile;
 
 use std::{collections::BTreeMap, path::PathBuf};

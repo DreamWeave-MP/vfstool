@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::VFS;
+use super::providers::VfsProviderIndex;
 use ahash::AHashMap;
 use rayon::prelude::*;
 use std::path::PathBuf;
@@ -15,6 +16,7 @@ impl VFS {
     pub fn new() -> Self {
         Self {
             file_map: AHashMap::new(),
+            provider_index: VfsProviderIndex::default(),
         }
     }
 
