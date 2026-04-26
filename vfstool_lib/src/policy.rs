@@ -92,127 +92,13 @@ impl Policy {
     /// # Errors
     ///
     /// Returns an error when provider/provenance resolution fails.
-    #[allow(clippy::too_many_lines)]
     pub fn evaluate(&self, index: &LayerIndex, vfs: &VFS) -> io::Result<PolicyResult> {
         let mut keys: Vec<PathBuf> = vfs.iter().map(|(key, _)| key.clone()).collect();
         keys.sort();
         let mut violations = Vec::new();
 
         for rule in &self.rules {
-            match rule {
-                Rule::WinnerMustMatch {
-                    path_glob,
-                    source_glob,
-                } => {
-                    let path_glob = compile_glob("path_glob", path_glob)?;
-                    let source_glob_text = source_glob;
-                    let source_glob = compile_glob("source_glob", source_glob_text)?;
-                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
-                        let Some(prov) = index.provenance(vfs, key, false)? else {
-                            continue;
-                        };
-                        if !source_glob.is_match(&prov.winner.path) {
-                            violations.push(Violation {
-                                rule: "winner_must_match".into(),
-                                key: Some(key.clone()),
-                                message: format!(
-                                    "winner '{}' does not match source glob '{}'",
-                                    prov.winner.path.display(),
-                                    source_glob_text
-                                ),
-                                severity: Severity::Error,
-                            });
-                        }
-                    }
-                }
-                Rule::WinnerMustNotMatch {
-                    path_glob,
-                    source_glob,
-                } => {
-                    let path_glob = compile_glob("path_glob", path_glob)?;
-                    let source_glob_text = source_glob;
-                    let source_glob = compile_glob("source_glob", source_glob_text)?;
-                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
-                        let Some(prov) = index.provenance(vfs, key, false)? else {
-                            continue;
-                        };
-                        if source_glob.is_match(&prov.winner.path) {
-                            violations.push(Violation {
-                                rule: "winner_must_not_match".into(),
-                                key: Some(key.clone()),
-                                message: format!(
-                                    "winner '{}' matches forbidden source glob '{}'",
-                                    prov.winner.path.display(),
-                                    source_glob_text
-                                ),
-                                severity: Severity::Error,
-                            });
-                        }
-                    }
-                }
-                Rule::MustExist { path_glob } => {
-                    let path_glob_text = path_glob;
-                    let path_glob = compile_glob("path_glob", path_glob)?;
-                    let exists = keys.iter().any(|k| path_glob.is_match(k));
-                    if !exists {
-                        violations.push(Violation {
-                            rule: "must_exist".into(),
-                            key: None,
-                            message: format!("no key matched '{path_glob_text}'"),
-                            severity: Severity::Error,
-                        });
-                    }
-                }
-                Rule::MustBeUnique { path_glob } => {
-                    let path_glob = compile_glob("path_glob", path_glob)?;
-                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
-                        let provider_count = index.sources_containing(key).len();
-                        if provider_count > 1 {
-                            violations.push(Violation {
-                                rule: "must_be_unique".into(),
-                                key: Some(key.clone()),
-                                message: format!("key has {provider_count} providers"),
-                                severity: Severity::Error,
-                            });
-                        }
-                    }
-                }
-                Rule::WinnerKindMustBe { path_glob, kind } => {
-                    let path_glob = compile_glob("path_glob", path_glob)?;
-                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
-                        let Some(prov) = index.provenance(vfs, key, false)? else {
-                            continue;
-                        };
-                        if prov.winner.kind != *kind {
-                            violations.push(Violation {
-                                rule: "winner_kind_must_be".into(),
-                                key: Some(key.clone()),
-                                message: format!(
-                                    "winner kind mismatch: expected {:?}, got {:?}",
-                                    kind, prov.winner.kind
-                                ),
-                                severity: Severity::Error,
-                            });
-                        }
-                    }
-                }
-                Rule::MaxOverrideDepth { path_glob, max } => {
-                    let path_glob = compile_glob("path_glob", path_glob)?;
-                    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
-                        let provider_count = index.sources_containing(key).len();
-                        if provider_count > *max {
-                            violations.push(Violation {
-                                rule: "max_override_depth".into(),
-                                key: Some(key.clone()),
-                                message: format!(
-                                    "provider_count {provider_count} exceeds max {max}"
-                                ),
-                                severity: Severity::Error,
-                            });
-                        }
-                    }
-                }
-            }
+            evaluate_rule(rule, index, vfs, &keys, &mut violations)?;
         }
 
         violations.sort_by(|a, b| {
@@ -231,6 +117,178 @@ impl Policy {
         });
 
         Ok(PolicyResult { violations })
+    }
+}
+
+fn evaluate_rule(
+    rule: &Rule,
+    index: &LayerIndex,
+    vfs: &VFS,
+    keys: &[PathBuf],
+    violations: &mut Vec<Violation>,
+) -> io::Result<()> {
+    match rule {
+        Rule::WinnerMustMatch {
+            path_glob,
+            source_glob,
+        } => evaluate_winner_source_rule(
+            index,
+            vfs,
+            keys,
+            WinnerSourceRule {
+                rule_name: "winner_must_match",
+                path_glob,
+                source_glob,
+                expect_match: true,
+            },
+            violations,
+        ),
+        Rule::WinnerMustNotMatch {
+            path_glob,
+            source_glob,
+        } => evaluate_winner_source_rule(
+            index,
+            vfs,
+            keys,
+            WinnerSourceRule {
+                rule_name: "winner_must_not_match",
+                path_glob,
+                source_glob,
+                expect_match: false,
+            },
+            violations,
+        ),
+        Rule::MustExist { path_glob } => evaluate_must_exist(keys, path_glob, violations),
+        Rule::MustBeUnique { path_glob } => {
+            evaluate_provider_count(index, keys, path_glob, None, violations)
+        }
+        Rule::WinnerKindMustBe { path_glob, kind } => {
+            evaluate_winner_kind(index, vfs, keys, path_glob, *kind, violations)
+        }
+        Rule::MaxOverrideDepth { path_glob, max } => {
+            evaluate_provider_count(index, keys, path_glob, Some(*max), violations)
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct WinnerSourceRule<'a> {
+    rule_name: &'static str,
+    path_glob: &'a str,
+    source_glob: &'a str,
+    expect_match: bool,
+}
+
+fn evaluate_winner_source_rule(
+    index: &LayerIndex,
+    vfs: &VFS,
+    keys: &[PathBuf],
+    rule: WinnerSourceRule<'_>,
+    violations: &mut Vec<Violation>,
+) -> io::Result<()> {
+    let path_glob = compile_glob("path_glob", rule.path_glob)?;
+    let source_glob = compile_glob("source_glob", rule.source_glob)?;
+    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
+        let Some(prov) = index.provenance(vfs, key, false)? else {
+            continue;
+        };
+        let matched = source_glob.is_match(&prov.winner.path);
+        if matched != rule.expect_match {
+            let message = if rule.expect_match {
+                format!(
+                    "winner '{}' does not match source glob '{}'",
+                    prov.winner.path.display(),
+                    rule.source_glob
+                )
+            } else {
+                format!(
+                    "winner '{}' matches forbidden source glob '{}'",
+                    prov.winner.path.display(),
+                    rule.source_glob
+                )
+            };
+            violations.push(error_violation(rule.rule_name, Some(key.clone()), message));
+        }
+    }
+    Ok(())
+}
+
+fn evaluate_must_exist(
+    keys: &[PathBuf],
+    path_glob_text: &str,
+    violations: &mut Vec<Violation>,
+) -> io::Result<()> {
+    let path_glob = compile_glob("path_glob", path_glob_text)?;
+    if !keys.iter().any(|k| path_glob.is_match(k)) {
+        violations.push(error_violation(
+            "must_exist",
+            None,
+            format!("no key matched '{path_glob_text}'"),
+        ));
+    }
+    Ok(())
+}
+
+fn evaluate_provider_count(
+    index: &LayerIndex,
+    keys: &[PathBuf],
+    path_glob_text: &str,
+    max: Option<usize>,
+    violations: &mut Vec<Violation>,
+) -> io::Result<()> {
+    let path_glob = compile_glob("path_glob", path_glob_text)?;
+    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
+        let provider_count = index.sources_containing(key).len();
+        match max {
+            None if provider_count > 1 => violations.push(error_violation(
+                "must_be_unique",
+                Some(key.clone()),
+                format!("key has {provider_count} providers"),
+            )),
+            Some(max) if provider_count > max => violations.push(error_violation(
+                "max_override_depth",
+                Some(key.clone()),
+                format!("provider_count {provider_count} exceeds max {max}"),
+            )),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn evaluate_winner_kind(
+    index: &LayerIndex,
+    vfs: &VFS,
+    keys: &[PathBuf],
+    path_glob_text: &str,
+    kind: SourceKind,
+    violations: &mut Vec<Violation>,
+) -> io::Result<()> {
+    let path_glob = compile_glob("path_glob", path_glob_text)?;
+    for key in keys.iter().filter(|k| path_glob.is_match(k)) {
+        let Some(prov) = index.provenance(vfs, key, false)? else {
+            continue;
+        };
+        if prov.winner.kind != kind {
+            violations.push(error_violation(
+                "winner_kind_must_be",
+                Some(key.clone()),
+                format!(
+                    "winner kind mismatch: expected {:?}, got {:?}",
+                    kind, prov.winner.kind
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn error_violation(rule: &str, key: Option<PathBuf>, message: String) -> Violation {
+    Violation {
+        rule: rule.into(),
+        key,
+        message,
+        severity: Severity::Error,
     }
 }
 

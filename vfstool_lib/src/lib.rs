@@ -54,11 +54,17 @@ pub mod conflict;
 /// Tree node used for display and serialization of VFS directory structure.
 pub mod directory_node;
 /// Experimental analyzers, policies, solver, and knowledge-base helpers.
+///
+/// Prefer this namespace for unstable helpers. The hidden top-level modules below remain public
+/// for compatibility, but they are not promoted 1.0 API. Yes, hidden public modules are still
+/// public; pretending otherwise would just be documentation cosplay.
 #[doc(hidden)]
 pub mod experimental;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
 /// Conflict fingerprint knowledge base types and storage.
+///
+/// Unstable compatibility path; prefer [`experimental::kb`].
 #[doc(hidden)]
 pub mod kb;
 /// Shared glob/path matching utilities.
@@ -68,26 +74,24 @@ pub mod mutable_vfs;
 /// Path normalization and safety helpers.
 pub mod paths;
 /// Declarative policy rules and evaluation against VFS/layer state.
+///
+/// Unstable compatibility path; prefer [`experimental::policy`].
 #[doc(hidden)]
 pub mod policy;
 /// Report types returned by conflict, shadowed, which, stats, and diff subcommands.
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
-/// Asset-class semantic analyzers and deltas.
-#[doc(hidden)]
-pub mod semantic;
-/// Constraint-based load-order solving.
-#[doc(hidden)]
-pub mod solve;
+mod semantic;
+mod solve;
 /// Core [`VFS`] struct and directory-construction logic.
 pub mod vfs;
 /// [`VfsFile`] wrapper for loose and archive-backed files.
 pub mod vfs_file;
 
 pub use analysis::{
-    DriftEntry, DriftKind, DriftReport, LayerIndex, LayerProvider, LayerSourceContribution,
-    SourceKind, SourceMeta, VfsLock, VfsLockEntry,
+    DriftEntry, DriftKind, DriftReport, LayerIndex, LayerProvider, SourceContribution,
+    SourceContributionReport, SourceKind, SourceMeta, VfsLock, VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;
@@ -107,8 +111,7 @@ pub use run::{
 pub use vfs::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DirectoryDiff, DuplicateEntry,
     DuplicateReport, ExplainReport, MaterializationAction, MaterializationIssue,
-    MaterializationPlan, SourceContribution, SourceContributionReport, VFS, ValidationIssue,
-    ValidationReport, VfsProviderRecord,
+    MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsProviderRecord,
 };
 pub use vfs_file::VfsFile;
 

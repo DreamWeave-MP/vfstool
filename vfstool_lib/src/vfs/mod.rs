@@ -15,8 +15,7 @@ pub use self::diff::DirectoryDiff;
 pub use self::providers::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DuplicateEntry, DuplicateReport,
     ExplainReport, MaterializationAction, MaterializationIssue, MaterializationPlan,
-    SourceContribution, SourceContributionReport, ValidationIssue, ValidationReport,
-    VfsProviderRecord,
+    ValidationIssue, ValidationReport, VfsProviderRecord,
 };
 
 use crate::{LayerIndex, VfsFile};

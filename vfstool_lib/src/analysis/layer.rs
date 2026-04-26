@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::{LayerIndex, LayerProvider, LayerSourceContribution, SourceMeta};
+use super::{
+    LayerIndex, LayerProvider, SourceContribution, SourceContributionReport, SourceKind, SourceMeta,
+};
 use crate::{NormalizedKey, SourceId};
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -109,13 +111,13 @@ impl LayerIndex {
 
     /// Returns contribution counts for every source in low-to-high priority order.
     #[must_use]
-    pub fn source_contributions(&self) -> Vec<LayerSourceContribution> {
-        let mut contributions: Vec<LayerSourceContribution> = self
+    pub fn source_contributions(&self) -> SourceContributionReport {
+        let mut contributions: Vec<SourceContribution> = self
             .sources
             .iter()
             .cloned()
             .enumerate()
-            .map(|(source_index, source)| LayerSourceContribution {
+            .map(|(source_index, source)| SourceContribution {
                 source_index,
                 source,
                 winning_files: 0,
@@ -123,31 +125,42 @@ impl LayerIndex {
                 overridden_files: 0,
                 unique_files: 0,
                 duplicate_files: 0,
+                loose_files: 0,
+                archive_files: 0,
             })
             .collect();
 
         for source_indices in self.path_to_sources.values() {
-            let Some((&winner, overridden)) = source_indices.split_last() else {
+            let Some(&winner) = source_indices.last() else {
                 continue;
             };
-            if let Some(row) = contributions.get_mut(winner) {
-                row.winning_files += 1;
-                if source_indices.len() == 1 {
-                    row.unique_files += 1;
-                } else {
-                    row.duplicate_files += 1;
-                    row.overriding_files += 1;
-                }
-            }
-            for &source_index in overridden {
+            let is_unique = source_indices.len() == 1;
+            for (position, &source_index) in source_indices.iter().enumerate() {
                 if let Some(row) = contributions.get_mut(source_index) {
-                    row.overridden_files += 1;
-                    row.duplicate_files += 1;
+                    match row.source.kind {
+                        SourceKind::LooseDir => row.loose_files += 1,
+                        SourceKind::Archive => row.archive_files += 1,
+                    }
+                    if is_unique {
+                        row.unique_files += 1;
+                    } else {
+                        row.duplicate_files += 1;
+                    }
+                    if source_index == winner {
+                        row.winning_files += 1;
+                    } else {
+                        row.overridden_files += 1;
+                    }
+                    if position > 0 {
+                        row.overriding_files += 1;
+                    }
                 }
             }
         }
 
-        contributions
+        SourceContributionReport {
+            sources: contributions,
+        }
     }
 
     /// Replace the provider chain for `key` with a single winner provider.

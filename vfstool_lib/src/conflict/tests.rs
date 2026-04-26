@@ -1,4 +1,5 @@
 use super::*;
+use crate::{LayerIndex, SourceKind, SourceMeta};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -398,16 +399,23 @@ fn conflicts_report_sorted() {
 
 #[test]
 fn conflicts_report_formats_archive_sources_as_entries() {
-    let index = ConflictIndex::from_file_lists(vec![
+    let layer = LayerIndex::from_file_lists(vec![
         (
-            PathBuf::from("/data/archive.zip"),
+            SourceMeta {
+                path: PathBuf::from("/data/archive.zip"),
+                kind: SourceKind::Archive,
+            },
             vec![PathBuf::from("textures/foo.dds")],
         ),
         (
-            PathBuf::from("/data/mod"),
+            SourceMeta {
+                path: PathBuf::from("/data/mod"),
+                kind: SourceKind::LooseDir,
+            },
             vec![PathBuf::from("textures/foo.dds")],
         ),
     ]);
+    let index = ConflictIndex::from_layer_index(&layer);
 
     let report = index.conflicts_report(false);
     assert_eq!(

@@ -40,3 +40,42 @@ fn layer_index_includes_unique_provider_keys() {
 
     assert_eq!(index.sources_containing(Path::new("unique.txt")), &[0]);
 }
+
+#[test]
+fn source_contributions_count_middle_sources_as_overriding_and_overridden() {
+    let index = LayerIndex::from_file_lists(vec![
+        (
+            SourceMeta {
+                path: PathBuf::from("/low"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("shared.txt")],
+        ),
+        (
+            SourceMeta {
+                path: PathBuf::from("/mid"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("shared.txt")],
+        ),
+        (
+            SourceMeta {
+                path: PathBuf::from("/high"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("shared.txt")],
+        ),
+    ]);
+
+    let contributions = index.source_contributions();
+    let low = &contributions.sources[0];
+    let mid = &contributions.sources[1];
+    let high = &contributions.sources[2];
+
+    assert_eq!(low.overridden_files, 1);
+    assert_eq!(low.overriding_files, 0);
+    assert_eq!(mid.overridden_files, 1);
+    assert_eq!(mid.overriding_files, 1);
+    assert_eq!(high.winning_files, 1);
+    assert_eq!(high.overriding_files, 1);
+}

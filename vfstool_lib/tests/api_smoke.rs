@@ -7,8 +7,8 @@ use std::{
 
 use vfstool_lib::{
     CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, MutableVfs, NormalizedKey, SourceId,
-    SourceKind, SourceMeta, VFS, VfsFile, VfsProvider, changed_files, normalize_path,
-    normalize_path_in_place, path_glob_matches, policy, semantic, solve,
+    SourceKind, SourceMeta, VFS, VfsFile, VfsProvider, changed_files, experimental, normalize_path,
+    normalize_path_in_place, path_glob_matches,
 };
 
 #[test]
@@ -83,27 +83,28 @@ fn root_reexports_remain_usable() {
 
 #[test]
 fn hidden_public_modules_remain_reachable() {
-    let (asset_class, semantic_delta) = semantic::analyze_pair(Path::new("foo.txt"), b"a", b"a");
-    assert_eq!(asset_class, semantic::AssetClass::Text);
+    let (asset_class, semantic_delta) =
+        experimental::semantic::analyze_pair(Path::new("foo.txt"), b"a", b"a");
+    assert_eq!(asset_class, experimental::semantic::AssetClass::Text);
     assert!(matches!(
         semantic_delta,
-        semantic::SemanticDelta::NoOpEquivalent
+        experimental::semantic::SemanticDelta::NoOpEquivalent
     ));
 
-    let policy = policy::Policy {
-        rules: vec![policy::Rule::MustExist {
+    let policy = experimental::policy::Policy {
+        rules: vec![experimental::policy::Rule::MustExist {
             path_glob: "textures/*.dds".into(),
         }],
     };
     assert_eq!(policy.rules.len(), 1);
 
-    let request = solve::SolveRequest {
+    let request = experimental::solve::SolveRequest {
         current_order: Vec::new(),
-        constraints: vec![solve::OrderConstraint::WinnerMustBe {
+        constraints: vec![experimental::solve::OrderConstraint::WinnerMustBe {
             path_glob: "textures/*.dds".into(),
             source_glob: "*/source".into(),
         }],
-        objective: solve::SolveObjective::MinMovesFromCurrent,
+        objective: experimental::solve::SolveObjective::MinMovesFromCurrent,
     };
     assert_eq!(request.constraints.len(), 1);
 }

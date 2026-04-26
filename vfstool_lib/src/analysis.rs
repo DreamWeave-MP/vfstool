@@ -61,10 +61,10 @@ pub struct LayerProvider {
     pub original_path: std::path::PathBuf,
 }
 
-/// Provider contribution counts for one [`LayerIndex`] source.
+/// Provider contribution counts for one source.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct LayerSourceContribution {
+pub struct SourceContribution {
     /// Source index in low-to-high priority order.
     pub source_index: usize,
     /// Source metadata.
@@ -79,6 +79,18 @@ pub struct LayerSourceContribution {
     pub unique_files: usize,
     /// Number of provided keys that share a normalized key with another provider.
     pub duplicate_files: usize,
+    /// Number of loose-file providers from this source.
+    pub loose_files: usize,
+    /// Number of archive-entry providers from this source.
+    pub archive_files: usize,
+}
+
+/// Contribution report for every source.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct SourceContributionReport {
+    /// Per-source contribution rows.
+    pub sources: Vec<SourceContribution>,
 }
 
 /// One provider in a per-key provenance chain.

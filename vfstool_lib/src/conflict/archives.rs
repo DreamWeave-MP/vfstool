@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::ConflictIndex;
+use crate::{LayerIndex, SourceKind, SourceMeta};
 use std::path::{Path, PathBuf};
 
 impl ConflictIndex {
@@ -156,24 +157,37 @@ impl ConflictIndex {
         archive_paths: impl IntoIterator<Item = impl AsRef<Path>>,
     ) -> Self {
         // Archives come first — they have lower priority than any loose file.
-        let archive_sources: Vec<(PathBuf, Vec<PathBuf>)> = archive_paths
+        let archive_sources: Vec<(SourceMeta, Vec<PathBuf>)> = archive_paths
             .into_iter()
             .map(|p| {
                 let p = p.as_ref().to_path_buf();
                 let files = Self::paths_from_archive(&p);
-                (p, files)
+                (
+                    SourceMeta {
+                        path: p,
+                        kind: SourceKind::Archive,
+                    },
+                    files,
+                )
             })
             .collect();
 
-        let dir_sources: Vec<(PathBuf, Vec<PathBuf>)> = dirs
+        let dir_sources: Vec<(SourceMeta, Vec<PathBuf>)> = dirs
             .into_iter()
             .map(|d| {
                 let d = d.as_ref().to_path_buf();
                 let files = Self::walk_dir(&d);
-                (d, files)
+                (
+                    SourceMeta {
+                        path: d,
+                        kind: SourceKind::LooseDir,
+                    },
+                    files,
+                )
             })
             .collect();
 
-        Self::from_file_lists(archive_sources.into_iter().chain(dir_sources))
+        let layer = LayerIndex::from_file_lists(archive_sources.into_iter().chain(dir_sources));
+        Self::from_layer_index(&layer)
     }
 }

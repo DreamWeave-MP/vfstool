@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::ConflictIndex;
-use crate::reports::{ConflictSourceEntry, ConflictsReport, ShadowedReport, ShadowedSource};
+use crate::{
+    SourceKind, SourceMeta,
+    reports::{ConflictSourceEntry, ConflictsReport, ShadowedReport, ShadowedSource},
+};
 use std::path::{Path, PathBuf};
 
 impl ConflictIndex {
@@ -11,11 +14,11 @@ impl ConflictIndex {
     #[must_use]
     pub fn conflicts_report(&self, use_relative: bool) -> ConflictsReport {
         let sources = self
-            .sources
+            .source_meta
             .iter()
             .enumerate()
-            .map(|(i, src)| {
-                let resolve = |p: &PathBuf| -> PathBuf { report_path(src, p, use_relative) };
+            .map(|(i, source)| {
+                let resolve = |p: &PathBuf| -> PathBuf { report_path(source, p, use_relative) };
                 let mut overrides: Vec<PathBuf> =
                     self.conflicts[i].overrides.iter().map(resolve).collect();
                 let mut overridden_by: Vec<PathBuf> = self.conflicts[i]
@@ -26,7 +29,7 @@ impl ConflictIndex {
                 overrides.sort();
                 overridden_by.sort();
                 ConflictSourceEntry {
-                    path: src.clone(),
+                    path: source.path.clone(),
                     overrides,
                     overridden_by,
                 }
@@ -42,16 +45,16 @@ impl ConflictIndex {
     #[must_use]
     pub fn shadowed_report(&self, use_relative: bool) -> ShadowedReport {
         let sources = self
-            .sources
+            .source_meta
             .iter()
             .enumerate()
-            .filter_map(|(i, src)| {
+            .filter_map(|(i, source)| {
                 if self.source_file_counts[i] == 0
                     || self.conflicts[i].overridden_by.len() != self.source_file_counts[i]
                 {
                     return None;
                 }
-                let resolve = |p: &PathBuf| -> PathBuf { report_path(src, p, use_relative) };
+                let resolve = |p: &PathBuf| -> PathBuf { report_path(source, p, use_relative) };
                 let mut shadowed_files: Vec<PathBuf> = self.conflicts[i]
                     .overridden_by
                     .iter()
@@ -59,7 +62,7 @@ impl ConflictIndex {
                     .collect();
                 shadowed_files.sort();
                 Some(ShadowedSource {
-                    path: src.clone(),
+                    path: source.path.clone(),
                     shadowed_files,
                 })
             })
@@ -68,24 +71,12 @@ impl ConflictIndex {
     }
 }
 
-fn report_path(source: &Path, key: &Path, use_relative: bool) -> PathBuf {
+fn report_path(source: &SourceMeta, key: &Path, use_relative: bool) -> PathBuf {
     if use_relative {
         return key.to_path_buf();
     }
-    if is_archive_source(source) {
-        return PathBuf::from(format!("{}::{}", source.display(), key.display()));
+    if source.kind == SourceKind::Archive {
+        return PathBuf::from(format!("{}::{}", source.path.display(), key.display()));
     }
-    source.join(key)
-}
-
-fn is_archive_source(source: &Path) -> bool {
-    source
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            matches!(
-                ext.to_ascii_lowercase().as_str(),
-                "bsa" | "ba2" | "zip" | "pk3"
-            )
-        })
+    source.path.join(key)
 }

@@ -73,6 +73,9 @@ pub struct ConflictIndex {
     /// `sources[i]` corresponds to `conflicts[i]`.
     pub sources: Vec<PathBuf>,
 
+    /// Source metadata in load order.
+    pub(super) source_meta: Vec<SourceMeta>,
+
     /// Per-source conflict info, indexed by load-order position.
     pub conflicts: Vec<SourceConflicts>,
 
@@ -90,11 +93,7 @@ impl ConflictIndex {
     /// Derive conflict information from a full provider-chain index.
     #[must_use]
     pub fn from_layer_index(layer: &LayerIndex) -> Self {
-        let sources: Vec<PathBuf> = layer
-            .sources
-            .iter()
-            .map(|source| source.path.clone())
-            .collect();
+        let sources = layer.sources.clone();
         let mut source_file_counts = vec![0; sources.len()];
         let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
 
@@ -112,11 +111,11 @@ impl ConflictIndex {
     }
 
     fn from_provider_map(
-        sources: Vec<PathBuf>,
+        source_meta: Vec<SourceMeta>,
         source_file_counts: Vec<usize>,
         path_to_sources: AHashMap<PathBuf, Vec<usize>>,
     ) -> Self {
-        let mut conflicts: Vec<SourceConflicts> = (0..sources.len())
+        let mut conflicts: Vec<SourceConflicts> = (0..source_meta.len())
             .map(|_| SourceConflicts::default())
             .collect();
 
@@ -134,8 +133,14 @@ impl ConflictIndex {
             }
         }
 
+        let sources = source_meta
+            .iter()
+            .map(|source| source.path.clone())
+            .collect();
+
         Self {
             sources,
+            source_meta,
             conflicts,
             source_file_counts,
             path_to_sources,

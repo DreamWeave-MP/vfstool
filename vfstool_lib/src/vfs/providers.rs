@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::VFS;
-use crate::{CollapseOptions, SourceKind, SourceMeta, normalize_path};
+use crate::{CollapseOptions, SourceContributionReport, SourceKind, SourceMeta, normalize_path};
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
@@ -96,38 +96,6 @@ pub struct CaseCollision {
 pub struct CaseCollisionReport {
     /// Collisions sorted by key.
     pub collisions: Vec<CaseCollision>,
-}
-
-/// Contribution counts for one source.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct SourceContribution {
-    /// Source index in low-to-high priority order.
-    pub source_index: usize,
-    /// Source metadata.
-    pub source: SourceMeta,
-    /// Number of files from this source that win.
-    pub winning_files: usize,
-    /// Number of files where this source overrides at least one lower-priority provider.
-    pub overriding_files: usize,
-    /// Number of files from this source overridden by later sources.
-    pub overridden_files: usize,
-    /// Number of files unique to this source.
-    pub unique_files: usize,
-    /// Number of files that share a key with another provider.
-    pub duplicate_files: usize,
-    /// Number of loose-file providers from this source.
-    pub loose_files: usize,
-    /// Number of archive-entry providers from this source.
-    pub archive_files: usize,
-}
-
-/// Contribution report for every source.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct SourceContributionReport {
-    /// Per-source contribution rows.
-    pub sources: Vec<SourceContribution>,
 }
 
 /// Structural validation issue for a VFS.
@@ -418,53 +386,7 @@ impl VFS {
     /// Return per-source contribution counts from the provider index.
     #[must_use]
     pub fn source_contributions(&self) -> SourceContributionReport {
-        let mut rows: Vec<_> = self
-            .layer_index
-            .sources
-            .iter()
-            .enumerate()
-            .map(|(source_index, source)| SourceContribution {
-                source_index,
-                source: source.clone(),
-                winning_files: 0,
-                overriding_files: 0,
-                overridden_files: 0,
-                unique_files: 0,
-                duplicate_files: 0,
-                loose_files: 0,
-                archive_files: 0,
-            })
-            .collect();
-        for key in self.layer_index.keys() {
-            let providers = self.provider_records_for_key(&key);
-            let Some(winner) = providers.last() else {
-                continue;
-            };
-            let is_unique = providers.len() == 1;
-            let winner_source_index = winner.source_index;
-            for (position, provider) in providers.iter().enumerate() {
-                let row = &mut rows[provider.source_index];
-                if provider.source.kind == SourceKind::Archive {
-                    row.archive_files += 1;
-                } else {
-                    row.loose_files += 1;
-                }
-                if is_unique {
-                    row.unique_files += 1;
-                } else {
-                    row.duplicate_files += 1;
-                }
-                if provider.source_index == winner_source_index {
-                    row.winning_files += 1;
-                } else {
-                    row.overridden_files += 1;
-                }
-                if position > 0 {
-                    row.overriding_files += 1;
-                }
-            }
-        }
-        SourceContributionReport { sources: rows }
+        self.layer_index.source_contributions()
     }
 
     /// Validate structural consistency of the resolved VFS and provider index.
