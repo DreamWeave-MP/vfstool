@@ -183,21 +183,6 @@ vfstool shadowed [OPTIONS]
 
 ---
 
-#### `which`
-
-Show the winning source for one VFS path and any lower-priority providers.
-
-```bash
-vfstool which [OPTIONS] <PATH>
-```
-
-**Options**:
-
-- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
-- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
-
----
-
 #### Provider reports
 
 Inspect the provider index used by the resolved VFS. These commands are projections over the same VFS provider data; they are not a second conflict system wearing a fake moustache.

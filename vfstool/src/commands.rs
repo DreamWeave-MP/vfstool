@@ -139,24 +139,6 @@ fn handle_remaining(
     write_serialized_vfs(output, format, &tree)
 }
 
-fn handle_which(
-    vfs: &VFS,
-    path: &PathBuf,
-    format: OutputFormat,
-    output: Option<PathBuf>,
-) -> Result<()> {
-    let normalized = normalize_path(&path).into_owned();
-    let Some(result) = vfs.explain(&normalized) else {
-        eprintln!(
-            "{}VFS path '{}' not found.",
-            print::err_prefix(),
-            path.display()
-        );
-        std::process::exit(VFSToolExitCode::FindFailed.into());
-    };
-    write_serialized(output, format, &result)
-}
-
 fn handle_explain(
     vfs: &VFS,
     path: &Path,
@@ -239,14 +221,6 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
         }
         Commands::Validate { format, output } => {
             handle_validate(vfs, format, output)?;
-            Ok(None)
-        }
-        Commands::Which {
-            path,
-            format,
-            output,
-        } => {
-            handle_which(vfs, &path, format, output)?;
             Ok(None)
         }
         other => Ok(Some(other)),
@@ -576,7 +550,6 @@ pub fn run_command(
             | Commands::FindFile { .. }
             | Commands::Remaining { .. }
             | Commands::Run { .. }
-            | Commands::Which { .. }
             | Commands::Explain { .. }
             | Commands::Duplicates { .. }
             | Commands::Archives { .. }

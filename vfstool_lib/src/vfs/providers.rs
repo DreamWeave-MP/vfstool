@@ -53,6 +53,9 @@ pub struct DuplicateReport {
 }
 
 /// Summary for one archive loaded into the VFS.
+///
+/// This report type is available without archive features so callers can use one API surface, but
+/// rows are only populated when archives were actually loaded through `bsa`/`zip` support.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ArchiveInfo {
@@ -67,6 +70,9 @@ pub struct ArchiveInfo {
 }
 
 /// One archive entry known to the VFS.
+///
+/// This report type is available without archive features so callers can use one API surface, but
+/// entries are only populated when archives were actually loaded through `bsa`/`zip` support.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ArchiveEntry {

@@ -60,22 +60,14 @@ pub mod directory_node;
 pub mod experimental;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
-/// Conflict fingerprint knowledge base types and storage.
-///
-/// Unstable compatibility path; prefer [`experimental::kb`].
-#[doc(hidden)]
-pub mod kb;
+mod kb;
 /// Shared glob/path matching utilities.
 pub mod matchers;
 /// Provider-aware mutable VFS that can reveal lower-priority providers after removals.
 pub mod mutable_vfs;
 /// Path normalization and safety helpers.
 pub mod paths;
-/// Declarative policy rules and evaluation against VFS/layer state.
-///
-/// Unstable compatibility path; prefer [`experimental::policy`].
-#[doc(hidden)]
-pub mod policy;
+mod policy;
 /// Report types returned by conflict, shadowed, provider, and diff subcommands.
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.

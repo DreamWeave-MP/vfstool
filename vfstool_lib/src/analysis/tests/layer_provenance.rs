@@ -42,6 +42,28 @@ fn layer_index_includes_unique_provider_keys() {
 }
 
 #[test]
+fn layer_index_skips_unsafe_provider_keys() {
+    let index = LayerIndex::from_file_lists(vec![
+        (
+            SourceMeta {
+                path: PathBuf::from("/one"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("../escape.txt"), PathBuf::from("safe.txt")],
+        ),
+        (
+            SourceMeta {
+                path: PathBuf::from("/two"),
+                kind: SourceKind::LooseDir,
+            },
+            vec![PathBuf::from("/absolute.txt")],
+        ),
+    ]);
+
+    assert_eq!(index.keys(), vec![PathBuf::from("safe.txt")]);
+}
+
+#[test]
 fn source_contributions_count_middle_sources_as_overriding_and_overridden() {
     let index = LayerIndex::from_file_lists(vec![
         (

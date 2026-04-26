@@ -2,12 +2,15 @@
 use super::{
     LayerIndex, LayerProvider, SourceContribution, SourceContributionReport, SourceKind, SourceMeta,
 };
-use crate::{NormalizedKey, SourceId};
+use crate::{NormalizedKey, SourceId, paths::normalized_safe_key};
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
 impl LayerIndex {
-    /// Build a provider index from ordered `(source_meta, normalized_paths)` pairs.
+    /// Build a provider index from ordered `(source_meta, paths)` pairs.
+    ///
+    /// Paths are normalized and unsafe materialization keys (absolute paths, parent traversal,
+    /// prefixes, and empty keys) are skipped. Lower source indices have lower priority.
     pub fn from_file_lists(sources: impl IntoIterator<Item = (SourceMeta, Vec<PathBuf>)>) -> Self {
         let mut source_paths = Vec::new();
         let mut path_to_sources: AHashMap<NormalizedKey, Vec<usize>> = AHashMap::new();
@@ -19,7 +22,10 @@ impl LayerIndex {
             let mut seen = AHashSet::new();
 
             for path in files {
-                let key = NormalizedKey::new(&path);
+                let Some(normalized_path) = normalized_safe_key(&path) else {
+                    continue;
+                };
+                let key = NormalizedKey::new(&normalized_path);
                 if seen.insert(key.clone()) {
                     provider_paths.insert((idx, key.clone()), path);
                     path_to_sources.entry(key).or_default().push(idx);

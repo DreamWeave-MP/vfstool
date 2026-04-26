@@ -2,10 +2,17 @@
 //! Experimental analyzers and policy/solver helpers.
 //!
 //! These modules are public so the workspace can compose and test them, but
-//! they are not promoted as stable 1.0 API. Prefer this namespace over the
-//! hidden top-level compatibility modules.
+//! they are not promoted as stable 1.0 API.
 
-pub use crate::{kb, policy};
+/// Conflict fingerprint knowledge base types and storage.
+pub mod kb {
+    pub use crate::kb::*;
+}
+
+/// Declarative policy rules and evaluation against VFS/layer state.
+pub mod policy {
+    pub use crate::policy::*;
+}
 
 /// Asset-class semantic analyzers and deltas.
 pub mod semantic {

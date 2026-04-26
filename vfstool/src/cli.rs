@@ -140,15 +140,6 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Given a VFS path, show which source wins and which others also have it
-    Which {
-        /// Relative VFS path to query, e.g. `textures/tx_bc_mudcrab.dds`
-        path: PathBuf,
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
     /// Explain the full provider chain for a VFS path
     Explain {
         /// Relative VFS path to query, e.g. `textures/tx_bc_mudcrab.dds`

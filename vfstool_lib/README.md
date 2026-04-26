@@ -172,8 +172,8 @@ scratch directory, not a directory containing user data.
 
 The stable 1.0 API is the top-level re-exported surface from `vfstool_lib`, including `VFS`,
 `VfsFile`, `MutableVfs`, conflict/report types, path helpers, lock/drift types, runner helpers,
-and serialization helpers. Modules marked `#[doc(hidden)]` are intentionally public for internal
-composition and tests, but they are not promoted or stable API.
+and serialization helpers. The `experimental` namespace is public for advanced workflows, but it is
+not promoted or stable API.
 
 ---
 
