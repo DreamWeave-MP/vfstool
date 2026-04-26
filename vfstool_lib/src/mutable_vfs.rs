@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 #[cfg(any(feature = "bsa", feature = "zip"))]
 use crate::archives;
 use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path, paths::normalized_safe_key};

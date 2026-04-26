@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 use super::{
     BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta, SourceKind,
 };

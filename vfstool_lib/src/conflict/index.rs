@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 use crate::{
     LayerIndex, SourceKind, SourceMeta, normalize_path_in_place, paths::normalized_safe_key,
 };

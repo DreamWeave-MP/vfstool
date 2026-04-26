@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 use super::types::{CompiledConstraint, OrderConstraint};
 use crate::{analysis::LayerIndex, matchers::CompiledGlob};
 use ahash::AHashMap;

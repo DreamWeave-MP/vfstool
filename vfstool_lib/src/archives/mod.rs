@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 //! Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
 
 mod enumerate;

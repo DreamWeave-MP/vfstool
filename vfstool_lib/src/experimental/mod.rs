@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 //! Experimental policy/solver helpers.
 //!
 //! These modules are public so the workspace can compose and test them, but

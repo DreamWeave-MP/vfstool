@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
+// SPDX-License-Identifier: GPL-3.0-only
 use super::{
     evaluate::{evaluate_constraints, has_unavoidable_unsat, move_count},
     types::{ConstraintViolation, SolveEvalContext},
