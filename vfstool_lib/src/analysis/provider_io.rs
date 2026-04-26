@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::{ArchiveHashMode, LayerIndex, SourceKind};
-use crate::{ContentDigest, NormalizedKey, VFS, VfsFile, normalize_path};
+use super::{LayerIndex, SourceKind};
+use crate::{
+    ContentDigest, NormalizedKey, VFS, VfsFile, normalize_path, semantic::ArchiveHashMode,
+};
 use ahash::AHashMap;
 use std::{
     io::{self, Read},

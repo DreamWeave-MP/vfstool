@@ -1,4 +1,5 @@
 use super::*;
+use crate::semantic::{AssetClass, SemanticDelta, SemanticOpts};
 
 #[test]
 fn semantic_conflicts_identical_and_different() {
@@ -87,6 +88,7 @@ fn semantic_conflict_omits_key_without_actual_vfs_winner() {
 #[test]
 #[cfg(feature = "zip")]
 fn semantic_conflicts_all_providers_hashes_zip_archives() {
+    use crate::semantic::ArchiveHashMode;
     use std::io::Write as _;
 
     fn write_zip(path: &Path, entry: &str, data: &[u8]) {

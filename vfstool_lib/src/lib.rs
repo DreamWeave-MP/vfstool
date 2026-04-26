@@ -17,7 +17,8 @@
 //!   conflict projection, plus reports such as [`ConflictsReport`], [`ShadowedReport`], and
 //!   [`DiffReport`] for load-order diagnostics.
 //! - [`LayerIndex`], [`VfsLock`], [`DriftReport`], and related types for provenance, lock, and
-//!   drift workflows.
+//!   drift workflows. Semantic conflict reports are available, but are part of the experimental
+//!   analysis surface until their asset-class semantics are promoted deliberately.
 //! - [`run_setup`], [`run_finalize`], [`snapshot_directory`], and [`changed_files`] for
 //!   dump-run-collect workflows.
 //! - [`normalize_path`] and [`normalize_path_in_place`] for matching the library's key semantics.
@@ -44,7 +45,7 @@
 //! [`run_setup`] may create hardlinks by default. Child tools that edit files in place can mutate
 //! original loose source files through those hardlinks. Use copy mode for tools that are not
 //! hardlink-safe. This is not a hidden safety feature; it is a tradeoff with teeth.
-/// Higher-level analysis APIs: provenance, semantic conflicts, lock manifests, and simulations.
+/// Higher-level analysis APIs: provenance, lock manifests, drift, and experimental analyzers.
 pub mod analysis;
 /// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
 #[cfg(any(feature = "bsa", feature = "zip"))]

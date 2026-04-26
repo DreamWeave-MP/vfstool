@@ -14,7 +14,7 @@ pub mod policy {
     pub use crate::policy::*;
 }
 
-/// Asset-class semantic analyzers and deltas.
+/// Asset-class semantic analyzers, deltas, and semantic conflict reports.
 pub mod semantic {
     pub use crate::semantic::*;
 }

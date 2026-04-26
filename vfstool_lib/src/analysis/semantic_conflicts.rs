@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::{
-    LayerIndex, SemanticConflict, SemanticConflictReport, SemanticOpts, SemanticProvider,
-    SemanticRelation,
-};
+use super::LayerIndex;
 use crate::{
     VFS,
-    semantic::{AssetClass, analyze_pair},
+    semantic::{
+        AssetClass, SemanticConflict, SemanticConflictReport, SemanticOpts, SemanticProvider,
+        SemanticRelation, analyze_pair,
+    },
 };
 use ahash::AHashSet;
 use rayon::prelude::*;

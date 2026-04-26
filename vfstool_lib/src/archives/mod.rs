@@ -7,8 +7,7 @@ mod open;
 mod types;
 
 pub use enumerate::{archive_paths, file_map};
-#[cfg(feature = "zip")]
-pub(crate) use keys::is_zip_or_pk3;
+#[cfg(test)]
 pub(crate) use keys::normalized_archive_key;
 pub use open::from_set;
 pub(crate) use open::open_archive;

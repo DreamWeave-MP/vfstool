@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::analysis::SemanticConflictReport;
+use crate::semantic::SemanticConflictReport;
 use std::{io, path::PathBuf};
 
 /// Stable conflict fingerprint key.
@@ -206,8 +206,8 @@ pub fn conflict_fingerprints_from_report(
 mod tests {
     use super::*;
     use crate::{
-        SourceKind,
-        analysis::{SemanticConflict, SemanticProvider, SemanticRelation, SourceMeta},
+        SourceKind, SourceMeta,
+        semantic::{SemanticConflict, SemanticProvider, SemanticRelation},
     };
 
     #[cfg(feature = "serialize")]

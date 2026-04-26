@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::{ArchiveHashMode, LayerIndex, VfsLock, VfsLockEntry};
-use crate::VFS;
+use super::{LayerIndex, VfsLock, VfsLockEntry};
+use crate::{VFS, semantic::ArchiveHashMode};
 use rayon::prelude::*;
 use std::{io, path::Path};
 

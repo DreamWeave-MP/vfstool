@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{
-    NormalizedKey,
-    semantic::{AssetClass, SemanticDelta},
-};
+use crate::NormalizedKey;
 use ahash::AHashMap;
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -117,93 +114,6 @@ pub struct ProvenanceChain {
     pub providers: Vec<ProviderRecord>,
     /// Winning source.
     pub winner: SourceMeta,
-}
-
-/// Per-provider relation to winner content.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-pub enum SemanticRelation {
-    /// Byte-identical to winner.
-    IdenticalToWinner,
-    /// Different bytes from winner.
-    DifferentFromWinner,
-    /// Content unavailable.
-    Unknown,
-}
-
-/// Semantic info for one provider.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-pub struct SemanticProvider {
-    /// Source metadata.
-    pub source: SourceMeta,
-    /// Relation to winning content.
-    pub relation: SemanticRelation,
-    /// Optional content hash.
-    pub hash_blake3: Option<String>,
-    /// Optional size.
-    pub size: Option<u64>,
-    /// Optional semantic delta compared to winner content.
-    pub semantic_delta_to_winner: Option<SemanticDelta>,
-}
-
-/// Semantic conflict for one key with multiple providers.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-pub struct SemanticConflict {
-    /// Normalized key.
-    pub key: PathBuf,
-    /// Winning source.
-    pub winner: SourceMeta,
-    /// Providers in low -> high priority order.
-    pub providers: Vec<SemanticProvider>,
-    /// Inferred asset class.
-    pub asset_class: AssetClass,
-    /// True if every available hash equals the winner hash.
-    pub all_identical: bool,
-    /// Count of unique available content hashes.
-    pub distinct_versions: usize,
-}
-
-/// Semantic conflicts across the load order.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-pub struct SemanticConflictReport {
-    /// One entry per conflicting key.
-    pub entries: Vec<SemanticConflict>,
-}
-
-/// Archive hashing mode for semantic conflict analysis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub enum ArchiveHashMode {
-    /// Do not hash archive providers.
-    Disabled,
-    /// Hash only archive providers that currently win in the VFS.
-    WinnerOnly,
-    /// Hash all archive providers when available.
-    ///
-    /// Current implementation hashes winners and gracefully falls back to
-    /// unknown for non-winning archive providers.
-    AllProviders,
-}
-
-/// Semantic conflict report options.
-#[derive(Debug, Clone, Copy)]
-pub struct SemanticOpts {
-    /// Archive hashing behavior.
-    pub archive_hash_mode: ArchiveHashMode,
-    /// Include semantic analyzer deltas where possible.
-    pub include_semantic_deltas: bool,
-}
-
-impl Default for SemanticOpts {
-    fn default() -> Self {
-        Self {
-            archive_hash_mode: ArchiveHashMode::WinnerOnly,
-            include_semantic_deltas: false,
-        }
-    }
 }
 
 /// Deterministic lock file output.
