@@ -9,6 +9,9 @@
 - **Find Files**: Locate files in the VFS by name, extension, or other criteria.
 - **Serialize the VFS**: Output the VFS structure in JSON, YAML, or TOML formats.
 - **Filter Remaining Files**: Identify files in a directory that are replaced or not replaced by the VFS.
+- **Conflict reports**: Inspect winners, shadowed files, per-source stats, and source-to-source diffs.
+- **Lock/drift checks**: Emit a deterministic winner manifest and compare later VFS state against it.
+- **Run tools against a merged VFS**: Dump a merged tree, execute a child command, then capture new or modified output files.
 
 ---
 
@@ -49,6 +52,7 @@ vfstool [OPTIONS] <COMMAND>
 ### Global Options
 
 - `-c, --config <CONFIG>`: Path to the directory containing `openmw.cfg`. If omitted, the system default location is used.
+  For a config file with a nonstandard name, set `OPENMW_CONFIG` to the absolute file path instead.
 - `-r, --use-relative`: Use relative paths in output.
 - `-h, --help`: Describe usage of the app or any subcommand
 
@@ -204,6 +208,11 @@ Compare files between two configured data directories.
 vfstool diff [OPTIONS] <SOURCE_A> <SOURCE_B>
 ```
 
+**Arguments**:
+
+- `<SOURCE_A>`: First configured data directory to compare.
+- `<SOURCE_B>`: Second configured data directory to compare.
+
 **Options**:
 
 - `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
@@ -227,6 +236,8 @@ vfstool run [OPTIONS] <MERGED_DIR> -- <COMMAND>...
 - `--working-dir <WORKING_DIR>`: Working directory for the child process.
 
 `{}` in child command arguments is replaced with the merged directory path. Deletions made by the child command are not captured.
+
+By default, `run` uses hardlinks when dumping loose files into the merged directory. This avoids duplicating data, but child tools that modify files in place may modify the original loose source files through those hardlinks. Use `--copy` for tools that are not hardlink-safe. No, that is not a theoretical footgun. It is just how hardlinks work.
 
 ---
 

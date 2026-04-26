@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+#[cfg(any(feature = "bsa", feature = "zip"))]
+use crate::archives;
 use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path, paths::normalized_safe_key};
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
@@ -51,6 +53,89 @@ impl MutableVfs {
         Ok(mutable)
     }
 
+    /// Build a provider-aware VFS from ordered loose directories and archive names.
+    ///
+    /// Archives are resolved through the loose directory files, matching `OpenMW`'s archive list
+    /// behavior. Archive providers are inserted at lower priority than every loose directory;
+    /// later loose directories still override earlier loose directories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a directory traversal entry cannot be read.
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    pub fn from_directories_with_archives(
+        search_dirs: impl IntoIterator<Item = impl AsRef<Path>>,
+        archive_list: &[&str],
+    ) -> std::io::Result<Self> {
+        let mut loose_lookup = AHashMap::new();
+        let mut directory_entries = Vec::new();
+
+        for dir in search_dirs {
+            let dir_entries = Self::directory_providers(dir)?;
+            loose_lookup.extend(
+                dir_entries
+                    .iter()
+                    .map(|(key, provider)| (key.clone(), provider.file.clone())),
+            );
+            directory_entries.push(dir_entries);
+        }
+
+        let mut mutable = Self::new();
+        let archive_handles = archives::from_set(&loose_lookup, archive_list);
+        for archive in &archive_handles {
+            let source = SourceMeta {
+                path: archive.path().to_path_buf(),
+                kind: SourceKind::Archive,
+            };
+            for (key, file) in archives::file_map(&vec![std::sync::Arc::clone(archive)]) {
+                mutable.push_provider(
+                    key,
+                    VfsProvider {
+                        source: source.clone(),
+                        file,
+                    },
+                );
+            }
+        }
+
+        for entries in directory_entries {
+            for (key, provider) in entries {
+                mutable.push_provider(key, provider);
+            }
+        }
+
+        Ok(mutable)
+    }
+
+    /// Insert every file from one archive as a higher-priority provider.
+    ///
+    /// This is useful for manual provider stacks. For `OpenMW`-style priority, prefer
+    /// [`Self::from_directories_with_archives`], which puts archive providers below loose files.
+    ///
+    /// Returns `false` and leaves the VFS unchanged when `archive_path` cannot be opened as a
+    /// supported archive.
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    pub fn push_archive<P: AsRef<Path>>(&mut self, archive_path: P) -> bool {
+        let Some(archive) = archives::open_archive(archive_path.as_ref()) else {
+            return false;
+        };
+
+        let source = SourceMeta {
+            path: archive.path().to_path_buf(),
+            kind: SourceKind::Archive,
+        };
+        for (key, file) in archives::file_map(&vec![archive]) {
+            self.push_provider(
+                key,
+                VfsProvider {
+                    source: source.clone(),
+                    file,
+                },
+            );
+        }
+        true
+    }
+
     /// Insert a provider at the highest priority for `key`.
     ///
     /// Returns `false` and leaves the VFS unchanged when `key` is not a safe relative VFS path.
@@ -68,11 +153,22 @@ impl MutableVfs {
     ///
     /// Returns an error if directory traversal fails.
     pub fn push_directory<P: AsRef<Path>>(&mut self, root: P) -> std::io::Result<()> {
+        for (key, provider) in Self::directory_providers(root)? {
+            self.push_provider(key, provider);
+        }
+
+        Ok(())
+    }
+
+    fn directory_providers<P: AsRef<Path>>(
+        root: P,
+    ) -> std::io::Result<Vec<(PathBuf, VfsProvider)>> {
         let root = root.as_ref();
         let source = SourceMeta {
             path: root.to_path_buf(),
             kind: SourceKind::LooseDir,
         };
+        let mut providers = Vec::new();
 
         for entry in WalkDir::new(root).follow_links(true) {
             let entry = entry.map_err(std::io::Error::other)?;
@@ -84,22 +180,25 @@ impl MutableVfs {
                 .path()
                 .strip_prefix(root)
                 .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
-            if !self.push_provider(
-                &key,
-                VfsProvider {
-                    source: source.clone(),
-                    file: VfsFile::from(entry.path()),
-                },
-            ) {
+            let Some(key) = normalized_safe_key(&key) else {
                 eprintln!(
                     "vfstool: skipping unsafe VFS path '{}' from {}",
                     key.display(),
                     entry.path().display()
                 );
-            }
+                continue;
+            };
+
+            providers.push((
+                key,
+                VfsProvider {
+                    source: source.clone(),
+                    file: VfsFile::from(entry.path()),
+                },
+            ));
         }
 
-        Ok(())
+        Ok(providers)
     }
 
     /// Materialize current winners into a normal [`VFS`].
@@ -198,6 +297,8 @@ impl MutableVfs {
 mod tests {
     use super::*;
     use std::fs;
+    #[cfg(feature = "zip")]
+    use std::io::Write;
 
     struct TempDir(PathBuf);
 
@@ -356,5 +457,46 @@ mod tests {
             high_file
         );
         assert_eq!(mutable.providers_for("shared.txt").unwrap().len(), 2);
+    }
+
+    #[test]
+    #[cfg(feature = "zip")]
+    fn archives_are_lower_priority_than_loose_files() {
+        let data = TempDir::new("mutable_vfs_archives_lower_priority");
+        let archive_path = data.path().join("base.zip");
+        let archive_file = fs::File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(archive_file);
+        writer
+            .start_file("textures/foo.dds", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(b"archive").unwrap();
+        writer.finish().unwrap();
+        let loose_file = data.write("textures/foo.dds", b"loose");
+
+        let mut mutable =
+            MutableVfs::from_directories_with_archives([data.path()], &["base.zip"]).unwrap();
+
+        let providers = mutable.providers_for("textures/foo.dds").unwrap();
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0].source.kind, SourceKind::Archive);
+        assert_eq!(providers[1].source.kind, SourceKind::LooseDir);
+        assert_eq!(
+            mutable
+                .to_vfs()
+                .get_file("textures/foo.dds")
+                .unwrap()
+                .path(),
+            loose_file
+        );
+
+        let removed = mutable.remove_winner("textures/foo.dds").unwrap();
+        assert_eq!(removed.source.kind, SourceKind::LooseDir);
+        assert!(
+            mutable
+                .to_vfs()
+                .get_file("textures/foo.dds")
+                .unwrap()
+                .is_archive()
+        );
     }
 }

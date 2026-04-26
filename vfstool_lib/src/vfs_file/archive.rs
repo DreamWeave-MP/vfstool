@@ -11,9 +11,12 @@ use ba2::{
 
 use std::{
     io::{self, Cursor, Read},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::Arc,
 };
+
+#[cfg(feature = "bsa")]
+use std::path::Path;
 
 use crate::archives::{StoredArchive, TypedArchive};
 

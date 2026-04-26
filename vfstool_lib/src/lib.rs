@@ -1,6 +1,48 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #![deny(missing_docs)]
 //! Virtual file system library for `OpenMW` modding tools.
+//!
+//! `vfstool_lib` builds a resolved view of an `OpenMW`-style virtual file system from ordered
+//! data directories and, when archive features are enabled, BSA/BA2/ZIP/PK3 archives. Paths are
+//! normalized to lowercase keys with `/` separators. Directory priority follows `OpenMW`'s
+//! `data=` semantics: later loose directories win, and loose files override archive entries.
+//!
+//! # Stable 1.0 surface
+//!
+//! Prefer the top-level re-exports for application code:
+//!
+//! - [`VFS`] for the resolved winner map and materialization helpers.
+//! - [`MutableVfs`] and [`VfsProvider`] when provider stacks must survive winner removal.
+//! - [`ConflictIndex`] plus report types such as [`ConflictsReport`], [`ShadowedReport`],
+//!   [`WhichResult`], [`StatsReport`], and [`DiffReport`] for load-order diagnostics.
+//! - [`LayerIndex`], [`VfsLock`], [`DriftReport`], and related types for provenance, lock, and
+//!   drift workflows.
+//! - [`run_setup`], [`run_finalize`], [`snapshot_directory`], and [`changed_files`] for
+//!   dump-run-collect workflows.
+//! - [`normalize_path`] and [`normalize_path_in_place`] for matching the library's key semantics.
+//!
+//! Modules marked `#[doc(hidden)]` remain public so the workspace can compose and test
+//! experimental analyzers, policies, and solver code. They are not part of the promoted 1.0 API.
+//! Depending on them is possible, but it is buying the sharp end of the rake intentionally.
+//!
+//! # Mutation model
+//!
+//! [`VFS`] mutators operate on the materialized winner map only. Removing a key removes it from
+//! the resolved view; it does not reveal a lower-priority provider. Use [`MutableVfs`] if removal
+//! should expose the next provider in the low-to-high priority stack.
+//!
+//! # Feature flags
+//!
+//! - `bsa`: BSA/BA2 archive support.
+//! - `zip`: ZIP/PK3 archive support.
+//! - `serialize`: JSON/YAML/TOML serialization and structured JSON/TOML semantic comparison.
+//!   Without `serialize`, JSON and TOML semantic deltas are reported as unknown rather than parsed.
+//!
+//! # Runner warning
+//!
+//! [`run_setup`] may create hardlinks by default. Child tools that edit files in place can mutate
+//! original loose source files through those hardlinks. Use copy mode for tools that are not
+//! hardlink-safe. This is not a hidden safety feature; it is a tradeoff with teeth.
 /// Higher-level analysis APIs: provenance, semantic conflicts, lock manifests, and simulations.
 pub mod analysis;
 /// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).

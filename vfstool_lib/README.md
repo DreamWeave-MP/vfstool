@@ -14,7 +14,7 @@
   without it those formats are reported as unknown semantic deltas.
 - **Parallel processing**: Directory walks and hash operations use `rayon`.
 - **MO2-style runner support**: `run_setup` / `run_finalize` for dump-run-collect workflows.
-- **Mutable views**: Winner-only mutation on `VFS`, plus provider-aware mutation with `MutableVfs`.
+- **Mutable views**: Winner-only mutation on `VFS`, plus provider-aware loose/archive mutation with `MutableVfs`.
 
 ---
 
@@ -102,7 +102,10 @@ assert!(removed.is_some());
 ```
 
 Use `MutableVfs` when provider stacks matter. Providers are stored low-to-high priority, so removing
-the current winner reveals the next lower-priority provider if one exists.
+the current winner reveals the next lower-priority provider if one exists. With the `bsa` or `zip`
+feature enabled, `MutableVfs::from_directories_with_archives` resolves archive names through the
+loose directory files and inserts archive providers below all loose providers, matching OpenMW's
+loose-over-archive rule.
 
 ```rust
 use vfstool_lib::MutableVfs;
@@ -110,6 +113,20 @@ use vfstool_lib::MutableVfs;
 let mut mutable = MutableVfs::from_directories(["/mods/base", "/mods/high"])?;
 mutable.remove_winner("textures/foo.dds");
 let resolved = mutable.to_vfs();
+# Ok::<(), std::io::Error>(())
+```
+
+```rust,no_run
+#[cfg(any(feature = "bsa", feature = "zip"))]
+# {
+use vfstool_lib::MutableVfs;
+
+let mutable = MutableVfs::from_directories_with_archives(
+    ["/games/Morrowind/Data Files"],
+    &["Morrowind.bsa"],
+)?;
+# let _ = mutable;
+# }
 # Ok::<(), std::io::Error>(())
 ```
 
