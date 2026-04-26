@@ -16,16 +16,15 @@
 //! - [`LayerIndex`] as the canonical provider-chain index and [`ConflictIndex`] as its derived
 //!   conflict projection, plus reports such as [`ConflictsReport`], [`ShadowedReport`], and
 //!   [`DiffReport`] for load-order diagnostics.
-//! - [`LayerIndex`], [`VfsLock`], [`DriftReport`], and related types for provenance, lock, and
-//!   drift workflows. Semantic conflict reports are available, but are part of the experimental
-//!   analysis surface until their asset-class semantics are promoted deliberately.
+//! - [`LayerIndex`], [`VfsLock`], [`DriftReport`], and related types for provenance, lock, drift,
+//!   and semantic conflict workflows.
 //! - [`run_setup`], [`run_finalize`], [`snapshot_directory`], and [`changed_files`] for
 //!   dump-run-collect workflows.
 //! - [`normalize_path`] and [`normalize_path_in_place`] for matching the library's key semantics.
 //!
-//! [`experimental`] exposes analyzers, policy helpers, solver code, and knowledge-base helpers that
-//! are intentionally unstable. Depending on them is possible, but it is buying the sharp end of the
-//! rake intentionally.
+//! [`experimental`] exposes policy helpers, solver code, and knowledge-base helpers that are
+//! intentionally unstable. Depending on them is possible, but it is buying the sharp end of the rake
+//! intentionally.
 //!
 //! # Mutation model
 //!
@@ -45,7 +44,7 @@
 //! [`run_setup`] may create hardlinks by default. Child tools that edit files in place can mutate
 //! original loose source files through those hardlinks. Use copy mode for tools that are not
 //! hardlink-safe. This is not a hidden safety feature; it is a tradeoff with teeth.
-/// Higher-level analysis APIs: provenance, lock manifests, drift, and experimental analyzers.
+/// Higher-level analysis APIs: provenance, lock manifests, drift, and semantic conflict reports.
 pub mod analysis;
 /// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
 #[cfg(any(feature = "bsa", feature = "zip"))]
@@ -54,7 +53,7 @@ pub mod archives;
 pub mod conflict;
 /// Tree node used for display and serialization of VFS directory structure.
 pub mod directory_node;
-/// Experimental analyzers, policies, solver, and knowledge-base helpers.
+/// Experimental policies, solver, and knowledge-base helpers.
 ///
 /// This namespace is public but unstable: useful for composing advanced workflows, not promoted as
 /// frozen 1.0 API.
@@ -73,7 +72,8 @@ mod policy;
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
-mod semantic;
+/// Semantic analyzers and semantic conflict report types.
+pub mod semantic;
 mod solve;
 /// Core [`VFS`] struct and directory-construction logic.
 pub mod vfs;
@@ -98,6 +98,10 @@ pub use run::{
     MetadataSnapshot, Snapshot, SnapshotEntry, changed_files, changed_files_metadata, run_finalize,
     run_finalize_tracked, run_setup, run_setup_tracked, snapshot_directory,
     snapshot_directory_metadata,
+};
+pub use semantic::{
+    ArchiveHashMode, AssetClass, SemanticConflict, SemanticConflictReport, SemanticDelta,
+    SemanticOpts, SemanticProvider, SemanticRelation, analyze_pair,
 };
 pub use vfs::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DirectoryDiff, DuplicateEntry,

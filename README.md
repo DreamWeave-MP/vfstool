@@ -286,6 +286,22 @@ vfstool drift [OPTIONS] <LOCK_FILE>
 
 ---
 
+## Exit codes
+
+`vfstool` uses nonzero exit codes for machine-readable failure cases:
+
+| Code | Meaning |
+|------|---------|
+| `1` | `find-file` did not find the requested VFS path |
+| `2` | `find-file --only_physical` found the path only inside an archive |
+| `4` | `drift --fail-on-drift` detected drift |
+| `6` | invalid regular expression |
+| `7` | failed to load `openmw.cfg` |
+| `8` | invalid input, such as an unknown source path |
+| `9` | runtime failure while reading, writing, materializing, or running a child command |
+
+---
+
 ## Examples
 
 ### Collapse the VFS into a directory with symlinks
@@ -332,6 +348,37 @@ vfstool remaining -r /path/to/filter
 
 ```bash
 vfstool run /tmp/merged -- some-tool {} output.txt
+```
+
+### Explain why a file resolves to its winner
+
+```bash
+vfstool explain textures/tx_bc_mudcrab.dds
+```
+
+### See which sources contribute winners or get overridden
+
+```bash
+vfstool contributions -f json -o contributions.json
+```
+
+### Validate the provider index before materializing
+
+```bash
+vfstool validate
+```
+
+### Preview a collapse without writing files
+
+```bash
+vfstool collapse --dry-run -f yaml /tmp/merged-preview
+```
+
+### Lock current winners and fail later if they drift
+
+```bash
+vfstool lock -o vfs-lock.yaml
+vfstool drift --fail-on-drift vfs-lock.yaml
 ```
 
 ---

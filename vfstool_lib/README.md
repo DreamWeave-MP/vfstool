@@ -31,7 +31,7 @@ With archive and serialization support:
 
 ```toml
 [dependencies]
-vfstool_lib = { version = "1.0", features = ["bsa", "serialize"] }
+vfstool_lib = { version = "1.0", features = ["bsa", "zip", "serialize"] }
 ```
 
 ---
@@ -139,6 +139,12 @@ let resolved = mutable.to_vfs();
 # Ok::<(), std::io::Error>(())
 ```
 
+`MutableVfs::to_vfs()` converts the mutable provider stack into a resolved winner view. It preserves
+the current winners, not the full mutable provider history. If later removal should reveal lower
+priority providers, keep using `MutableVfs`; converting to `VFS` is the point where that behaviour is
+intentionally flattened. A conversion that says it preserves stacks while quietly dropping them would
+be worse, so this one says what it does.
+
 ```rust,no_run
 #[cfg(any(feature = "bsa", feature = "zip"))]
 # {
@@ -171,9 +177,12 @@ scratch directory, not a directory containing user data.
 ## 1.0 API surface
 
 The stable 1.0 API is the top-level re-exported surface from `vfstool_lib`, including `VFS`,
-`VfsFile`, `MutableVfs`, conflict/report types, path helpers, lock/drift types, runner helpers,
-and serialization helpers. The `experimental` namespace is public for advanced workflows, but it is
-not promoted or stable API.
+`VfsFile`, `MutableVfs`, conflict/report types, semantic analyzer/report types, path helpers,
+lock/drift types, runner helpers, and serialization helpers. The `semantic` module is public and
+stable, but still deliberately modest: it can classify JSON/TOML/INI/text-ish differences, not solve
+every mod conflict in existence. JSON and TOML structural comparison require the `serialize` feature;
+without it those deltas are unknown rather than parsed. The `experimental` namespace remains public
+for policy, solver, and knowledge-base workflows, but it is not promoted or stable API.
 
 ---
 

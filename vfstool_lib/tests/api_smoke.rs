@@ -8,7 +8,7 @@ use std::{
 use vfstool_lib::{
     CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, MutableVfs, NormalizedKey, SourceId,
     SourceKind, SourceMeta, VFS, VfsFile, VfsProvider, changed_files, experimental, normalize_path,
-    normalize_path_in_place, path_glob_matches,
+    normalize_path_in_place, path_glob_matches, semantic,
 };
 
 #[test]
@@ -82,13 +82,12 @@ fn root_reexports_remain_usable() {
 }
 
 #[test]
-fn hidden_public_modules_remain_reachable() {
-    let (asset_class, semantic_delta) =
-        experimental::semantic::analyze_pair(Path::new("foo.txt"), b"a", b"a");
-    assert_eq!(asset_class, experimental::semantic::AssetClass::Text);
+fn public_and_experimental_modules_remain_reachable() {
+    let (asset_class, semantic_delta) = semantic::analyze_pair(Path::new("foo.txt"), b"a", b"a");
+    assert_eq!(asset_class, semantic::AssetClass::Text);
     assert!(matches!(
         semantic_delta,
-        experimental::semantic::SemanticDelta::NoOpEquivalent
+        semantic::SemanticDelta::NoOpEquivalent
     ));
 
     let policy = experimental::policy::Policy {

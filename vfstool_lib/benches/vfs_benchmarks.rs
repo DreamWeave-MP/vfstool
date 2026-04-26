@@ -12,7 +12,7 @@ use vfstool_lib::{
 };
 
 #[cfg(feature = "zip")]
-use vfstool_lib::experimental::semantic::{ArchiveHashMode, SemanticOpts};
+use vfstool_lib::{ArchiveHashMode, SemanticOpts};
 
 #[cfg(feature = "zip")]
 use std::io::Write as IoWrite;
