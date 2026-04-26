@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Report types returned by the conflict, shadowed, which, stats, and diff subcommands.
+//! Report types returned by the conflict, shadowed, provider, and diff subcommands.
 use std::path::PathBuf;
 
 // --- Collapse ---
@@ -37,19 +37,19 @@ pub struct ConflictSourceEntry {
 
 // --- Shadowed ---
 
-/// Report listing every source that has at least one file overridden by a higher-priority source.
+/// Report listing sources whose files are entirely overridden by higher-priority sources.
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ShadowedReport {
-    /// Sources with one or more shadowed (overridden) files.
+    /// Fully shadowed sources.
     pub sources: Vec<ShadowedSource>,
 }
 
-/// A single source whose files are (partially or fully) shadowed by higher-priority sources.
+/// A single source whose files are all shadowed by higher-priority sources.
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ShadowedSource {
     /// Absolute path to the source directory or archive.
     pub path: PathBuf,
-    /// VFS paths of files in this source that are overridden by a later source.
+    /// VFS paths of all files in this source, each overridden by a later source.
     pub shadowed_files: Vec<PathBuf>,
 }
 

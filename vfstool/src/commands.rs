@@ -5,9 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use vfstool_lib::{
-    CollapseOptions, normalize_path, run_finalize_tracked, run_setup_tracked, vfs::VFS,
-};
+use vfstool_lib::{CollapseOptions, VFS, normalize_path, run_finalize_tracked, run_setup_tracked};
 
 use crate::{
     cli::{Commands, OutputFormat},
@@ -251,17 +249,8 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
             handle_which(vfs, &path, format, output)?;
             Ok(None)
         }
-        Commands::Stats { format, output } => {
-            handle_stats(vfs, format, output)?;
-            Ok(None)
-        }
         other => Ok(Some(other)),
     }
-}
-
-fn handle_stats(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
-    let report = vfs.source_contributions();
-    write_serialized(output, format, &report)
 }
 
 pub struct RunParams<'a> {
@@ -374,7 +363,7 @@ fn handle_shadowed(
 ) -> Result<()> {
     let (_, ci) = build_conflict_index(resolved_config_dir);
     let report = ci.shadowed_report(use_relative);
-    eprintln!("{} sources have fully shadowed files", report.sources.len());
+    eprintln!("{} sources are fully shadowed", report.sources.len());
     write_serialized(output, format, &report)
 }
 
@@ -588,7 +577,6 @@ pub fn run_command(
             | Commands::Remaining { .. }
             | Commands::Run { .. }
             | Commands::Which { .. }
-            | Commands::Stats { .. }
             | Commands::Explain { .. }
             | Commands::Duplicates { .. }
             | Commands::Archives { .. }

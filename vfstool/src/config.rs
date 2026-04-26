@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use std::{fs, io, path::PathBuf};
 
-use vfstool_lib::{ConflictIndex, LayerIndex, vfs::VFS};
+use vfstool_lib::{ConflictIndex, LayerIndex, VFS};
 
 use crate::exit::VFSToolExitCode;
 

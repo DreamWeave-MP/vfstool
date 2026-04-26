@@ -9,7 +9,7 @@
 - **Find Files**: Locate files in the VFS by name, extension, or other criteria.
 - **Serialize the VFS**: Output the VFS structure in JSON, YAML, or TOML formats.
 - **Filter Remaining Files**: Identify files in a directory that are replaced or not replaced by the VFS.
-- **Conflict and provider reports**: Inspect winners, shadowed files, duplicates, archives, per-source stats, and source-to-source diffs.
+- **Conflict and provider reports**: Inspect winners, fully shadowed sources, duplicates, archives, per-source contributions, and source-to-source diffs.
 - **Lock/drift checks**: Emit a deterministic winner manifest and compare later VFS state against it.
 - **Run tools against a merged VFS**: Dump a merged tree, execute a child command, then capture new or modified output files.
 
@@ -170,7 +170,7 @@ vfstool conflicts [OPTIONS]
 
 #### `shadowed`
 
-Report files overridden by higher-priority sources.
+Report sources whose files are all overridden by higher-priority sources.
 
 ```bash
 vfstool shadowed [OPTIONS]
@@ -221,24 +221,6 @@ vfstool validate [OPTIONS]
 - `case-collisions`: Report distinct original path spellings that normalize to the same VFS key.
 - `contributions`: Report per-source provider counts, wins, overridden files, unique files, and duplicates.
 - `validate`: Report missing loose winners, file/directory materialization conflicts, and case collisions.
-
-**Options**:
-
-- `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
-- `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
-
----
-
-#### `stats`
-
-Show per-source winner, override, and overridden counts.
-
-```bash
-vfstool stats [OPTIONS]
-```
-
-`stats` is the legacy name for the same per-source provider contribution report exposed by
-`contributions`.
 
 **Options**:
 

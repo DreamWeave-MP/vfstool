@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use vfstool_lib::{SerializeType, VfsLock, serialize_value, vfs::VFS};
+use vfstool_lib::{SerializeType, VFS, VfsLock, serialize_value};
 
 use crate::cli::OutputFormat;
 

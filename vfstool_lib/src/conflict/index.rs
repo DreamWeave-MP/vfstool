@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{LayerIndex, SourceKind, SourceMeta, normalize_path_in_place};
+use crate::{
+    LayerIndex, SourceKind, SourceMeta, normalize_path_in_place, paths::normalized_safe_key,
+};
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
@@ -147,21 +149,20 @@ impl ConflictIndex {
         }
     }
 
-    /// Walk a single directory and return normalized relative paths.
+    /// Walk a single directory and return normalized, materialization-safe relative paths.
     pub(super) fn walk_dir(dir: &Path) -> Vec<PathBuf> {
         WalkDir::new(dir)
             .follow_links(true)
             .into_iter()
             .filter_map(|e| e.ok().filter(|e| e.file_type().is_file()))
             .par_bridge()
-            .map(|entry| {
-                let mut normalized = entry
+            .filter_map(|entry| {
+                let relative = entry
                     .path()
                     .strip_prefix(dir)
                     .expect("entry must be prefixed by scan dir")
                     .to_path_buf();
-                normalize_path_in_place(&mut normalized);
-                normalized
+                normalized_safe_key(&relative)
             })
             .collect()
     }

@@ -149,7 +149,7 @@ fn malformed_openmw_config_exits_seven() {
     let output = Command::new(vfstool_bin())
         .arg("--config")
         .arg(&config_dir)
-        .arg("stats")
+        .arg("contributions")
         .output()
         .expect("vfstool command should spawn");
     let _ = fs::remove_dir_all(&root);

@@ -133,7 +133,7 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Show files that are overridden by higher-priority sources
+    /// Show sources whose files are entirely overridden by higher-priority sources
     Shadowed {
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
@@ -197,13 +197,6 @@ pub enum Commands {
     },
     /// Validate the resolved VFS and provider index
     Validate {
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Per-source statistics: wins, overrides, overridden file counts
-    Stats {
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]

@@ -22,9 +22,9 @@
 //!   dump-run-collect workflows.
 //! - [`normalize_path`] and [`normalize_path_in_place`] for matching the library's key semantics.
 //!
-//! Modules marked `#[doc(hidden)]` remain public so the workspace can compose and test
-//! experimental analyzers, policies, and solver code. They are not part of the promoted 1.0 API.
-//! Depending on them is possible, but it is buying the sharp end of the rake intentionally.
+//! [`experimental`] exposes analyzers, policy helpers, solver code, and knowledge-base helpers that
+//! are intentionally unstable. Depending on them is possible, but it is buying the sharp end of the
+//! rake intentionally.
 //!
 //! # Mutation model
 //!
@@ -55,10 +55,8 @@ pub mod conflict;
 pub mod directory_node;
 /// Experimental analyzers, policies, solver, and knowledge-base helpers.
 ///
-/// Prefer this namespace for unstable helpers. The hidden top-level modules below remain public
-/// for compatibility, but they are not promoted 1.0 API. Yes, hidden public modules are still
-/// public; pretending otherwise would just be documentation cosplay.
-#[doc(hidden)]
+/// This namespace is public but unstable: useful for composing advanced workflows, not promoted as
+/// frozen 1.0 API.
 pub mod experimental;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
@@ -78,7 +76,7 @@ pub mod paths;
 /// Unstable compatibility path; prefer [`experimental::policy`].
 #[doc(hidden)]
 pub mod policy;
-/// Report types returned by conflict, shadowed, which, stats, and diff subcommands.
+/// Report types returned by conflict, shadowed, provider, and diff subcommands.
 pub mod reports;
 /// Utilities for the MO2-style `run` workflow: dump, snapshot, and finalize.
 pub mod run;
