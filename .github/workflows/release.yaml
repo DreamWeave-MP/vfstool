@@ -13,7 +13,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v9
+    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v14
     secrets: inherit
     with:
       crate_names: '["vfstool_lib"]'
@@ -26,7 +26,7 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v9
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v14
     secrets: inherit
     with:
       binary_names: '["vfstool"]'
