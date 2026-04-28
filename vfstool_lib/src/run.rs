@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 /// Map from relative file path to its BLAKE3 digest, used to detect changes after a subprocess run.
 pub type Snapshot = HashMap<PathBuf, [u8; 32]>;
 
-/// One baseline row for metadata-prefiltered run change detection.
+/// One baseline row for tracked run change detection.
 #[derive(Debug, Clone)]
 pub struct SnapshotEntry {
     /// BLAKE3 digest captured at baseline time.
@@ -24,7 +24,7 @@ pub struct SnapshotEntry {
     pub modified: Option<SystemTime>,
 }
 
-/// Snapshot with both content hashes and cheap metadata for prefiltering changed files.
+/// Snapshot with both content hashes and cheap metadata for future policy decisions.
 pub type MetadataSnapshot = HashMap<PathBuf, SnapshotEntry>;
 
 /// Dump the VFS to `merged_dir` and capture a baseline snapshot.
@@ -59,10 +59,11 @@ pub fn run_setup(
     Ok((count, baseline))
 }
 
-/// Dump the VFS to `merged_dir` and capture a metadata-prefiltering baseline snapshot.
+/// Dump the VFS to `merged_dir` and capture a metadata-bearing baseline snapshot.
 ///
-/// This is the faster variant used by the CLI `run` command. It still records content hashes at
-/// baseline time, but later finalization hashes only files whose size or modification time changed.
+/// This is the variant used by the CLI `run` command. It records content hashes at baseline time
+/// and finalization still hashes existing files for correctness; metadata is retained so callers can
+/// make explicit policy choices later without changing the snapshot shape.
 ///
 /// # Errors
 ///
@@ -112,8 +113,9 @@ pub fn run_finalize(
 
 /// Copy files changed since `baseline` from `merged_dir` into `output_dir`.
 ///
-/// Uses file metadata as a prefilter and hashes only new files or files whose metadata differs
-/// from the baseline. Deletions are still ignored.
+/// Hashes existing files for correctness and reports new files immediately. Deletions are still
+/// ignored. The metadata in [`MetadataSnapshot`] is deliberately not trusted as a prefilter because
+/// child tools can rewrite in place while preserving coarse timestamps.
 ///
 /// # Errors
 ///

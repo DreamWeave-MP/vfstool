@@ -3,7 +3,10 @@ use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
     normalize_host_path,
-    paths::{key_is_at_or_under_prefix, key_to_path_buf_lossy, key_to_string_lossy},
+    paths::{
+        key_is_at_or_under_prefix, key_to_path_buf_bytes, key_to_path_buf_lossy,
+        key_to_string_lossy,
+    },
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -517,7 +520,7 @@ impl VFS {
             .collect();
         for key in keys {
             let file = &self.file_map[&key];
-            let key_path = key_to_path_buf_lossy(&key);
+            let key_path = key_to_path_buf_bytes(&key);
             let target = dest.join(&key_path);
             if conflicting_files.contains(&key) {
                 issues.push(MaterializationIssue::FileDirectoryConflict {

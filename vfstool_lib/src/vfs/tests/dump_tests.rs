@@ -72,6 +72,48 @@ fn dump_creates_subdirectories() {
 }
 
 #[test]
+#[cfg(unix)]
+fn materialization_preserves_non_utf8_key_bytes() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let file_name = OsString::from_vec(vec![b'f', 0xff, b'o', b'.', b'd', b'd', b's']);
+    let src = TempDir::new("dump_non_utf8_src");
+    fs::write(src.path().join(&file_name), b"bytes").unwrap();
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let dump_dest = TempDir::new("dump_non_utf8_dest");
+    assert_eq!(vfs.dump_to_directory(dump_dest.path(), false).unwrap(), 1);
+    assert_eq!(
+        fs::read(dump_dest.path().join(&file_name)).unwrap(),
+        b"bytes"
+    );
+
+    let collapse_dest = TempDir::new("collapse_non_utf8_dest");
+    vfs.collapse_into(
+        collapse_dest.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        fs::read(collapse_dest.path().join(&file_name)).unwrap(),
+        b"bytes"
+    );
+
+    let extract_dest = TempDir::new("extract_non_utf8_dest");
+    let extracted = vfs
+        .extract_file(&PathBuf::from(file_name.clone()), extract_dest.path())
+        .unwrap()
+        .unwrap();
+    assert_eq!(extracted, extract_dest.path().join(&file_name));
+    assert_eq!(fs::read(extracted).unwrap(), b"bytes");
+}
+
+#[test]
 fn dump_count_accurate() {
     let src = TempDir::new("dump_count_src");
     src.write("a.txt", b"");

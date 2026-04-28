@@ -112,7 +112,13 @@ impl LayerIndex {
         for provider in &provider_chain {
             let src = provider.source.clone();
             let current_bytes = if opts.include_semantic_deltas {
-                self.read_provider_bytes(vfs, provider, hash_cache, opts.archive_hash_mode)?
+                if provider.source_index == winner_provider.source_index
+                    && provider.provider_index == winner_provider.provider_index
+                {
+                    winner_bytes.clone()
+                } else {
+                    self.read_provider_bytes(vfs, provider, hash_cache, opts.archive_hash_mode)?
+                }
             } else {
                 None
             };

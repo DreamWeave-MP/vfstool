@@ -5,6 +5,7 @@ use ahash::AHashMap;
 use std::{
     io::{self, Read},
     path::PathBuf,
+    sync::Arc,
 };
 
 #[derive(Clone)]
@@ -19,9 +20,12 @@ impl ContentFingerprint {
     }
 }
 
+type ProviderCacheKey = (usize, usize, NormalizedPath);
+type CachedProviderBytes = Option<Arc<[u8]>>;
+
 pub(super) struct ProviderIoCache {
-    fingerprints: AHashMap<(usize, usize, NormalizedPath), Option<ContentFingerprint>>,
-    bytes: AHashMap<(usize, usize, NormalizedPath), Option<Vec<u8>>>,
+    fingerprints: AHashMap<ProviderCacheKey, Option<ContentFingerprint>>,
+    bytes: AHashMap<ProviderCacheKey, CachedProviderBytes>,
 }
 
 impl ProviderIoCache {
@@ -84,7 +88,7 @@ impl LayerIndex {
         provider: &LayerProvider,
         cache: &mut ProviderIoCache,
         archive_hash_mode: ArchiveHashMode,
-    ) -> io::Result<Option<Vec<u8>>> {
+    ) -> io::Result<Option<Arc<[u8]>>> {
         let key = provider.key.to_vfs_key();
         let cache_key = (provider.source_index, provider.provider_index, key.clone());
         if let Some(hit) = cache.bytes.get(&cache_key) {
@@ -100,7 +104,7 @@ impl LayerIndex {
                     if file.path().exists() {
                         let mut reader = file.open()?;
                         reader.read_to_end(&mut out)?;
-                        Some(out)
+                        Some(Arc::from(out.into_boxed_slice()))
                     } else {
                         None
                     }
@@ -121,7 +125,7 @@ impl LayerIndex {
                     {
                         let mut reader = file.open()?;
                         reader.read_to_end(&mut out)?;
-                        Some(out)
+                        Some(Arc::from(out.into_boxed_slice()))
                     } else {
                         None
                     }

@@ -2,7 +2,7 @@
 use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, VfsFile,
-    paths::{key_to_path_buf_lossy, key_to_string_lossy, normalized_safe_normalized_bytes},
+    paths::{key_to_path_buf_bytes, key_to_string_lossy, normalized_safe_normalized_bytes},
 };
 use rayon::prelude::*;
 use std::{
@@ -16,7 +16,8 @@ impl VFS {
     ///
     /// When `use_hardlinks` is `true`, loose files are hardlinked; cross-device
     /// link failures fall back to a copy. All other hardlink errors propagate.
-    /// Archive files are always streamed via [`VfsFile::open`] regardless of mode.
+    /// Archive files are always read via [`VfsFile::open`] regardless of mode.
+    /// Bethesda archive entries stream; ZIP/PK3 entries are currently buffered.
     /// The destination directory must already exist. Returns the number of
     /// files successfully written.
     ///
@@ -31,7 +32,7 @@ impl VFS {
             .file_map
             .par_iter()
             .map(|(relative_path, file)| -> std::io::Result<bool> {
-                let relative_path_buf = key_to_path_buf_lossy(relative_path);
+                let relative_path_buf = key_to_path_buf_bytes(relative_path);
                 let dest = dir.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dir, &dest)?;
                 if let Some(parent) = dest.parent() {
@@ -99,7 +100,7 @@ impl VFS {
         self.file_map
             .par_iter()
             .map(|(relative_path, file)| -> io::Result<()> {
-                let relative_path_buf = key_to_path_buf_lossy(relative_path);
+                let relative_path_buf = key_to_path_buf_bytes(relative_path);
                 let merged_path = dest.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dest, &merged_path)?;
                 let Some(merged_dir) = merged_path.parent() else {
@@ -256,7 +257,7 @@ impl VFS {
 
         std::fs::create_dir_all(dest_dir)?;
 
-        let normalized_path = key_to_path_buf_lossy(&normalized_key);
+        let normalized_path = key_to_path_buf_bytes(&normalized_key);
         let file_name = normalized_path.file_name().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "vfs_path has no file name")
         })?;

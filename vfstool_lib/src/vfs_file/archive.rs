@@ -7,6 +7,9 @@ use std::{
 
 use crate::archives::{StoredArchive, TypedArchive};
 
+#[cfg(feature = "zip")]
+const MAX_BUFFERED_ZIP_ENTRY_SIZE: u64 = 512 * 1024 * 1024;
+
 /// A reference to a single file within an open [`StoredArchive`].
 #[derive(Debug, Clone)]
 pub struct ArchiveReference {
@@ -85,8 +88,35 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
                 let mut entry = guard
                     .by_index(zip_index)
                     .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
-                let mut buf = Vec::with_capacity(usize::try_from(entry.size()).unwrap_or_default());
-                io::copy(&mut entry, &mut buf)?;
+                if entry.size() > MAX_BUFFERED_ZIP_ENTRY_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        format!(
+                            "zip entry '{}' is {} bytes, exceeding the buffered entry limit of {} bytes",
+                            entry.name(),
+                            entry.size(),
+                            MAX_BUFFERED_ZIP_ENTRY_SIZE
+                        ),
+                    ));
+                }
+                let capacity = usize::try_from(entry.size()).map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        format!("zip entry '{}' is too large to buffer", entry.name()),
+                    )
+                })?;
+                let mut buf = Vec::with_capacity(capacity);
+                let copied = io::copy(&mut entry, &mut buf)?;
+                if copied > MAX_BUFFERED_ZIP_ENTRY_SIZE {
+                    return Err(io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        format!(
+                            "zip entry '{}' exceeded the buffered entry limit of {} bytes while reading",
+                            archive_ref.path.display(),
+                            MAX_BUFFERED_ZIP_ENTRY_SIZE
+                        ),
+                    ));
+                }
                 buf
             };
             Ok(Box::new(std::io::Cursor::new(buf)))
