@@ -118,8 +118,25 @@ pub(crate) fn key_to_string_lossy(key: &NormalizedPath) -> String {
     String::from_utf8_lossy(key.as_bytes()).into_owned()
 }
 
+mod sealed {
+    use dream_path::NormalizedPath;
+    use std::path::{Path, PathBuf};
+
+    pub trait Sealed {}
+
+    impl<T: Sealed + ?Sized> Sealed for &T {}
+    impl Sealed for NormalizedPath {}
+    impl Sealed for Path {}
+    impl Sealed for PathBuf {}
+    impl Sealed for str {}
+    impl Sealed for String {}
+}
+
 /// Input that can be normalized into a byte-first VFS key.
-pub trait VfsKeyInput {
+///
+/// This trait is sealed; callers can pass the supported key-like types but cannot implement new
+/// conversions outside this crate. Key normalization is part of the VFS contract, not a plugin slot.
+pub trait VfsKeyInput: sealed::Sealed {
     /// Normalize this value into an owned VFS key.
     fn to_vfs_key(&self) -> NormalizedPath;
 
@@ -127,6 +144,16 @@ pub trait VfsKeyInput {
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
         let key = self.to_vfs_key();
         normalized_safe_normalized_bytes(key.as_bytes()).then_some(key)
+    }
+}
+
+impl<T: VfsKeyInput + ?Sized> VfsKeyInput for &T {
+    fn to_vfs_key(&self) -> NormalizedPath {
+        (*self).to_vfs_key()
+    }
+
+    fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
+        (*self).to_safe_vfs_key()
     }
 }
 

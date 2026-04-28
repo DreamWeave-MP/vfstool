@@ -25,7 +25,7 @@ fn provider_reports_preserve_priority_and_explain_winner() {
     fs::write(high.join("Textures/Foo.DDS"), b"high").unwrap();
 
     let vfs = VFS::from_directories([&low, &high], None);
-    let providers = vfs.providers_for("textures/foo.dds");
+    let providers = vfs.provider_records_for("textures/foo.dds");
     assert_eq!(providers.len(), 2);
     assert_eq!(providers[0].source.path, low);
     assert_eq!(providers[1].source.path, high);
@@ -98,11 +98,11 @@ fn validate_reports_cross_source_file_directory_conflicts() {
 fn mutators_keep_provider_reports_in_sync() {
     let mut vfs = VFS::new();
     let path = PathBuf::from("/tmp/vfstool-provider-api/source/foo.txt");
-    assert!(vfs.insert_loose_file("Foo.TXT", &path).is_none());
-    assert_eq!(vfs.providers_for("foo.txt").len(), 1);
+    assert!(vfs.set_winner_loose_file("Foo.TXT", &path).is_none());
+    assert_eq!(vfs.provider_records_for("foo.txt").len(), 1);
     assert!(vfs.explain("foo.txt").is_some());
 
-    assert!(vfs.remove_file("foo.txt").is_some());
-    assert!(vfs.providers_for("foo.txt").is_empty());
+    assert!(vfs.remove_resolved_file("foo.txt").is_some());
+    assert!(vfs.provider_records_for("foo.txt").is_empty());
     assert!(vfs.explain("foo.txt").is_none());
 }

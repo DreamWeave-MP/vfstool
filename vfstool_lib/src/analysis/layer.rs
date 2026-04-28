@@ -175,23 +175,6 @@ impl LayerIndex {
         }
     }
 
-    /// Replace the provider chain for `key` with a single winner provider.
-    pub(crate) fn set_single_provider(
-        &mut self,
-        key: &NormalizedPath,
-        source: SourceMeta,
-        provider_path: PathBuf,
-    ) {
-        self.remove_key(key);
-        let normalized = NormalizedKey::from(key.clone());
-        let source_index = self.sources.len();
-        self.sources.push(source);
-        self.path_to_sources
-            .insert(normalized.clone(), vec![source_index]);
-        self.provider_paths
-            .insert((source_index, normalized), provider_path);
-    }
-
     /// Remove all providers for `key` from the index.
     pub(crate) fn remove_key(&mut self, key: &NormalizedPath) {
         let normalized = NormalizedKey::from(key.clone());

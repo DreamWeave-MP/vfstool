@@ -32,7 +32,6 @@ The Lua surface binds the promoted stable API and methods on its stable associat
 
 - `VFS`
 - `VfsFile`
-- `MutableVfs`
 - `VfsProvider`
 - `LayerIndex`
 - `ConflictIndex`
@@ -57,10 +56,9 @@ Reports are plain Lua tables. Long-lived mutable structures are userdata.
   `"cosmetic_only"`, `"winner_hash_changed"`.
 - Constructors that take directories expect arrays: `{ "/data/base", "/data/mod" }`.
 - Archive loading still depends on `beth-archives` / `zip` Cargo features.
-- `VFS` mutators are winner-only. Removing a key from `VFS` does not reveal lower-priority
-  providers.
-- `MutableVfs` stores provider stacks low priority to high priority. Removing the winner reveals the
-  next provider.
+- `VFS` stores provider stacks low priority to high priority and caches the resolved winner map.
+- Winner-only and stack-preserving mutation use different names. If a method says it removes only the
+  winner, it reveals the next provider; if it says it removes the resolved file, it discards the stack.
 
 ## Top-level functions
 
@@ -118,11 +116,18 @@ vfs:remaining(filter_path, replacements_only, all_dirs, relative?) -> table
 vfs:paths_matching(substring) -> { { key = string, file = VfsFile } }
 vfs:paths_with(prefix) -> { { key = string, file = VfsFile } }
 
-vfs:insert_file(key, file) -> VfsFile | nil
-vfs:insert_loose_file(key, physical_path) -> VfsFile | nil
-vfs:remove_file(key) -> VfsFile | nil
-vfs:remove_prefix(prefix) -> { { key = string, file = VfsFile } }
-vfs:remove_matching_glob(glob) -> { { key = string, file = VfsFile } }
+vfs:set_winner_file(key, file) -> VfsFile | nil
+vfs:set_winner_loose_file(key, physical_path) -> VfsFile | nil
+vfs:push_directory(path) -> nil
+vfs:push_archive(path) -> boolean
+vfs:push_provider(key, provider) -> boolean
+vfs:remove_winner(key) -> VfsProvider | nil
+vfs:remove_resolved_file(key) -> VfsFile | nil
+vfs:remove_provider(key, source_path) -> { VfsProvider }
+vfs:remove_source(source_path) -> { { key = string, provider = table } }
+vfs:remove_provider_prefix(prefix) -> { { key = string, provider = table } }
+vfs:remove_resolved_prefix(prefix) -> { { key = string, file = VfsFile } }
+vfs:remove_resolved_matching_glob(glob) -> { { key = string, file = VfsFile } }
 
 vfs:tree(relative?) -> table
 vfs:display(relative?) -> string
@@ -131,7 +136,8 @@ vfs:collapse_into(dest, opts) -> nil
 vfs:extract_file(vfs_path, dest_dir) -> string | nil
 vfs:diff_directory(dir) -> table
 
-vfs:providers_for(path) -> { ProviderRecord }
+vfs:provider_records_for(path) -> { ProviderRecord }
+vfs:providers_for(path) -> { VfsProvider } | nil
 vfs:explain(path) -> table | nil
 vfs:duplicates() -> table
 vfs:archives() -> { ArchiveInfo }
@@ -168,25 +174,10 @@ file:parent_archive_name() -> string | nil
 file:read_all() -> string
 ```
 
-## `MutableVfs` and `VfsProvider`
+## `VfsProvider`
 
 ```lua
-mutable = vfstool.MutableVfs.new()
-mutable = vfstool.MutableVfs.from_directories({ dir1, dir2 })
-mutable = vfstool.MutableVfs.from_directories_with_archives({ dir1, dir2 }, { "base.zip" })
-
 provider = vfstool.VfsProvider.new({ path = dir, kind = "loose_dir" }, file)
-
-mutable:push_directory(path) -> nil
-mutable:push_archive(path) -> boolean
-mutable:push_provider(key, provider) -> boolean
-mutable:to_vfs() -> VFS
-mutable:providers_for(key) -> { VfsProvider } | nil
-mutable:remove_winner(key) -> VfsProvider | nil
-mutable:remove_provider(key, source_path) -> { VfsProvider }
-mutable:remove_source(source_path) -> { { key = string, provider = table } }
-mutable:remove_prefix(prefix) -> { { key = string, provider = table } }
-
 provider:source() -> { path = string, kind = string }
 provider:file() -> VfsFile
 ```

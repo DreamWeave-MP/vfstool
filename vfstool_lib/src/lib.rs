@@ -11,8 +11,8 @@
 //!
 //! Prefer the top-level re-exports for application code:
 //!
-//! - [`VFS`] for the resolved winner map and materialization helpers.
-//! - [`MutableVfs`] and [`VfsProvider`] when provider stacks must survive winner removal.
+//! - [`VFS`] for provider stacks, the resolved winner map, and materialization helpers.
+//! - [`VfsProvider`] when manually pushing provider-stack entries.
 //! - [`LayerIndex`] as the canonical provider-chain index and [`ConflictIndex`] as its derived
 //!   conflict projection, plus reports such as [`ConflictsReport`], [`ShadowedReport`], and
 //!   [`DiffReport`] for load-order diagnostics.
@@ -28,9 +28,11 @@
 //!
 //! # Mutation model
 //!
-//! [`VFS`] mutators operate on the materialized winner map only. Removing a key removes it from
-//! the resolved view; it does not reveal a lower-priority provider. Use [`MutableVfs`] if removal
-//! should expose the next provider in the low-to-high priority stack.
+//! [`VFS`] stores providers low-to-high priority and caches the current winner for fast lookup.
+//! Winner-only operations are named as such: [`VFS::set_winner_file`] and
+//! [`VFS::remove_resolved_file`] replace or discard a whole provider stack. Stack-aware operations
+//! such as [`VFS::push_provider`] and [`VFS::remove_winner`] preserve lower-priority providers and
+//! reveal them when the current winner is removed.
 //!
 //! # Examples
 //!
@@ -146,8 +148,6 @@ mod kb;
 pub mod lua;
 /// Shared glob/path matching utilities.
 pub mod matchers;
-/// Provider-aware mutable VFS that can reveal lower-priority providers after removals.
-pub mod mutable_vfs;
 /// Path normalization and safety helpers.
 pub mod paths;
 mod policy;
@@ -172,7 +172,6 @@ pub(crate) use directory_node::DirectoryNode;
 pub use dream_path::NormalizedPath;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
 pub use matchers::{path_glob_matches, source_glob_matches};
-pub use mutable_vfs::{MutableVfs, VfsProvider};
 pub use paths::{VfsKeyInput, normalize_path, normalize_path_in_place};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
@@ -190,7 +189,7 @@ pub use semantic::{
 pub use vfs::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DirectoryDiff, DuplicateEntry,
     DuplicateReport, ExplainReport, MaterializationAction, MaterializationIssue,
-    MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsProviderRecord,
+    MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsProvider, VfsProviderRecord,
 };
 pub use vfs_file::VfsFile;
 

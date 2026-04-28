@@ -114,7 +114,7 @@ fn simulate_reorder_preserves_loose_over_archive_precedence() {
     let loose_file = loose.path().join("textures/a.dds");
     let archive = PathBuf::from("/archives/base.bsa");
     let mut vfs = VFS::new();
-    vfs.insert_loose_file("textures/a.dds", loose_file);
+    vfs.set_winner_loose_file("textures/a.dds", loose_file);
     let index = LayerIndex::from_file_lists(vec![
         (
             SourceMeta {

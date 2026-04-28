@@ -90,8 +90,8 @@ fn dump_rejects_file_directory_key_conflicts() {
     let file = src.write("file_source", b"file");
     let nested = src.write("nested_source", b"nested");
     let mut vfs = VFS::new();
-    vfs.insert_loose_file("foo", &file);
-    vfs.insert_loose_file("foo/bar.txt", &nested);
+    vfs.set_winner_loose_file("foo", &file);
+    vfs.set_winner_loose_file("foo/bar.txt", &nested);
 
     let dest = TempDir::new("dump_path_conflict_dest");
     let err = vfs
@@ -107,8 +107,8 @@ fn collapse_rejects_file_directory_key_conflicts() {
     let file = src.write("file_source", b"file");
     let nested = src.write("nested_source", b"nested");
     let mut vfs = VFS::new();
-    vfs.insert_loose_file("foo", &file);
-    vfs.insert_loose_file("foo/bar.txt", &nested);
+    vfs.set_winner_loose_file("foo", &file);
+    vfs.set_winner_loose_file("foo/bar.txt", &nested);
 
     let dest = TempDir::new("collapse_path_conflict_dest");
     let err = vfs

@@ -3,13 +3,26 @@ use super::VFS;
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
 use super::build::collect_archive_sources;
 use super::build::{SourceEntries, collect_loose_sources, layer_sources_from};
-use crate::{ConflictIndex, LayerIndex};
+use crate::{ConflictIndex, LayerIndex, VfsProvider};
 use std::path::{Path, PathBuf};
 
 impl VFS {
     fn append_sources(&mut self, sources: &[SourceEntries]) {
         for source in sources {
-            self.file_map.extend(source.entries.iter().cloned());
+            let source_index = self.push_source(source.source.clone());
+            for (key, file) in &source.entries {
+                self.providers
+                    .entry(key.clone())
+                    .or_default()
+                    .push(super::ProviderEntry {
+                        source_index,
+                        provider: VfsProvider {
+                            source: source.source.clone(),
+                            file: file.clone(),
+                        },
+                    });
+                self.refresh_winner(key);
+            }
         }
     }
 
@@ -32,8 +45,6 @@ impl VFS {
             .collect();
 
         let loose_sources = collect_loose_sources(dirs);
-        let dir_sources = layer_sources_from(&loose_sources);
-
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
         let archive_sources = collect_archive_sources(&loose_sources, archive_list);
 
@@ -47,14 +58,7 @@ impl VFS {
         // matching OpenMW's VFS semantics (last data= entry wins).
         vfs.append_sources(&loose_sources);
 
-        #[cfg(any(feature = "beth-archives", feature = "zip"))]
-        let all_sources = layer_sources_from(&archive_sources)
-            .into_iter()
-            .chain(dir_sources)
-            .collect::<Vec<_>>();
-        #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
-        let all_sources = dir_sources;
-        vfs.layer_index = LayerIndex::from_file_lists(all_sources);
+        vfs.rebuild_layer_index();
 
         vfs
     }
@@ -87,7 +91,6 @@ impl VFS {
 
         let loose_sources = collect_loose_sources(dirs);
         let dir_sources = layer_sources_from(&loose_sources);
-
         let mut vfs = Self::new();
 
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
@@ -110,7 +113,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.layer_index = layer_index;
+        vfs.rebuild_layer_index();
         (vfs, conflict_index)
     }
 
@@ -133,7 +136,6 @@ impl VFS {
             .collect();
 
         let loose_sources = collect_loose_sources(dirs);
-        let dir_sources = layer_sources_from(&loose_sources);
 
         let mut vfs = Self::new();
 
@@ -146,16 +148,8 @@ impl VFS {
 
         vfs.append_sources(&loose_sources);
 
-        #[cfg(any(feature = "beth-archives", feature = "zip"))]
-        let all_sources = layer_sources_from(&archive_sources)
-            .into_iter()
-            .chain(dir_sources)
-            .collect::<Vec<_>>();
-        #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
-        let all_sources = dir_sources;
-
-        let layer_index = LayerIndex::from_file_lists(all_sources);
-        vfs.layer_index = layer_index.clone();
+        vfs.rebuild_layer_index();
+        let layer_index = vfs.layer_index.clone();
         (vfs, layer_index)
     }
 }

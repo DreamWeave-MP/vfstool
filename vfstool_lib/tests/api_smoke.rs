@@ -6,10 +6,9 @@ use std::{
 };
 
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, MutableVfs, NormalizedKey,
-    NormalizedPath, SourceId, SourceKind, SourceMeta, VFS, VfsFile, VfsKeyInput, VfsProvider,
-    changed_files, experimental, normalize_path, normalize_path_in_place, path_glob_matches,
-    semantic,
+    CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, NormalizedKey, NormalizedPath,
+    SourceId, SourceKind, SourceMeta, VFS, VfsFile, VfsKeyInput, VfsProvider, changed_files,
+    experimental, normalize_path, normalize_path_in_place, path_glob_matches, semantic,
 };
 
 #[test]
@@ -30,7 +29,7 @@ fn root_reexports_remain_usable() {
     let mut vfs = VFS::new();
     let physical = PathBuf::from("/tmp/source/textures/foo.dds");
     assert!(
-        vfs.insert_loose_file("Textures/Foo.DDS", &physical)
+        vfs.set_winner_loose_file("Textures/Foo.DDS", &physical)
             .is_none()
     );
     assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), physical);
@@ -66,13 +65,9 @@ fn root_reexports_remain_usable() {
     };
     assert!(collapse_options.allow_copying);
     let file = VfsFile::from("/tmp/source/textures/foo.dds");
-    let provider = VfsProvider {
-        source: source.clone(),
-        file: file.clone(),
-    };
-    let mut mutable = MutableVfs::new();
-    assert!(mutable.push_provider("textures/foo.dds", provider));
-    assert!(mutable.to_vfs().contains(Path::new("textures/foo.dds")));
+    let provider = VfsProvider::new(source.clone(), file.clone());
+    assert!(vfs.push_provider("textures/foo.dds", provider));
+    assert!(vfs.contains(Path::new("textures/foo.dds")));
 
     let temp_dir = std::env::temp_dir().join(format!("vfstool_api_smoke_{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
@@ -115,7 +110,7 @@ fn normalized_path_and_vfs_key_input_reexports_are_usable() {
     let physical = PathBuf::from("/tmp/source/textures/foo.dds");
     let key = NormalizedPath::new(b"Textures\\Foo.DDS");
 
-    assert!(vfs.insert_loose_file(&key, &physical).is_none());
+    assert!(vfs.set_winner_loose_file(&key, &physical).is_none());
     assert_eq!(vfs.get_file(&key).unwrap().path(), physical);
 
     assert_eq!(

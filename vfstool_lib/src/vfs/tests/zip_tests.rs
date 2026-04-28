@@ -231,6 +231,27 @@ fn loose_file_overrides_zip_entry() {
 }
 
 #[test]
+fn remove_loose_winner_reveals_archive_provider() {
+    let dir = TempDir::new("vfszip_reveal_archive_provider");
+    dir.create_zip("data.zip", &[("textures/foo.dds", b"archive")]);
+    let loose_file = dir.write("textures/foo.dds", b"loose");
+
+    let mut vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+    let providers = vfs
+        .providers_for("textures/foo.dds")
+        .unwrap()
+        .collect::<Vec<_>>();
+    assert_eq!(providers.len(), 2);
+    assert_eq!(providers[0].source.kind, crate::SourceKind::Archive);
+    assert_eq!(providers[1].source.kind, crate::SourceKind::LooseDir);
+    assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), loose_file);
+
+    let removed = vfs.remove_winner("textures/foo.dds").unwrap();
+    assert_eq!(removed.source.kind, crate::SourceKind::LooseDir);
+    assert!(vfs.get_file("textures/foo.dds").unwrap().is_archive());
+}
+
+#[test]
 fn later_dir_wins_over_zip_entry() {
     let archive_dir = TempDir::new("vfszip_prio_archive");
     archive_dir.create_zip("data.zip", &[("shared.txt", b"from_zip")]);

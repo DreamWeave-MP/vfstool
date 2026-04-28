@@ -235,11 +235,13 @@ impl VFS {
         source_index: usize,
     ) -> Option<VfsProviderRecord> {
         let key_path = key_to_path_buf_lossy(key);
-        let source = self.layer_index.sources.get(source_index)?.clone();
-        let original_path = self
-            .layer_index
-            .provider_original_path(source_index, key)
-            .map_or_else(|| key_path.clone(), Path::to_path_buf);
+        let entry = self
+            .providers
+            .get(key)?
+            .iter()
+            .find(|entry| entry.source_index == source_index)?;
+        let source = entry.provider.source.clone();
+        let original_path = VFS::provider_original_path(&source, key, &entry.provider.file);
         let resolved_path = if source.kind == SourceKind::Archive {
             format!("{}::{}", source.path.display(), original_path.display())
         } else {
@@ -255,24 +257,28 @@ impl VFS {
     }
 
     fn provider_records_for_key(&self, key: &NormalizedPath) -> Vec<VfsProviderRecord> {
-        self.layer_index
-            .sources_containing(key)
-            .iter()
-            .filter_map(|&source_index| self.provider_record_for(key, source_index))
-            .collect()
+        self.providers.get(key).map_or_else(Vec::new, |entries| {
+            entries
+                .iter()
+                .filter_map(|entry| self.provider_record_for(key, entry.source_index))
+                .collect()
+        })
     }
 
-    /// Return providers for a normalized key in low-to-high priority order.
+    /// Return provider report records for a normalized key in low-to-high priority order.
     #[must_use]
-    pub fn providers_for(&self, path: impl AsRef<Path>) -> Vec<VfsProviderRecord> {
-        let key = NormalizedPath::new(path.as_ref().as_os_str().as_encoded_bytes());
+    pub fn provider_records_for<K: crate::VfsKeyInput + ?Sized>(
+        &self,
+        path: &K,
+    ) -> Vec<VfsProviderRecord> {
+        let key = path.to_vfs_key();
         self.provider_records_for_key(&key)
     }
 
     /// Explain why `path` resolves to its current winner.
     #[must_use]
-    pub fn explain(&self, path: impl AsRef<Path>) -> Option<ExplainReport> {
-        let key = NormalizedPath::new(path.as_ref().as_os_str().as_encoded_bytes());
+    pub fn explain<K: crate::VfsKeyInput + ?Sized>(&self, path: &K) -> Option<ExplainReport> {
+        let key = path.to_vfs_key();
         let mut providers = self.provider_records_for_key(&key);
         let winner = providers.pop()?;
         Some(ExplainReport {
@@ -286,9 +292,9 @@ impl VFS {
     #[must_use]
     pub fn duplicates(&self) -> DuplicateReport {
         let mut entries: Vec<_> = self
-            .layer_index
+            .providers
             .keys()
-            .into_iter()
+            .cloned()
             .filter_map(|key| {
                 let providers = self.provider_records_for_key(&key);
                 (providers.len() > 1).then(|| DuplicateEntry {
@@ -306,8 +312,8 @@ impl VFS {
     #[must_use]
     pub fn archives(&self) -> Vec<ArchiveInfo> {
         let mut counts: AHashMap<usize, (usize, usize)> = AHashMap::new();
-        for key in self.layer_index.keys() {
-            let providers = self.provider_records_for_key(&key);
+        for key in self.providers.keys() {
+            let providers = self.provider_records_for_key(key);
             let Some(winner) = providers.last() else {
                 continue;
             };
@@ -323,7 +329,6 @@ impl VFS {
             }
         }
         let mut archives: Vec<_> = self
-            .layer_index
             .sources
             .iter()
             .enumerate()
@@ -348,8 +353,8 @@ impl VFS {
     pub fn archive_entries(&self, archive: impl AsRef<Path>) -> Vec<ArchiveEntry> {
         let archive = normalize_path(archive.as_ref()).into_owned();
         let mut entries = Vec::new();
-        for key in self.layer_index.keys() {
-            let providers = self.provider_records_for_key(&key);
+        for key in self.providers.keys() {
+            let providers = self.provider_records_for_key(key);
             let Some(winner) = providers.last() else {
                 continue;
             };
@@ -358,7 +363,7 @@ impl VFS {
                     && normalize_path(&p.source.path).as_ref() == archive.as_path()
             }) {
                 entries.push(ArchiveEntry {
-                    key: key_to_path_buf_lossy(&key),
+                    key: key_to_path_buf_lossy(key),
                     archive_path: provider.source.path.clone(),
                     original_path: provider.original_path.clone(),
                     wins: provider.source_index == winner.source_index,
@@ -382,13 +387,13 @@ impl VFS {
     #[must_use]
     pub fn case_collisions(&self) -> CaseCollisionReport {
         let mut collisions = Vec::new();
-        for key in self.layer_index.keys() {
-            let providers = self.provider_records_for_key(&key);
+        for key in self.providers.keys() {
+            let providers = self.provider_records_for_key(key);
             let spellings: AHashSet<_> =
                 providers.iter().map(|p| p.original_path.clone()).collect();
             if spellings.len() > 1 {
                 collisions.push(CaseCollision {
-                    key: key_to_path_buf_lossy(&key),
+                    key: key_to_path_buf_lossy(key),
                     providers: providers.clone(),
                 });
             }

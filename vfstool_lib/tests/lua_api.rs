@@ -102,7 +102,7 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
 }
 
 #[test]
-fn lua_mutable_vfs_reveals_lower_provider_and_accepts_manual_provider() {
+fn lua_vfs_reveals_lower_provider_and_accepts_manual_provider() {
     let low = TempDir::new("lua_mutable_low");
     let high = TempDir::new("lua_mutable_high");
     let manual = TempDir::new("lua_mutable_manual");
@@ -125,18 +125,18 @@ fn lua_mutable_vfs_reveals_lower_provider_and_accepts_manual_provider() {
         .unwrap();
     lua.load(
         r#"
-        local mutable = vfstool.MutableVfs.from_directories({ low, high })
-        assert(#mutable:providers_for("shared.txt") == 2)
-        local removed = mutable:remove_winner("shared.txt")
+        local vfs = vfstool.VFS.from_directories({ low, high })
+        assert(#vfs:providers_for("shared.txt") == 2)
+        local removed = vfs:remove_winner("shared.txt")
         assert(removed:source().path == high)
-        assert(mutable:to_vfs():get_file("shared.txt"):path():find(low, 1, true) == 1)
+        assert(vfs:get_file("shared.txt"):path():find(low, 1, true) == 1)
 
         local file = vfstool.VfsFile.from(manual_file)
         local provider = vfstool.VfsProvider.new({ path = manual_root, kind = "loose_dir" }, file)
-        assert(mutable:push_provider("manual.txt", provider))
-        assert(mutable:to_vfs():contains("manual.txt"))
-        assert(#mutable:remove_source(manual_root) == 1)
-        assert(mutable:to_vfs():contains("manual.txt") == false)
+        assert(vfs:push_provider("manual.txt", provider))
+        assert(vfs:contains("manual.txt"))
+        assert(#vfs:remove_source(manual_root) == 1)
+        assert(vfs:contains("manual.txt") == false)
     "#,
     )
     .exec()

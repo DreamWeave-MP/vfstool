@@ -7,8 +7,8 @@
 ## Features
 
 - **Virtual File System (VFS)**: Build from ordered data directories. Later directories win (matching OpenMW `data=` semantics). Loose files always beat archive files.
-- **Provider and conflict analysis**: `LayerIndex` stores canonical provider chains; `VFS`
-  resolves winners from that index; `ConflictIndex` is a derived conflict projection for
+- **Provider and conflict analysis**: `VFS` stores provider stacks and a cached resolved winner map;
+  `LayerIndex` is its provenance projection and `ConflictIndex` is a derived conflict projection for
   override/overridden reports.
 - **Archive support**: BSA/BA2 (Morrowind, Oblivion, Skyrim, Fallout 4) via `dream_archive` (`beth-archives` feature). ZIP/PK3 via the `zip` crate (`zip` feature).
 - **Serialization**: JSON, YAML, TOML output via `serde` (`serialize` feature).
@@ -16,7 +16,8 @@
   without it those formats are reported as unknown semantic deltas.
 - **Parallel processing**: Directory walks and hash operations use `rayon`.
 - **MO2-style runner support**: `run_setup` / `run_finalize` for dump-run-collect workflows.
-- **Mutable views**: Winner-only mutation on `VFS`, plus provider-aware loose/archive mutation with `MutableVfs`.
+- **Mutable VFS**: `VFS` is provider-aware. Winner-only operations and stack-preserving operations
+  are deliberately named differently, because APIs should not lie for sport.
 
 ---
 
@@ -61,14 +62,13 @@ fn main() {
 
 ### Conflict analysis
 
-The analysis model has one source of truth. `LayerIndex` records every provider for every
-normalized VFS key in low-to-high priority order. `VFS` owns a `LayerIndex` and the resolved winner
-map; queries such as `explain`, duplicate keys, source contributions, archives, and case collisions
-are projections over that owned provider index. `ConflictIndex` is intentionally narrower: it is
-derived from `LayerIndex` when callers need MO2-style override/overridden sets or source-to-source
-diffs. If a report needs provider chains, use `LayerIndex`/`VFS`; if it needs only conflict arrows,
-use `ConflictIndex`. Two separate truths would be exciting, in the same way an FBO completeness bug
-is exciting.
+The analysis model has one source of truth. `VFS` stores every provider for every normalized key in
+low-to-high priority order, plus a cached resolved-winner map for fast lookup/materialization.
+`LayerIndex` is rebuilt from those provider stacks for provenance workflows; `ConflictIndex` is
+intentionally narrower and derived when callers need MO2-style override/overridden sets or
+source-to-source diffs. If a report needs provider chains, use `VFS`/`LayerIndex`; if it needs only
+conflict arrows, use `ConflictIndex`. Two separate truths would be exciting, in the same way an FBO
+completeness bug is exciting.
 
 ```rust
 use vfstool_lib::{ConflictIndex, LayerIndex, SourceKind, SourceMeta, VFS};
@@ -79,7 +79,7 @@ let (vfs, ci) = VFS::from_directories_with_conflict_index(
     None,
 );
 
-let provider_chain = vfs.providers_for(Path::new("textures/foo.dds"));
+let provider_chain = vfs.provider_records_for(Path::new("textures/foo.dds"));
 let duplicate_keys = vfs.layer_index().duplicate_keys();
 
 let report = ci.conflicts_report(true);  // use_relative = true
@@ -118,7 +118,7 @@ The crate includes small examples that compile against the public 1.0 API:
 cargo run -p vfstool_lib --example basic_vfs
 cargo run -p vfstool_lib --example provider_reports
 cargo run -p vfstool_lib --example semantic_analysis
-cargo run -p vfstool_lib --example mutable_vfs
+cargo run -p vfstool_lib --example provider_stack_vfs
 ```
 
 These examples intentionally use temporary fixtures rather than a real OpenMW install, so they are
@@ -126,54 +126,56 @@ safe starting points for application code.
 
 ### Mutating VFS contents
 
-`VFS` mutators edit the materialized winner map directly. Removing a winner removes that key from
-the resolved view; it does not reveal lower-priority providers.
+`VFS` stores provider stacks low-to-high priority. The resolved winner for a key is always the last
+provider in that stack, cached in the winner map used by `get_file()` and materialization.
+
+Use the names to choose the semantics you actually want:
+
+- `set_winner_file` / `set_winner_loose_file`: replace the whole provider stack for one key with a
+  single resolved winner.
+- `push_provider`: add a higher-priority provider without discarding lower-priority providers.
+- `remove_winner`: remove only the current winner and reveal the next lower-priority provider.
+- `remove_resolved_file`: remove the resolved key entirely, discarding all providers for that key.
 
 ```rust
 use vfstool_lib::{VFS, VfsFile};
 
 let mut vfs = VFS::new();
-vfs.insert_file("textures/foo.dds", VfsFile::from("/mods/high/textures/foo.dds"));
-let removed = vfs.remove_file("Textures/Foo.dds");
+vfs.set_winner_file("textures/foo.dds", VfsFile::from("/mods/high/textures/foo.dds"));
+let removed = vfs.remove_resolved_file("Textures/Foo.dds");
 assert!(removed.is_some());
 ```
 
-Use `MutableVfs` when provider stacks matter. Providers are stored low-to-high priority, so removing
-the current winner reveals the next lower-priority provider if one exists. With the `beth-archives` or `zip`
-feature enabled, `MutableVfs::from_directories_with_archives` resolves archive names through the
-loose directory files and inserts archive providers below all loose providers, matching OpenMW's
-loose-over-archive rule.
+Provider-preserving mutation uses the same `VFS` type:
 
 ```rust
-use vfstool_lib::MutableVfs;
+use vfstool_lib::VFS;
 
-let mut mutable = MutableVfs::from_directories(["/mods/base", "/mods/high"])?;
-mutable.remove_winner("textures/foo.dds");
-let resolved = mutable.to_vfs();
-# Ok::<(), std::io::Error>(())
+let mut vfs = VFS::from_directories(["/mods/base", "/mods/high"], None);
+vfs.remove_winner("textures/foo.dds");
+# let _ = vfs;
 ```
 
-`MutableVfs::to_vfs()` converts the mutable provider stack into a resolved winner view. It preserves
-the current winners, not the full mutable provider history. If later removal should reveal lower
-priority providers, keep using `MutableVfs`; converting to `VFS` is the point where that behaviour is
-intentionally flattened. A conversion that says it preserves stacks while quietly dropping them would
-be worse, so this one says what it does.
+With the `beth-archives` or `zip` feature enabled, `VFS::from_directories` resolves archive names
+through the loose directory files and inserts archive providers below all loose providers, matching
+OpenMW's loose-over-archive rule. Manual `push_archive` is different: it pushes that archive as a new
+highest-priority provider source, because that is what "push" means.
 
 ```rust,no_run
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
 # {
-use vfstool_lib::MutableVfs;
+use vfstool_lib::VFS;
 
-let mutable = MutableVfs::from_directories_with_archives(
+let vfs = VFS::from_directories(
     ["/games/Morrowind/Data Files"],
-    &["Morrowind.bsa"],
-)?;
-# let _ = mutable;
+    Some(vec!["Morrowind.bsa"]),
+);
+# let _ = vfs;
 # }
 # Ok::<(), std::io::Error>(())
 ```
 
-`MutableVfs` source removal uses lexical path equality. Use the same source path representation for
+`VFS` source removal uses lexical path equality. Use the same source path representation for
 removal that you used when inserting/building providers.
 
 ### Runner hardlink behavior
@@ -191,7 +193,7 @@ scratch directory, not a directory containing user data.
 ## 1.0 API surface
 
 The stable 1.0 API is the top-level re-exported surface from `vfstool_lib`, including `VFS`,
-`VfsFile`, `MutableVfs`, conflict/report types, semantic analyzer/report types, path helpers,
+`VfsFile`, `VfsProvider`, conflict/report types, semantic analyzer/report types, path helpers,
 lock/drift types, runner helpers, and serialization helpers. The `semantic` module is public and
 stable, but still deliberately modest: it can classify JSON/TOML/INI/text-ish differences, not solve
 every mod conflict in existence. JSON and TOML structural comparison require the `serialize` feature;
@@ -213,6 +215,9 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
 - ZIP/PK3 support is intentionally narrower: `zip` is built without default features and currently
   supports stored/deflated and LZMA-compressed entries. AES, bzip2, PPMd, deflate64, and zstd are not
   pulled in unless we deliberately decide they are worth the dependency cost.
+- `MutableVfs` was removed before 1.0. `VFS` now owns provider stacks directly, so there is no second
+  VFS implementation to drift out of sync. The old distinction is represented by explicit method
+  names instead of a second type.
 
 ---
 

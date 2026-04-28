@@ -11,8 +11,8 @@ use crate::{
     ConflictIndex, ConflictSourceEntry, ConflictsReport, DiffReport, DirectoryDiff, DriftEntry,
     DriftKind, DriftReport, DuplicateEntry, DuplicateReport, ExplainReport, LayerIndex,
     LayerProvider, MaterializationAction, MaterializationIssue, MaterializationPlan,
-    MetadataSnapshot, MutableVfs, NormalizedPath, SemanticConflictReport, SemanticDelta,
-    SemanticOpts, SemanticProvider, SemanticRelation, ShadowedReport, ShadowedSource, Snapshot,
+    MetadataSnapshot, NormalizedPath, SemanticConflictReport, SemanticDelta, SemanticOpts,
+    SemanticProvider, SemanticRelation, ShadowedReport, ShadowedSource, Snapshot,
     SourceContribution, SourceContributionReport, SourceKind, SourceMeta, VFS, ValidationIssue,
     ValidationReport, VfsFile, VfsLock, VfsLockEntry, VfsProvider, VfsProviderRecord, analyze_pair,
     changed_files, changed_files_metadata, normalize_path_in_place, path_glob_matches,
@@ -96,7 +96,6 @@ pub fn open(lua: &Lua) -> LuaResult<Table> {
     module.set("VFS", vfs_class(lua)?)?;
     module.set("VfsFile", vfs_file_class(lua)?)?;
     module.set("VfsProvider", vfs_provider_class(lua)?)?;
-    module.set("MutableVfs", mutable_vfs_class(lua)?)?;
     module.set("LayerIndex", layer_index_class(lua)?)?;
     module.set("ConflictIndex", conflict_index_class(lua)?)?;
 
@@ -117,8 +116,6 @@ struct LuaVfs(VFS);
 
 #[derive(Debug, Clone)]
 struct LuaVfsFile(VfsFile);
-
-struct LuaMutableVfs(MutableVfs);
 
 #[derive(Debug, Clone)]
 struct LuaLayerIndex(LayerIndex);
@@ -195,36 +192,6 @@ fn vfs_provider_class(lua: &Lua) -> LuaResult<Table> {
                 source: source_meta_from_table(&source)?,
                 file: file.0.clone(),
             }))
-        })?,
-    )?;
-    Ok(class)
-}
-
-fn mutable_vfs_class(lua: &Lua) -> LuaResult<Table> {
-    let class = lua.create_table()?;
-    class.set(
-        "new",
-        lua.create_function(|_, ()| Ok(LuaMutableVfs(MutableVfs::new())))?,
-    )?;
-    class.set(
-        "from_directories",
-        lua.create_function(|_, dirs: Table| {
-            let dirs = pathbufs_from_sequence(&dirs)?;
-            MutableVfs::from_directories(dirs.iter())
-                .map(LuaMutableVfs)
-                .map_err(LuaError::external)
-        })?,
-    )?;
-    #[cfg(any(feature = "beth-archives", feature = "zip"))]
-    class.set(
-        "from_directories_with_archives",
-        lua.create_function(|_, (dirs, archives): (Table, Table)| {
-            let dirs = pathbufs_from_sequence(&dirs)?;
-            let archives = strings_from_sequence(&archives)?;
-            let archive_refs = archives.iter().map(String::as_str).collect::<Vec<_>>();
-            MutableVfs::from_directories_with_archives(dirs.iter(), &archive_refs)
-                .map(LuaMutableVfs)
-                .map_err(LuaError::external)
         })?,
     )?;
     Ok(class)
@@ -361,27 +328,59 @@ fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
 
 fn add_vfs_mutation_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method_mut(
-        "insert_loose_file",
+        "set_winner_loose_file",
         |_, this, (key, path): (String, String)| {
-            Ok(this.0.insert_loose_file(&key, path).map(LuaVfsFile))
+            Ok(this.0.set_winner_loose_file(&key, path).map(LuaVfsFile))
         },
     );
     methods.add_method_mut(
-        "insert_file",
+        "set_winner_file",
         |_, this, (key, file): (String, AnyUserData)| {
             let file = file.borrow::<LuaVfsFile>()?;
-            Ok(this.0.insert_file(&key, file.0.clone()).map(LuaVfsFile))
+            Ok(this.0.set_winner_file(&key, file.0.clone()).map(LuaVfsFile))
         },
     );
-    methods.add_method_mut("remove_file", |_, this, key: String| {
-        Ok(this.0.remove_file(&key).map(LuaVfsFile))
+    methods.add_method_mut("push_directory", |_, this, root: String| {
+        this.0.push_directory(root).map_err(LuaError::external)
     });
-    methods.add_method_mut("remove_prefix", |lua, this, prefix: String| {
-        removed_vfs_files_to_table(lua, this.0.remove_prefix(&prefix))
+    methods.add_method_mut(
+        "push_provider",
+        |_, this, (key, provider): (String, AnyUserData)| {
+            let provider = provider.borrow::<LuaVfsProvider>()?;
+            Ok(this.0.push_provider(&key, provider.0.clone()))
+        },
+    );
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
+    methods.add_method_mut("push_archive", |_, this, archive: String| {
+        Ok(this.0.push_archive(archive))
     });
-    methods.add_method_mut("remove_matching_glob", |lua, this, glob: String| {
-        removed_vfs_files_to_table(lua, this.0.remove_matching_glob(&glob))
+    methods.add_method_mut("remove_winner", |_, this, key: String| {
+        Ok(this.0.remove_winner(&key).map(LuaVfsProvider))
     });
+    methods.add_method_mut("remove_resolved_file", |_, this, key: String| {
+        Ok(this.0.remove_resolved_file(&key).map(LuaVfsFile))
+    });
+    methods.add_method_mut("remove_provider_prefix", |lua, this, prefix: String| {
+        removed_providers_to_table(lua, &this.0.remove_provider_prefix(&prefix))
+    });
+    methods.add_method_mut("remove_resolved_prefix", |lua, this, prefix: String| {
+        removed_vfs_files_to_table(lua, this.0.remove_resolved_prefix(&prefix))
+    });
+    methods.add_method_mut(
+        "remove_provider",
+        |lua, this, (key, source): (String, String)| {
+            mutable_providers_to_table(lua, &this.0.remove_provider(&key, Path::new(&source)))
+        },
+    );
+    methods.add_method_mut("remove_source", |lua, this, source: String| {
+        removed_providers_to_table(lua, &this.0.remove_source(Path::new(&source)))
+    });
+    methods.add_method_mut(
+        "remove_resolved_matching_glob",
+        |lua, this, glob: String| {
+            removed_vfs_files_to_table(lua, this.0.remove_resolved_matching_glob(&glob))
+        },
+    );
 }
 
 fn add_vfs_materialization_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
@@ -422,11 +421,20 @@ fn add_vfs_materialization_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) 
 }
 
 fn add_vfs_report_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
-    methods.add_method("providers_for", |lua, this, path: String| {
-        provider_records_to_table(lua, &this.0.providers_for(path))
+    methods.add_method("provider_records_for", |lua, this, path: String| {
+        provider_records_to_table(lua, &this.0.provider_records_for(&path))
     });
     methods.add_method("explain", |lua, this, path: String| {
-        optional_explain_to_value(lua, this.0.explain(path))
+        optional_explain_to_value(lua, this.0.explain(&path))
+    });
+    methods.add_method("providers_for", |lua, this, key: String| {
+        match this.0.providers_for(&key) {
+            Some(providers) => {
+                let providers = providers.cloned().collect::<Vec<_>>();
+                mutable_providers_to_value(lua, &providers)
+            }
+            None => Ok(Value::Nil),
+        }
     });
     methods.add_method("duplicates", |lua, this, ()| {
         duplicate_report_to_table(lua, &this.0.duplicates())
@@ -494,47 +502,6 @@ impl UserData for LuaVfsFile {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut reader, &mut bytes).map_err(LuaError::external)?;
             Ok(bytes)
-        });
-    }
-}
-
-impl UserData for LuaMutableVfs {
-    fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method_mut("push_directory", |_, this, root: String| {
-            this.0.push_directory(root).map_err(LuaError::external)
-        });
-        methods.add_method_mut(
-            "push_provider",
-            |_, this, (key, provider): (String, AnyUserData)| {
-                let provider = provider.borrow::<LuaVfsProvider>()?;
-                Ok(this.0.push_provider(&key, provider.0.clone()))
-            },
-        );
-        #[cfg(any(feature = "beth-archives", feature = "zip"))]
-        methods.add_method_mut("push_archive", |_, this, archive: String| {
-            Ok(this.0.push_archive(archive))
-        });
-        methods.add_method("to_vfs", |_, this, ()| Ok(LuaVfs(this.0.to_vfs())));
-        methods.add_method("providers_for", |lua, this, key: String| {
-            match this.0.providers_for(key) {
-                Some(providers) => mutable_providers_to_value(lua, providers),
-                None => Ok(Value::Nil),
-            }
-        });
-        methods.add_method_mut("remove_winner", |_, this, key: String| {
-            Ok(this.0.remove_winner(key).map(LuaVfsProvider))
-        });
-        methods.add_method_mut(
-            "remove_provider",
-            |lua, this, (key, source): (String, String)| {
-                mutable_providers_to_table(lua, &this.0.remove_provider(key, Path::new(&source)))
-            },
-        );
-        methods.add_method_mut("remove_source", |lua, this, source: String| {
-            removed_providers_to_table(lua, &this.0.remove_source(Path::new(&source)))
-        });
-        methods.add_method_mut("remove_prefix", |lua, this, prefix: String| {
-            removed_providers_to_table(lua, &this.0.remove_prefix(prefix))
         });
     }
 }

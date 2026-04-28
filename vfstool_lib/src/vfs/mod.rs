@@ -18,12 +18,36 @@ pub use self::providers::{
     ValidationIssue, ValidationReport, VfsProviderRecord,
 };
 
-use crate::{LayerIndex, NormalizedPath, VfsFile};
+use crate::{LayerIndex, NormalizedPath, SourceMeta, VfsFile};
 
 // Owned
 type MaybeFile<'a> = Option<&'a VfsFile>;
 type VFSTuple<'a> = (&'a NormalizedPath, &'a VfsFile);
 type VFSFiles = AHashMap<NormalizedPath, VfsFile>;
+
+/// One provider for a normalized VFS key.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct VfsProvider {
+    /// Source metadata for the provider.
+    pub source: SourceMeta,
+    /// Backing file for this provider.
+    pub file: VfsFile,
+}
+
+impl VfsProvider {
+    /// Create a VFS provider from source metadata and backing file.
+    #[must_use]
+    pub fn new(source: SourceMeta, file: VfsFile) -> Self {
+        Self { source, file }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProviderEntry {
+    pub(crate) source_index: usize,
+    pub(crate) provider: VfsProvider,
+}
 
 /// Virtual file system built from an ordered list of data directories and optional archives.
 ///
@@ -31,6 +55,8 @@ type VFSFiles = AHashMap<NormalizedPath, VfsFile>;
 /// files have higher priority, matching `OpenMW`'s `data=` semantics.
 pub struct VFS {
     file_map: VFSFiles,
+    pub(crate) providers: AHashMap<NormalizedPath, Vec<ProviderEntry>>,
+    pub(crate) sources: Vec<SourceMeta>,
     layer_index: LayerIndex,
 }
 

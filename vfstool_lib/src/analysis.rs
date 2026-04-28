@@ -16,6 +16,7 @@ mod simulate;
 /// Source type in the load order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
 pub enum SourceKind {
     /// A loose data directory.
     LooseDir,

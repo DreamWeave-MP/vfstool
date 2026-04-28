@@ -35,7 +35,7 @@ fn lock_manifest_uses_actual_vfs_winner_presence() {
     high.write("shared.txt", b"high");
 
     let (mut vfs, index) = VFS::from_directories_with_layer_index([low.path(), high.path()], None);
-    vfs.remove_file("shared.txt");
+    vfs.remove_resolved_file("shared.txt");
 
     let lock = index.lock_manifest(&vfs).expect("lock should build");
     assert!(lock.entries.is_empty());
