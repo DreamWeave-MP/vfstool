@@ -197,6 +197,44 @@ fn bad_regex_exit_code_is_six() {
 }
 
 #[test]
+fn invalid_openmw_config_env_exits_seven() {
+    let missing = std::env::temp_dir().join("vfstool_missing_openmw_config_for_exit_code.cfg");
+    let output = Command::new(vfstool_bin())
+        .env("OPENMW_CONFIG", &missing)
+        .arg("validate")
+        .output()
+        .expect("vfstool command should spawn");
+
+    assert_eq!(output.status.code(), Some(7));
+}
+
+#[test]
+fn missing_drift_lock_exits_runtime_failure() {
+    let fixture = Fixture::new("missing_drift_lock");
+    let output = fixture.run(&["drift", "missing-lock.yaml"]);
+
+    assert_eq!(output.status.code(), Some(9));
+}
+
+#[test]
+fn lock_rejects_incomplete_vfs() {
+    let fixture = Fixture::new("lock_rejects_missing_archive");
+    fs::write(
+        fixture.config_dir.join("openmw.cfg"),
+        format!(
+            "data=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Missing.bsa\n",
+            fixture.low.display(),
+            fixture.data_local.display()
+        ),
+    )
+    .expect("openmw.cfg should be writable");
+
+    let output = fixture.run(&["lock"]);
+
+    assert_eq!(output.status.code(), Some(9));
+}
+
+#[test]
 fn find_preserves_regex_escape_syntax() {
     let fixture = Fixture::new("find_regex_escape");
     let output = fixture.run(&["find", r".*\.dds$", "--format", "json"]);
@@ -212,6 +250,28 @@ fn find_file_missing_exits_one() {
     let output = fixture.run(&["find-file", "meshes/missing.nif", "--simple"]);
 
     assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn diff_unknown_source_exits_invalid_input() {
+    let fixture = Fixture::new("diff_unknown_source");
+    let unknown = fixture.path("not-a-data-dir");
+    let output = fixture.run(&[
+        "diff",
+        unknown.to_str().expect("path should be utf-8"),
+        fixture.high.to_str().expect("path should be utf-8"),
+    ]);
+
+    assert_eq!(output.status.code(), Some(8));
+}
+
+#[test]
+fn remaining_unknown_source_exits_invalid_input() {
+    let fixture = Fixture::new("remaining_unknown_source");
+    let unknown = fixture.path("not-a-data-dir");
+    let output = fixture.run(&["remaining", unknown.to_str().expect("path should be utf-8")]);
+
+    assert_eq!(output.status.code(), Some(8));
 }
 
 #[test]
@@ -630,4 +690,45 @@ fn run_rejects_incomplete_vfs_before_spawning_child() {
 
     assert_eq!(output.status.code(), Some(9));
     assert!(!marker.exists(), "child command must not execute");
+}
+
+#[test]
+#[cfg(unix)]
+fn run_rejects_non_empty_merged_dir_before_deleting_it() {
+    let fixture = Fixture::new("run_rejects_non_empty_merged");
+    let merged = fixture.path("merged");
+    fs::create_dir_all(&merged).expect("merged dir should be creatable");
+    write_file(&merged.join("keep.txt"), b"keep");
+
+    let output = fixture.run(&[
+        "run",
+        "--copy",
+        merged.to_str().expect("merged path should be utf-8"),
+        "--",
+        "sh",
+        "-c",
+        "true",
+    ]);
+
+    assert_eq!(output.status.code(), Some(8));
+    assert_eq!(fs::read(merged.join("keep.txt")).unwrap(), b"keep");
+}
+
+#[test]
+#[cfg(unix)]
+fn run_passes_through_child_exit_code() {
+    let fixture = Fixture::new("run_child_exit_code");
+    let merged = fixture.path("merged");
+
+    let output = fixture.run(&[
+        "run",
+        "--copy",
+        merged.to_str().expect("merged path should be utf-8"),
+        "--",
+        "sh",
+        "-c",
+        "exit 42",
+    ]);
+
+    assert_eq!(output.status.code(), Some(42));
 }

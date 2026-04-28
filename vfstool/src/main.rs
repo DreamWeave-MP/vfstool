@@ -58,7 +58,9 @@
 //! - `6`: invalid regular expression.
 //! - `7`: failed to load `openmw.cfg`.
 //! - `8`: invalid input, such as an unknown source path.
-//! - `9`: runtime failure while reading, writing, materializing, or running a child command.
+//! - `9`: runtime failure while reading, writing, materializing, or starting/capturing a child command.
+//!
+//! `run` passes through the child process exit code after the child starts successfully.
 mod cli;
 mod commands;
 mod config;
@@ -67,14 +69,23 @@ mod output;
 mod print;
 
 use clap::Parser;
-use std::io::Result;
 
 use cli::Cli;
 use commands::run_command;
 use config::resolve_config_path;
+use exit::VFSToolExitCode;
 
-fn main() -> Result<()> {
+fn main() {
     let args = Cli::parse();
-    let resolved_config_dir = resolve_config_path(args.config)?;
-    run_command(args.command, args.use_relative, resolved_config_dir)
+    let resolved_config_dir = match resolve_config_path(args.config) {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("Failed to resolve OpenMW config: {err}");
+            std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
+        }
+    };
+    if let Err(err) = run_command(args.command, args.use_relative, resolved_config_dir) {
+        eprintln!("vfstool: {err}");
+        std::process::exit(VFSToolExitCode::RuntimeFailure.into());
+    }
 }

@@ -12,7 +12,7 @@ use vfstool_lib::{
 
 use crate::{
     cli::{Commands, OutputFormat},
-    config::{build_conflict_index, build_layer_index, construct_vfs, load_openmw_config},
+    config::{build_conflict_index, build_layer_index_strict, construct_vfs, load_openmw_config},
     exit::VFSToolExitCode,
     output::{parse_lock_file, write_serialized, write_serialized_vfs},
     print,
@@ -133,6 +133,8 @@ fn handle_remaining(
         Ok(config) => config,
     };
 
+    validate_configured_data_path(&config, filter_path);
+
     let all_dirs: Vec<PathBuf> = config
         .data_directories_iter()
         .map(|dir| dir.parsed().to_owned())
@@ -140,6 +142,22 @@ fn handle_remaining(
 
     let tree = vfs.remaining(filter_path, replacements_only, &all_dirs, use_relative);
     write_serialized_vfs(output, format, &tree)
+}
+
+fn validate_configured_data_path(config: &openmw_config::OpenMWConfiguration, path: &Path) {
+    let normalized = normalize_host_path(path);
+    let is_configured = config
+        .data_directories_iter()
+        .map(openmw_config::DirectorySetting::parsed)
+        .any(|dir| normalize_host_path(dir).as_ref() == normalized.as_ref());
+    if !is_configured {
+        eprintln!(
+            "{}{} is not a configured data directory.",
+            print::err_prefix(),
+            path.display()
+        );
+        std::process::exit(VFSToolExitCode::InvalidInput.into());
+    }
 }
 
 fn handle_explain(
@@ -469,6 +487,17 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
     });
 
     let merged = params.merged_dir;
+    if merged
+        .read_dir()
+        .is_ok_and(|mut entries| entries.next().is_some())
+    {
+        eprintln!(
+            "{}merged directory {} already exists and is not empty; choose an empty scratch directory.",
+            print::err_prefix(),
+            merged.display()
+        );
+        std::process::exit(VFSToolExitCode::InvalidInput.into());
+    }
     let (inner_result, subprocess_status) =
         (|| -> (Result<()>, Option<std::process::ExitStatus>) {
             eprintln!("Dumping VFS to {}...", merged.display());
@@ -567,6 +596,9 @@ fn handle_diff(
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> Result<()> {
+    let cfg = load_openmw_config(resolved_config_dir.clone());
+    validate_configured_data_path(&cfg, source_a);
+    validate_configured_data_path(&cfg, source_b);
     let (_, ci) = build_conflict_index(resolved_config_dir);
     let report = ci.diff_report(source_a, source_b);
     write_serialized(output, format, &report)
@@ -577,7 +609,7 @@ fn handle_lock(
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> Result<()> {
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let (vfs, layer) = build_layer_index_strict(resolved_config_dir);
     let lock = layer.lock_manifest(&vfs)?;
     write_serialized(output, format, &lock)
 }
@@ -590,7 +622,7 @@ fn handle_drift(
     output: Option<PathBuf>,
 ) -> Result<()> {
     let lock = parse_lock_file(lock_file)?;
-    let (vfs, layer) = build_layer_index(resolved_config_dir);
+    let (vfs, layer) = build_layer_index_strict(resolved_config_dir);
     let report = layer.diff_against_lock(&vfs, &lock)?;
     let has_drift = !report.entries.is_empty();
     write_serialized(output, format, &report)?;

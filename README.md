@@ -162,7 +162,7 @@ vfstool remaining [OPTIONS] <FILTER_PATH>
 
 **Arguments**:
 
-- `<FILTER_PATH>`: Absolute path to filter against.
+- `<FILTER_PATH>`: Configured data directory to filter against.
 
 **Options**:
 
@@ -274,6 +274,10 @@ vfstool run [OPTIONS] <MERGED_DIR> -- <COMMAND>...
 
 `{}` in child command arguments is replaced with the merged directory path. Deletions made by the child command are not captured.
 
+`<MERGED_DIR>` must be absent or empty; `run` refuses to delete a non-empty directory. If the child
+process starts successfully, `vfstool run` returns the child process exit code. Exit code `9` is
+reserved for setup, spawn, or capture failures in `vfstool` itself.
+
 By default, `run` uses hardlinks when dumping loose files into the merged directory. This avoids duplicating data, but child tools that modify files in place may modify the original loose source files through those hardlinks. Use `--copy` for tools that are not hardlink-safe. No, that is not a theoretical footgun. It is just how hardlinks work.
 
 ---
@@ -321,7 +325,9 @@ vfstool drift [OPTIONS] <LOCK_FILE>
 | `6` | invalid regular expression |
 | `7` | failed to load `openmw.cfg` |
 | `8` | invalid input, such as an unknown source path |
-| `9` | runtime failure while reading, writing, materializing, or running a child command |
+| `9` | runtime failure while reading, writing, materializing, or starting/capturing a child command |
+
+`run` passes through the child process exit code after the child starts successfully.
 
 ---
 
