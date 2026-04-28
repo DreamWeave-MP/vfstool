@@ -139,7 +139,7 @@ vfs:diff_directory(dir) -> table
 vfs:provider_records_for(path) -> { ProviderRecord }
 vfs:providers_for(path) -> { VfsProvider } | nil
 vfs:explain(path) -> table | nil
-vfs:duplicates() -> table
+vfs:duplicates(pattern?) -> table
 vfs:archives() -> { ArchiveInfo }
 vfs:archive_entries(archive) -> { ArchiveEntry }
 vfs:files_from_archive(archive) -> { string }

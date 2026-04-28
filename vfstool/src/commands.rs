@@ -158,8 +158,23 @@ fn handle_explain(
     write_serialized(output, format, &report)
 }
 
-fn handle_duplicates(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
-    write_serialized(output, format, &vfs.duplicates())
+fn handle_duplicates(
+    vfs: &VFS,
+    pattern: Option<&str>,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let report = match pattern {
+        Some(pattern) => match vfs.duplicates_matching_regex(pattern) {
+            Ok(report) => report,
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(VFSToolExitCode::BadRegex.into());
+            }
+        },
+        None => vfs.duplicates(),
+    };
+    write_serialized(output, format, &report)
 }
 
 fn handle_archives(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
@@ -291,8 +306,12 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
             handle_explain(vfs, path.as_path(), format, output)?;
             Ok(None)
         }
-        Commands::Duplicates { format, output } => {
-            handle_duplicates(vfs, format, output)?;
+        Commands::Duplicates {
+            pattern,
+            format,
+            output,
+        } => {
+            handle_duplicates(vfs, pattern.as_deref(), format, output)?;
             Ok(None)
         }
         Commands::Archives { format, output } => {

@@ -436,8 +436,15 @@ fn add_vfs_report_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
             None => Ok(Value::Nil),
         }
     });
-    methods.add_method("duplicates", |lua, this, ()| {
-        duplicate_report_to_table(lua, &this.0.duplicates())
+    methods.add_method("duplicates", |lua, this, pattern: Option<String>| {
+        let report = match pattern {
+            Some(pattern) => this
+                .0
+                .duplicates_matching_regex(&pattern)
+                .map_err(LuaError::external)?,
+            None => this.0.duplicates(),
+        };
+        duplicate_report_to_table(lua, &report)
     });
     methods.add_method("archives", |lua, this, ()| {
         archive_infos_to_table(lua, &this.0.archives())

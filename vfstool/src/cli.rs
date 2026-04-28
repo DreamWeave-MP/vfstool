@@ -151,6 +151,8 @@ pub enum Commands {
     },
     /// List VFS keys with more than one provider
     Duplicates {
+        /// Optional regex over normalized VFS keys, e.g. `^meshes/` or `textures/.*\\.dds$`
+        pattern: Option<String>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]

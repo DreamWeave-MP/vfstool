@@ -2,7 +2,8 @@
 use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
-    normalize_host_path, paths::key_to_path_buf_lossy,
+    normalize_host_path,
+    paths::{key_to_path_buf_lossy, key_to_string_lossy},
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -291,9 +292,36 @@ impl VFS {
     /// Return all normalized keys that have more than one provider.
     #[must_use]
     pub fn duplicates(&self) -> DuplicateReport {
+        self.duplicates_matching_key(|_| true)
+    }
+
+    /// Return duplicate keys whose normalized VFS key matches `pattern`.
+    ///
+    /// The regex is compiled case-insensitively and matched against normalized VFS keys using `/`
+    /// separators. This filters the same duplicate rows returned by [`VFS::duplicates`]; it does
+    /// not inspect physical source paths or provider paths.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if `pattern` is not a valid regex.
+    pub fn duplicates_matching_regex(
+        &self,
+        pattern: &str,
+    ) -> std::result::Result<DuplicateReport, regex::Error> {
+        let re = regex::RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .build()?;
+        Ok(self.duplicates_matching_key(|key| re.is_match(&key_to_string_lossy(key))))
+    }
+
+    fn duplicates_matching_key(
+        &self,
+        matches_key: impl Fn(&NormalizedPath) -> bool,
+    ) -> DuplicateReport {
         let mut entries: Vec<_> = self
             .providers
             .keys()
+            .filter(|key| matches_key(key))
             .cloned()
             .filter_map(|key| {
                 let providers = self.provider_records_for_key(&key);

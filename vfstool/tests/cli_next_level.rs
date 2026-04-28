@@ -265,6 +265,30 @@ fn duplicate_report_lists_shared_vfs_keys() {
 }
 
 #[test]
+fn duplicate_report_can_filter_by_vfs_key_regex() {
+    let fixture = Fixture::new("duplicates_filter");
+    write_file(&fixture.low.join("meshes/a.nif"), b"low mesh");
+    write_file(&fixture.high.join("meshes/a.nif"), b"high mesh");
+    let output = fixture.run(&["duplicates", "^meshes/", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    let entries = payload["entries"]
+        .as_array()
+        .expect("entries should be an array");
+    assert!(entries.iter().any(|entry| entry["key"] == "meshes/a.nif"));
+    assert!(!entries.iter().any(|entry| entry["key"] == "textures/a.dds"));
+}
+
+#[test]
+fn duplicate_report_bad_regex_exits_six() {
+    let fixture = Fixture::new("duplicates_bad_regex");
+    let output = fixture.run(&["duplicates", "[invalid", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(6));
+}
+
+#[test]
 fn archive_list_accepts_unique_archive_filename() {
     let fixture = Fixture::new("archive_filename");
     create_tes3_bsa_archive(&fixture.low, "Morrowind.bsa", &["Meshes/Used.NIF"]);

@@ -208,7 +208,7 @@ Inspect the provider index used by the resolved VFS. These commands are projecti
 
 ```bash
 vfstool explain [OPTIONS] <PATH>
-vfstool duplicates [OPTIONS]
+vfstool duplicates [OPTIONS] [PATTERN]
 vfstool archives [OPTIONS]
 vfstool archive-list [OPTIONS] <ARCHIVE>
 vfstool case-collisions [OPTIONS]
@@ -219,7 +219,8 @@ vfstool validate [OPTIONS]
 **Commands**:
 
 - `explain <PATH>`: Show the winning provider and lower-priority providers for one VFS key.
-- `duplicates`: List VFS keys with more than one provider.
+- `duplicates [PATTERN]`: List VFS keys with more than one provider. `PATTERN`, when supplied,
+  is a case-insensitive regex over normalized VFS keys, e.g. `^meshes/` or `textures/.*\\.dds$`.
 - `archives`: List loaded archives and how many entries currently win.
 - `archive-list <ARCHIVE>`: List VFS entries supplied by one archive.
 - `case-collisions`: Report distinct original path spellings that normalize to the same VFS key.

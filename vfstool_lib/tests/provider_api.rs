@@ -66,6 +66,30 @@ fn provider_reports_preserve_priority_and_explain_winner() {
 }
 
 #[test]
+fn duplicates_matching_regex_filters_normalized_vfs_keys() {
+    let root = temp_root("duplicates_filter");
+    let low = root.join("low");
+    let high = root.join("high");
+    fs::create_dir_all(low.join("meshes")).unwrap();
+    fs::create_dir_all(high.join("Meshes")).unwrap();
+    fs::create_dir_all(low.join("textures")).unwrap();
+    fs::create_dir_all(high.join("textures")).unwrap();
+    fs::write(low.join("meshes/a.nif"), b"low mesh").unwrap();
+    fs::write(high.join("Meshes/A.NIF"), b"high mesh").unwrap();
+    fs::write(low.join("textures/a.dds"), b"low texture").unwrap();
+    fs::write(high.join("textures/a.dds"), b"high texture").unwrap();
+
+    let vfs = VFS::from_directories([&low, &high], None);
+    let report = vfs.duplicates_matching_regex(r"^MESHES/.*\.nif$").unwrap();
+
+    assert_eq!(report.entries.len(), 1);
+    assert_eq!(report.entries[0].key, PathBuf::from("meshes/a.nif"));
+    assert!(vfs.duplicates_matching_regex("[invalid").is_err());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
 fn validate_reports_cross_source_file_directory_conflicts() {
     let root = temp_root("validate");
     let file_source = root.join("file_source");
