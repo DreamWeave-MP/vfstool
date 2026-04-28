@@ -215,7 +215,7 @@ fn mutable_vfs_class(lua: &Lua) -> LuaResult<Table> {
                 .map_err(LuaError::external)
         })?,
     )?;
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     class.set(
         "from_directories_with_archives",
         lua.create_function(|_, (dirs, archives): (Table, Table)| {
@@ -510,7 +510,7 @@ impl UserData for LuaMutableVfs {
                 Ok(this.0.push_provider(&key, provider.0.clone()))
             },
         );
-        #[cfg(any(feature = "bsa", feature = "zip"))]
+        #[cfg(any(feature = "beth-archives", feature = "zip"))]
         methods.add_method_mut("push_archive", |_, this, archive: String| {
             Ok(this.0.push_archive(archive))
         });

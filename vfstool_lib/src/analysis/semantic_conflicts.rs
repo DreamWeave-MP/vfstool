@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use super::provider_io::SharedArchiveFileCache;
 use super::provider_io::{ProviderIoCache, fingerprint_bytes};
 
@@ -51,13 +51,13 @@ impl LayerIndex {
             .collect();
         keys.sort();
 
-        #[cfg(any(feature = "bsa", feature = "zip"))]
+        #[cfg(any(feature = "beth-archives", feature = "zip"))]
         let archive_cache = ProviderIoCache::new_shared_archive_file_cache();
 
         let mut entries: Vec<SemanticConflict> = keys
             .par_iter()
             .map(|key| {
-                #[cfg(any(feature = "bsa", feature = "zip"))]
+                #[cfg(any(feature = "beth-archives", feature = "zip"))]
                 {
                     self.semantic_conflict_for_key_with_archive_cache(
                         vfs,
@@ -66,7 +66,7 @@ impl LayerIndex {
                         archive_cache.clone(),
                     )
                 }
-                #[cfg(not(any(feature = "bsa", feature = "zip")))]
+                #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
                 {
                     self.semantic_conflict_for_key_no_cache(vfs, key, opts)
                 }
@@ -80,7 +80,7 @@ impl LayerIndex {
         Ok(SemanticConflictReport { entries })
     }
 
-    #[cfg(any(test, not(any(feature = "bsa", feature = "zip"))))]
+    #[cfg(any(test, not(any(feature = "beth-archives", feature = "zip"))))]
     pub(super) fn semantic_conflict_for_key_no_cache(
         &self,
         vfs: &VFS,
@@ -91,7 +91,7 @@ impl LayerIndex {
         self.semantic_conflict_for_key(vfs, key, opts, &mut hash_cache)
     }
 
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     fn semantic_conflict_for_key_with_archive_cache(
         &self,
         vfs: &VFS,

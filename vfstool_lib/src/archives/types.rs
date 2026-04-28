@@ -12,7 +12,7 @@ use std::sync::Mutex;
 /// An open archive, tagged by its format.
 pub enum TypedArchive {
     /// Bethesda BSA/BA2 archive.
-    #[cfg(feature = "bsa")]
+    #[cfg(feature = "beth-archives")]
     Bethesda(dream_archive::Archive),
     /// ZIP or PK3 archive.
     #[cfg(feature = "zip")]
@@ -22,7 +22,7 @@ pub enum TypedArchive {
 impl fmt::Debug for TypedArchive {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            #[cfg(feature = "bsa")]
+            #[cfg(feature = "beth-archives")]
             Self::Bethesda(_) => f.write_str("TypedArchive::Bethesda"),
             #[cfg(feature = "zip")]
             Self::Zip(_) => f.write_str("TypedArchive::Zip"),

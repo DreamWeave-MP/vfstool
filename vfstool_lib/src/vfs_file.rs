@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use std::sync::Arc;
 
 use std::{
@@ -8,14 +8,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use crate::archives::StoredArchive;
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 #[path = "vfs_file/archive.rs"]
 mod archive;
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 pub use archive::ArchiveReference;
 
 #[cfg(test)]
@@ -26,7 +26,7 @@ mod tests;
 #[derive(Debug, Clone)]
 pub enum FileType {
     /// File stored inside a BSA, BA2, ZIP, or PK3 archive.
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     Archive(ArchiveReference),
     /// Loose file on the real filesystem, identified by its absolute path.
     Loose(PathBuf),
@@ -88,7 +88,7 @@ impl VfsFile {
     ///
     /// `path` is the in-archive path of the file (not normalized; normalization happens at the
     /// VFS key level, not here).
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> Self {
         VfsFile {
             file: FileType::Archive(ArchiveReference::new(path.as_ref(), parent_archive)),
@@ -96,7 +96,7 @@ impl VfsFile {
     }
 
     /// Creates a [`VfsFile`] backed by a byte-named entry inside `parent_archive`.
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub fn from_archive_bytes(path: &[u8], parent_archive: Arc<StoredArchive>) -> Self {
         VfsFile {
             file: FileType::Archive(ArchiveReference::from_bytes(path, parent_archive)),
@@ -108,7 +108,7 @@ impl VfsFile {
     pub fn is_loose(&self) -> bool {
         match self.file {
             FileType::Loose(_) => true,
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(_) => false,
         }
     }
@@ -118,7 +118,7 @@ impl VfsFile {
     pub fn is_archive(&self) -> bool {
         match self.file {
             FileType::Loose(_) => false,
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(_) => true,
         }
     }
@@ -128,7 +128,7 @@ impl VfsFile {
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
             FileType::Loose(_) => None,
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(archive_ref) => {
                 let path_str = archive_ref
                     .parent_archive
@@ -147,7 +147,7 @@ impl VfsFile {
         match &self.file {
             FileType::Loose(_) => None,
 
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(archive_ref) => {
                 let name = archive_ref
                     .parent_archive
@@ -162,7 +162,7 @@ impl VfsFile {
     }
 
     /// Returns an `Arc` clone of the parent archive handle, or an error for loose files.
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     ///
     /// # Errors
     ///
@@ -208,7 +208,7 @@ impl VfsFile {
                 Ok(Box::new(file))
             }
 
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(archive_ref) => archive::open(archive_ref),
         }
     }
@@ -238,7 +238,7 @@ impl VfsFile {
     pub fn file_name(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_name(),
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(archive_ref) => archive_ref.path.file_name(),
         }
     }
@@ -270,7 +270,7 @@ impl VfsFile {
     pub fn file_stem(&self) -> Option<&std::ffi::OsStr> {
         match &self.file {
             FileType::Loose(path) => path.file_stem(),
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(archive_ref) => archive_ref.path.file_stem(),
         }
     }
@@ -297,7 +297,7 @@ impl VfsFile {
         match &self.file {
             FileType::Loose(path) => path.as_path(),
 
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             FileType::Archive(archive_ref) => &archive_ref.path,
         }
     }

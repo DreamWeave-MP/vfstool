@@ -14,7 +14,7 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 clap = { version = "4.5.48", features = ["derive"] }
 vfstool_lib = { path = "../vfstool_lib", version = "1.0", features = [
     "serialize",
-    "bsa",
+    "beth-archives",
 ] }
 [dependencies.openmw-config]
 version = "0.1.92"

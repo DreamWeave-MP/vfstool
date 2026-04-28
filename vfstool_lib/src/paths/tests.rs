@@ -126,7 +126,7 @@ fn normalize_in_place_matches_allocating_version() {
 }
 
 #[test]
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 fn archive_keys_reject_absolute_parent_and_drive_paths() {
     assert_eq!(
         crate::archives::normalized_archive_key(b"Textures\\Foo.DDS"),

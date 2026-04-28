@@ -108,7 +108,7 @@
 //!
 //! # Feature flags
 //!
-//! - `bsa`: BSA/BA2 archive support.
+//! - `beth-archives`: BSA/BA2 archive support.
 //! - `zip`: ZIP/PK3 archive support.
 //! - `serialize`: JSON/YAML/TOML serialization and structured JSON/TOML semantic comparison.
 //!   Without `serialize`, JSON and TOML semantic deltas are reported as unknown rather than parsed.
@@ -127,7 +127,7 @@
 /// Higher-level analysis APIs: provenance, lock manifests, drift, and semantic conflict reports.
 pub mod analysis;
 /// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 pub mod archives;
 /// Conflict analysis: per-source override and overridden-by sets.
 pub mod conflict;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use crate::archives;
 use crate::{
     NormalizedPath, SourceKind, SourceMeta, VFS, VfsFile, VfsKeyInput, paths::normalized_safe_key,
@@ -64,7 +64,7 @@ impl MutableVfs {
     /// # Errors
     ///
     /// Returns an error if a directory traversal entry cannot be read.
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub fn from_directories_with_archives(
         search_dirs: impl IntoIterator<Item = impl AsRef<Path>>,
         archive_list: &[&str],
@@ -116,7 +116,7 @@ impl MutableVfs {
     ///
     /// Returns `false` and leaves the VFS unchanged when `archive_path` cannot be opened as a
     /// supported archive.
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub fn push_archive<P: AsRef<Path>>(&mut self, archive_path: P) -> bool {
         let Some(archive) = archives::open_archive(archive_path.as_ref()) else {
             return false;

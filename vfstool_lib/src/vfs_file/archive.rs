@@ -38,7 +38,7 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
     let parent = archive_ref.parent_archive.handle();
 
     match parent {
-        #[cfg(feature = "bsa")]
+        #[cfg(feature = "beth-archives")]
         TypedArchive::Bethesda(archive) => {
             let bytes = archive
                 .read_file_required(&archive_ref.raw_path)

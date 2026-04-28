@@ -10,7 +10,7 @@
 - **Provider and conflict analysis**: `LayerIndex` stores canonical provider chains; `VFS`
   resolves winners from that index; `ConflictIndex` is a derived conflict projection for
   override/overridden reports.
-- **Archive support**: BSA/BA2 (Morrowind, Oblivion, Skyrim, Fallout 4) via the `ba2` crate (`bsa` feature). ZIP/PK3 via the `zip` crate (`zip` feature).
+- **Archive support**: BSA/BA2 (Morrowind, Oblivion, Skyrim, Fallout 4) via `dream_archive` (`beth-archives` feature). ZIP/PK3 via the `zip` crate (`zip` feature).
 - **Serialization**: JSON, YAML, TOML output via `serde` (`serialize` feature).
 - **Semantic JSON/TOML analysis**: Structured JSON/TOML comparisons require the `serialize` feature;
   without it those formats are reported as unknown semantic deltas.
@@ -31,7 +31,7 @@ With archive and serialization support:
 
 ```toml
 [dependencies]
-vfstool_lib = { version = "1.0", features = ["bsa", "zip", "serialize"] }
+vfstool_lib = { version = "1.0", features = ["beth-archives", "zip", "serialize"] }
 ```
 
 ---
@@ -139,7 +139,7 @@ assert!(removed.is_some());
 ```
 
 Use `MutableVfs` when provider stacks matter. Providers are stored low-to-high priority, so removing
-the current winner reveals the next lower-priority provider if one exists. With the `bsa` or `zip`
+the current winner reveals the next lower-priority provider if one exists. With the `beth-archives` or `zip`
 feature enabled, `MutableVfs::from_directories_with_archives` resolves archive names through the
 loose directory files and inserts archive providers below all loose providers, matching OpenMW's
 loose-over-archive rule.
@@ -160,7 +160,7 @@ intentionally flattened. A conversion that says it preserves stacks while quietl
 be worse, so this one says what it does.
 
 ```rust,no_run
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 # {
 use vfstool_lib::MutableVfs;
 
@@ -198,13 +198,29 @@ every mod conflict in existence. JSON and TOML structural comparison require the
 without it those deltas are unknown rather than parsed. The `experimental` namespace remains public
 for policy, solver, and knowledge-base workflows, but it is not promoted or stable API.
 
+### Breaking API changes in 1.0
+
+- VFS keys are now byte-first normalized resource keys. Public key-facing APIs use or accept
+  `dream_path::NormalizedPath` through `vfstool_lib::NormalizedPath` / `VfsKeyInput` rather than
+  treating VFS keys as host filesystem `PathBuf`s. Real filesystem paths still use `Path`/`PathBuf`.
+- Bethesda archive loading moved from the old direct BA2/BSA plumbing to `dream_archive`; enable it
+  with `beth-archives`. The old `bsa` Cargo feature name was removed because it claimed to be one
+  archive format while quietly enabling two. That sort of thing is how rendering options end up
+  disabling shadows without disabling the shadow pass.
+- With `serialize` enabled, `serde`, `serde_json`, `serde_yaml`, and `toml` are re-exported from
+  `vfstool_lib` so applications can use the same serialization stack as the library instead of
+  pinning duplicate parser versions.
+- ZIP/PK3 support is intentionally narrower: `zip` is built without default features and currently
+  supports stored/deflated and LZMA-compressed entries. AES, bzip2, PPMd, deflate64, and zstd are not
+  pulled in unless we deliberately decide they are worth the dependency cost.
+
 ---
 
 ## Feature flags
 
 | Flag | Description |
 |------|-------------|
-| `bsa` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
+| `beth-archives` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
 | `zip` | ZIP/PK3 archive support |
 | `serialize` | JSON/YAML/TOML output via serde |
 | `lua` | Embedded `mlua` bindings for the promoted stable API surface; see [`docs/lua.md`](docs/lua.md) |

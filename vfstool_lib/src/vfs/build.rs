@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use ahash::AHashMap;
 use rayon::prelude::*;
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use std::sync::Arc;
 use walkdir::WalkDir;
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use crate::archives;
 use crate::{
     NormalizedPath, SourceKind, SourceMeta, VfsFile,
@@ -19,7 +19,7 @@ pub(super) struct SourceEntries {
     pub(super) entries: Vec<(NormalizedPath, VfsFile)>,
 }
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 pub(super) fn collect_archive_sources(
     loose_sources: &[SourceEntries],
     archive_list: Option<Vec<&str>>,

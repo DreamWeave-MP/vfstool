@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 mod archives;
 mod diff;
 mod index;

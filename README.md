@@ -43,6 +43,25 @@ cargo install --path vfstool
 
 ---
 
+## 1.0 breaking API changes for Rust consumers
+
+The `vfstool` CLI keeps the same user-facing archive behavior, but the library API was cleaned up
+for 1.0. If you depend on `vfstool_lib` directly, check these before upgrading:
+
+- VFS keys are byte-first normalized resource paths now. Use `vfstool_lib::NormalizedPath` and
+  `VfsKeyInput` for VFS keys; keep using `Path`/`PathBuf` for real host filesystem paths. These are
+  not the same thing, despite many older APIs pretending they were. They were lying.
+- Bethesda archive support is provided by `dream_archive`; enable it with the `beth-archives`
+  feature. The old `bsa` feature name is gone because the feature covers both BSA and BA2.
+- `vfstool_lib` re-exports `serde`, `serde_json`, `serde_yaml`, and `toml` when `serialize` is
+  enabled, so applications can share the library's serialization stack instead of pinning duplicate
+  parser versions.
+- ZIP/PK3 support uses `zip` without default features. Currently supported ZIP compression is stored,
+  deflate, and LZMA; AES, bzip2, PPMd, deflate64, and zstd are intentionally not dragged into the
+  dependency graph.
+
+---
+
 ## Usage
 
 ```bash

@@ -67,7 +67,7 @@ pub(crate) fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
         };
     }
 
-    #[cfg(feature = "bsa")]
+    #[cfg(feature = "beth-archives")]
     {
         return match dream_archive::Archive::open_path(path) {
             Ok(archive) => Some(Arc::new(StoredArchive {

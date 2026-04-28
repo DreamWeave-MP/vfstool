@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -28,11 +28,11 @@ impl ContentFingerprint {
 pub(super) struct ProviderIoCache {
     fingerprints: AHashMap<(usize, NormalizedPath), Option<ContentFingerprint>>,
     bytes: AHashMap<(usize, NormalizedPath), Option<Vec<u8>>>,
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     archive_files: SharedArchiveFileCache,
 }
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 pub(super) type SharedArchiveFileCache =
     Arc<Mutex<AHashMap<PathBuf, Option<AHashMap<NormalizedPath, VfsFile>>>>>;
 
@@ -41,12 +41,12 @@ impl ProviderIoCache {
         Self {
             fingerprints: AHashMap::new(),
             bytes: AHashMap::new(),
-            #[cfg(any(feature = "bsa", feature = "zip"))]
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
             archive_files: Self::new_shared_archive_file_cache(),
         }
     }
 
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub(super) fn with_shared_archive_file_cache(archive_files: SharedArchiveFileCache) -> Self {
         Self {
             fingerprints: AHashMap::new(),
@@ -55,7 +55,7 @@ impl ProviderIoCache {
         }
     }
 
-    #[cfg(any(feature = "bsa", feature = "zip"))]
+    #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub(super) fn new_shared_archive_file_cache() -> SharedArchiveFileCache {
         Arc::new(Mutex::new(AHashMap::new()))
     }
@@ -185,7 +185,7 @@ fn archive_parent_matches(parent: &str, source_path: &Path) -> bool {
     normalize_path(Path::new(parent)).as_ref() == normalize_path(source_path).as_ref()
 }
 
-#[cfg(any(feature = "bsa", feature = "zip"))]
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
 fn archive_provider_file(
     source_path: &Path,
     key: &NormalizedPath,
@@ -224,7 +224,7 @@ fn archive_provider_file(
         .cloned()
 }
 
-#[cfg(not(any(feature = "bsa", feature = "zip")))]
+#[cfg(not(any(feature = "beth-archives", feature = "zip")))]
 fn archive_provider_file(
     _source_path: &Path,
     _key: &NormalizedPath,

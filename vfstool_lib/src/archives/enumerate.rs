@@ -8,7 +8,7 @@ use std::{path::PathBuf, sync::Arc};
 #[must_use]
 pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
     match &stored.archive {
-        #[cfg(feature = "bsa")]
+        #[cfg(feature = "beth-archives")]
         TypedArchive::Bethesda(data) => data
             .entries()
             .filter_map(dream_archive::Entry::path)
@@ -39,7 +39,7 @@ pub fn file_map(archives: &ArchiveList) -> AHashMap<NormalizedPath, VfsFile> {
             let iter: Box<dyn Iterator<Item = (NormalizedPath, VfsFile)>> = match &stored_archive
                 .archive
             {
-                #[cfg(feature = "bsa")]
+                #[cfg(feature = "beth-archives")]
                 TypedArchive::Bethesda(data) => Box::new(data.entries().filter_map(|entry| {
                     let path = entry.path()?;
                     normalized_archive_key(path.as_ref()).map(|normalized| {

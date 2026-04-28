@@ -40,7 +40,7 @@ mod dump_tests;
 #[cfg(test)]
 #[path = "tests/loose_tests.rs"]
 mod loose_tests;
-#[cfg(all(test, feature = "bsa"))]
+#[cfg(all(test, feature = "beth-archives"))]
 #[path = "tests/tests.rs"]
 mod tests;
 #[cfg(all(test, feature = "zip"))]

@@ -56,7 +56,7 @@ Reports are plain Lua tables. Long-lived mutable structures are userdata.
 - Enums are snake-case strings, for example `"loose_dir"`, `"archive"`, `"ini"`,
   `"cosmetic_only"`, `"winner_hash_changed"`.
 - Constructors that take directories expect arrays: `{ "/data/base", "/data/mod" }`.
-- Archive loading still depends on `bsa` / `zip` Cargo features.
+- Archive loading still depends on `beth-archives` / `zip` Cargo features.
 - `VFS` mutators are winner-only. Removing a key from `VFS` does not reveal lower-priority
   providers.
 - `MutableVfs` stores provider stacks low priority to high priority. Removing the winner reveals the
