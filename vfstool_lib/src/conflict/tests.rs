@@ -150,6 +150,21 @@ fn duplicate_keys_within_one_source_do_not_self_conflict() {
 }
 
 #[test]
+fn same_source_path_in_multiple_positions_does_not_self_conflict() {
+    let source = PathBuf::from("/same");
+    let index = ConflictIndex::from_file_lists(vec![
+        (source.clone(), vec![PathBuf::from("shared.txt")]),
+        (source, vec![PathBuf::from("shared.txt")]),
+    ]);
+
+    assert!(index.sources_containing(Path::new("shared.txt")).is_empty());
+    assert!(index.conflicts[0].overrides.is_empty());
+    assert!(index.conflicts[0].overridden_by.is_empty());
+    assert!(index.conflicts[1].overrides.is_empty());
+    assert!(index.conflicts[1].overridden_by.is_empty());
+}
+
+#[test]
 fn from_file_lists_normalizes_caller_supplied_paths() {
     let index = ConflictIndex::from_file_lists(vec![
         (
@@ -168,6 +183,23 @@ fn from_file_lists_normalizes_caller_supplied_paths() {
     );
     assert!(index.conflicts[1].has_overrides());
     assert!(index.conflicts[0].is_overridden());
+}
+
+#[test]
+#[cfg(unix)]
+fn sources_containing_uses_byte_keys_for_non_utf8_filenames() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let file_name = OsString::from_vec(vec![b'f', 0xff, b'o', b'.', b'd', b'd', b's']);
+    let d1 = TempDir::new("ci_non_utf8_d1");
+    let d2 = TempDir::new("ci_non_utf8_d2");
+    fs::write(d1.path().join(&file_name), b"one").unwrap();
+    fs::write(d2.path().join(&file_name), b"two").unwrap();
+
+    let index = ConflictIndex::from_directories([d1.path(), d2.path()]);
+
+    assert_eq!(index.sources_containing(Path::new(&file_name)), &[0, 1]);
 }
 
 #[test]

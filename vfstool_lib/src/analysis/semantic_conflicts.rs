@@ -107,6 +107,7 @@ impl LayerIndex {
         let mut seen_hashes = AHashSet::<String>::new();
         let mut providers = Vec::with_capacity(provider_chain.len());
         let mut inferred_asset_class = AssetClass::Unknown;
+        let mut hashed_provider_count = 0usize;
 
         for provider in &provider_chain {
             let src = provider.source.clone();
@@ -136,6 +137,7 @@ impl LayerIndex {
 
             let (relation, hash_blake3, size) = match (&winner_fp, &current) {
                 (Some(w), Some(c)) => {
+                    hashed_provider_count += 1;
                     let rel = if w.digest == c.digest {
                         SemanticRelation::IdenticalToWinner
                     } else {
@@ -146,6 +148,7 @@ impl LayerIndex {
                     (rel, Some(digest.hex), Some(digest.size))
                 }
                 (_, Some(c)) => {
+                    hashed_provider_count += 1;
                     let digest = c.to_digest();
                     seen_hashes.insert(digest.hex.clone());
                     (
@@ -171,7 +174,9 @@ impl LayerIndex {
             winner: winner_source,
             providers,
             asset_class: inferred_asset_class,
-            all_identical: winner_fp.is_some() && seen_hashes.len() == 1,
+            all_identical: winner_fp.is_some()
+                && hashed_provider_count == provider_chain.len()
+                && seen_hashes.len() == 1,
             distinct_versions: seen_hashes.len(),
         }))
     }

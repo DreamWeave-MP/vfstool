@@ -187,23 +187,4 @@ impl LayerIndex {
             sources: contributions,
         }
     }
-
-    /// Remove all providers for `key` from the index.
-    pub(crate) fn remove_key(&mut self, key: &NormalizedPath) {
-        let normalized = NormalizedKey::from(key.clone());
-        if let Some(source_indices) = self.path_to_sources.remove(&normalized) {
-            for source_index in source_indices {
-                if let Some(paths) = self
-                    .provider_paths
-                    .get_mut(&(source_index, normalized.clone()))
-                {
-                    paths.pop();
-                    if paths.is_empty() {
-                        self.provider_paths
-                            .remove(&(source_index, normalized.clone()));
-                    }
-                }
-            }
-        }
-    }
 }

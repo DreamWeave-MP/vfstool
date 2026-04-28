@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use super::{normalize_host_path, normalize_host_path_in_place};
+use super::{VfsKeyInput, normalize_host_path, normalize_host_path_in_place};
 use std::path::PathBuf;
 
 #[test]
@@ -136,4 +136,10 @@ fn archive_keys_reject_absolute_parent_and_drive_paths() {
     assert!(crate::archives::normalized_archive_key(b"/foo.dds").is_none());
     assert!(crate::archives::normalized_archive_key(b"C:\\foo.dds").is_none());
     assert!(crate::archives::normalized_archive_key(b"c:/foo.dds").is_none());
+    assert!(crate::archives::normalized_archive_key(b"foo\0bar.dds").is_none());
+}
+
+#[test]
+fn materializable_keys_reject_nul_bytes() {
+    assert!("foo\0bar.dds".to_safe_vfs_key().is_none());
 }

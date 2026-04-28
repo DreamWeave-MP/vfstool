@@ -249,13 +249,15 @@ impl VFS {
     ///
     /// Returns an error if destination creation, source reading, or destination writing fails.
     pub fn extract_file(&self, vfs_path: &Path, dest_dir: &Path) -> io::Result<Option<PathBuf>> {
-        let Some(file) = self.get_file(vfs_path) else {
+        let normalized_key = crate::VfsKeyInput::to_vfs_key(vfs_path);
+        let Some(file) = self.file_map.get(&normalized_key) else {
             return Ok(None);
         };
 
         std::fs::create_dir_all(dest_dir)?;
 
-        let file_name = vfs_path.file_name().ok_or_else(|| {
+        let normalized_path = key_to_path_buf_lossy(&normalized_key);
+        let file_name = normalized_path.file_name().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "vfs_path has no file name")
         })?;
 

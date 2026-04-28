@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
-use ahash::AHashMap;
+use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
 use std::sync::Arc;
@@ -28,15 +28,7 @@ pub(super) fn collect_archive_sources(
         return Vec::new();
     };
 
-    let loose_lookup: AHashMap<NormalizedPath, VfsFile> = loose_sources
-        .iter()
-        .flat_map(|source| {
-            source
-                .entries
-                .iter()
-                .map(|(key, file)| (key.clone(), VfsFile::from(file.path())))
-        })
-        .collect();
+    let loose_lookup = archive_lookup(loose_sources, &list);
     archives::from_set(&loose_lookup, &list)
         .iter()
         .map(|stored| {
@@ -61,15 +53,7 @@ pub(super) fn try_collect_archive_sources(
         return Ok(Vec::new());
     };
 
-    let loose_lookup: AHashMap<NormalizedPath, VfsFile> = loose_sources
-        .iter()
-        .flat_map(|source| {
-            source
-                .entries
-                .iter()
-                .map(|(key, file)| (key.clone(), VfsFile::from(file.path())))
-        })
-        .collect();
+    let loose_lookup = archive_lookup(loose_sources, &list);
     archives::try_from_set(&loose_lookup, &list).map(|archives| {
         archives
             .iter()
@@ -85,6 +69,27 @@ pub(super) fn try_collect_archive_sources(
             })
             .collect()
     })
+}
+
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
+fn archive_lookup(
+    loose_sources: &[SourceEntries],
+    archive_list: &[&str],
+) -> AHashMap<NormalizedPath, VfsFile> {
+    let requested = archive_list
+        .iter()
+        .map(|archive| NormalizedPath::new(archive.as_bytes()))
+        .collect::<AHashSet<_>>();
+    loose_sources
+        .iter()
+        .flat_map(|source| {
+            source
+                .entries
+                .iter()
+                .filter(|(key, _)| requested.contains(key))
+                .map(|(key, file)| (key.clone(), VfsFile::from(file.path())))
+        })
+        .collect()
 }
 
 pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {

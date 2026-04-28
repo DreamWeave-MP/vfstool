@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::{
-    LayerIndex, SourceKind, SourceMeta, normalize_host_path_in_place,
-    paths::{key_to_path_buf_lossy, normalized_safe_key},
+    LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsKeyInput,
+    paths::{key_to_path_buf_bytes, key_to_path_buf_lossy, normalized_safe_key},
 };
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
@@ -89,7 +89,7 @@ pub struct ConflictIndex {
     /// Only paths present in two or more sources are included.
     ///
     /// Use [`ConflictIndex::sources_containing`] for safe access.
-    path_to_sources: AHashMap<PathBuf, Vec<usize>>,
+    path_to_sources: AHashMap<NormalizedPath, Vec<usize>>,
 }
 
 impl ConflictIndex {
@@ -98,13 +98,19 @@ impl ConflictIndex {
     pub fn from_layer_index(layer: &LayerIndex) -> Self {
         let sources = layer.sources.clone();
         let mut source_file_counts = vec![0; sources.len()];
-        let mut path_to_sources: AHashMap<PathBuf, Vec<usize>> = AHashMap::new();
+        let mut path_to_sources: AHashMap<NormalizedPath, Vec<usize>> = AHashMap::new();
 
         for key in layer.keys() {
             let providers = layer.sources_containing(&key);
             let mut unique_sources = Vec::new();
+            let mut seen_sources = AHashSet::new();
             for &source_idx in providers {
-                if unique_sources.last().copied() != Some(source_idx) {
+                let source = &sources[source_idx];
+                let source_identity = (
+                    source.kind,
+                    crate::paths::normalize_host_path(&source.path).into_owned(),
+                );
+                if seen_sources.insert(source_identity) {
                     unique_sources.push(source_idx);
                 }
             }
@@ -112,7 +118,7 @@ impl ConflictIndex {
                 source_file_counts[source_idx] += 1;
             }
             if unique_sources.len() > 1 {
-                path_to_sources.insert(key_to_path_buf_lossy(&key), unique_sources);
+                path_to_sources.insert(key, unique_sources);
             }
         }
 
@@ -122,13 +128,14 @@ impl ConflictIndex {
     fn from_provider_map(
         source_meta: Vec<SourceMeta>,
         source_file_counts: Vec<usize>,
-        path_to_sources: AHashMap<PathBuf, Vec<usize>>,
+        path_to_sources: AHashMap<NormalizedPath, Vec<usize>>,
     ) -> Self {
         let mut conflicts: Vec<SourceConflicts> = (0..source_meta.len())
             .map(|_| SourceConflicts::default())
             .collect();
 
-        for (path, source_indices) in &path_to_sources {
+        for (key, source_indices) in &path_to_sources {
+            let path = key_to_path_buf_lossy(key);
             // source_indices is sorted ascending (low priority → high priority).
             // Any entry after the first overrides something earlier (green).
             // Any entry before the last is overridden by something later (red).
@@ -169,7 +176,7 @@ impl ConflictIndex {
                     .strip_prefix(dir)
                     .expect("entry must be prefixed by scan dir")
                     .to_path_buf();
-                normalized_safe_key(&relative).map(|key| key_to_path_buf_lossy(&key))
+                normalized_safe_key(&relative).map(|key| key_to_path_buf_bytes(&key))
             })
             .collect()
     }
@@ -220,8 +227,7 @@ impl ConflictIndex {
     /// Returns an empty slice if the path appears in only one source (no
     /// conflict) or not at all.
     pub fn sources_containing(&self, path: &Path) -> &[usize] {
-        let mut normalized = path.to_path_buf();
-        normalize_host_path_in_place(&mut normalized);
+        let normalized = path.to_vfs_key();
         self.path_to_sources
             .get(&normalized)
             .map_or(&[], Vec::as_slice)

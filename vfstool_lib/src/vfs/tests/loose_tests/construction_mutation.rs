@@ -158,6 +158,28 @@ fn push_provider_batch_rejects_unsafe_normalized_keys() {
 }
 
 #[test]
+fn push_provider_batch_all_unsafe_entries_is_noop() {
+    let dir = TempDir::new("vfsloose_batch_provider_all_unsafe");
+    let unsafe_file = dir.write("unsafe.txt", b"unsafe");
+    let mut vfs = VFS::new();
+    let source = SourceMeta {
+        path: dir.path().to_path_buf(),
+        kind: crate::SourceKind::LooseDir,
+    };
+
+    let inserted = vfs.push_provider_batch(
+        &source,
+        [(
+            NormalizedPath::new(b"../unsafe.txt"),
+            VfsFile::from(&unsafe_file),
+        )],
+    );
+
+    assert_eq!(inserted, 0);
+    assert!(vfs.layer_index().sources.is_empty());
+}
+
+#[test]
 #[cfg(unix)]
 fn from_directories_skips_filenames_that_normalize_to_unsafe_keys() {
     let dir = TempDir::new("vfsloose_scan_unsafe_keys");
@@ -297,6 +319,18 @@ fn validate_reports_case_collisions() {
         crate::ValidationIssue::CaseCollision { key, providers }
             if key == Path::new("textures/foo.dds") && providers.len() == 2
     )));
+}
+
+#[test]
+fn remove_resolved_file_compacts_layer_sources() {
+    let dir = TempDir::new("vfsloose_remove_resolved_compacts_sources");
+    dir.write("only.txt", b"only");
+    let mut vfs = VFS::from_directories([dir.path()], None);
+
+    assert_eq!(vfs.layer_index().sources.len(), 1);
+    assert!(vfs.remove_resolved_file("only.txt").is_some());
+
+    assert!(vfs.layer_index().sources.is_empty());
 }
 
 #[test]

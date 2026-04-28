@@ -25,7 +25,7 @@ impl VFS {
     /// paths that contain at least one accepted file, so no separate prune pass
     /// is required.
     ///
-    /// The predicate receives the normalized relative VFS key (`&Path`) and the
+    /// The predicate receives the normalized relative VFS key (`&NormalizedPath`) and the
     /// `&VfsFile`. Having the key available allows O(1) cross-VFS lookups inside
     /// the predicate without needing to re-derive the relative path from the
     /// absolute physical path.

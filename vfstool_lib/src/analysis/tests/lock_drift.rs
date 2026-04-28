@@ -45,6 +45,33 @@ fn lock_manifest_hashes_actual_same_source_winner_occurrence() {
 }
 
 #[test]
+fn lock_manifest_hashes_manual_loose_provider_actual_file_path() {
+    let source_root = TempDir::new("analysis_lock_manual_source_root");
+    let actual_root = TempDir::new("analysis_lock_manual_actual_root");
+    actual_root.write("actual.txt", b"actual bytes");
+    let actual_file = actual_root.path().join("actual.txt");
+
+    let mut vfs = VFS::new();
+    assert!(vfs.push_provider(
+        "virtual.txt",
+        crate::VfsProvider {
+            source: SourceMeta {
+                path: source_root.path().to_path_buf(),
+                kind: SourceKind::LooseDir,
+            },
+            file: crate::VfsFile::from(&actual_file),
+        },
+    ));
+
+    let lock = vfs
+        .layer_index()
+        .lock_manifest(&vfs)
+        .expect("lock should build");
+
+    assert_eq!(lock.entries[0].winner_size, Some(12));
+}
+
+#[test]
 fn lock_manifest_uses_actual_vfs_winner_presence() {
     let low = TempDir::new("analysis_lock_removed_low");
     let high = TempDir::new("analysis_lock_removed_high");

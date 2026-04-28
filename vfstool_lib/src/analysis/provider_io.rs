@@ -50,9 +50,12 @@ impl LayerIndex {
         let src = &self.sources[provider.source_index];
         let fp = match src.kind {
             SourceKind::LooseDir => {
-                let path = self.provider_path(provider);
-                if path.exists() {
-                    Some(hash_reader(std::fs::File::open(path)?)?)
+                if let Some(file) = vfs.provider_file_for_key_index(&key, provider.provider_index) {
+                    if file.path().exists() {
+                        Some(hash_reader(file.open()?)?)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -93,11 +96,14 @@ impl LayerIndex {
 
         let bytes = match src.kind {
             SourceKind::LooseDir => {
-                let path = self.provider_path(provider);
-                if path.exists() {
-                    let mut file = std::fs::File::open(path)?;
-                    file.read_to_end(&mut out)?;
-                    Some(out)
+                if let Some(file) = vfs.provider_file_for_key_index(&key, provider.provider_index) {
+                    if file.path().exists() {
+                        let mut reader = file.open()?;
+                        reader.read_to_end(&mut out)?;
+                        Some(out)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }

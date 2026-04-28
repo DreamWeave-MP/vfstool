@@ -97,7 +97,7 @@ let layer = LayerIndex::from_file_lists([(
 )]);
 let conflicts = ConflictIndex::from_layer_index(&layer);
 let contributions = layer.source_contributions();
-# let _ = (vfs, provider_chain, duplicate_keys, conflicts, contributions);
+let _ = (vfs, provider_chain, duplicate_keys, conflicts, contributions);
 ```
 
 ### Serialization
@@ -176,16 +176,15 @@ two in-archive spellings into one entry just because a map was convenient.
 
 ```rust,no_run
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
-# {
+{
 use vfstool_lib::VFS;
 
 let vfs = VFS::from_directories(
     ["/games/Morrowind/Data Files"],
     Some(vec!["Morrowind.bsa"]),
 );
-# let _ = vfs;
-# }
-# Ok::<(), std::io::Error>(())
+let _ = vfs;
+}
 ```
 
 `VFS` source removal uses lexical path equality. Use the same source path representation for

@@ -30,6 +30,22 @@ fn extract_file_copies_content_to_dest() {
 }
 
 #[test]
+fn extract_file_uses_normalized_key_for_destination_filename() {
+    let src = TempDir::new("vfs_newmethods_extract_normalized_dest_src");
+    src.write("textures/foo.dds", b"texture");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let dest = TempDir::new("vfs_newmethods_extract_normalized_dest");
+    let extracted = vfs
+        .extract_file(Path::new("textures\\foo.dds"), dest.path())
+        .unwrap()
+        .expect("file should be found and extracted");
+
+    assert_eq!(extracted, dest.path().join("foo.dds"));
+    assert_eq!(fs::read(&extracted).unwrap(), b"texture");
+}
+
+#[test]
 #[cfg(unix)]
 fn extract_file_does_not_follow_existing_destination_symlink() {
     let src = TempDir::new("vfs_newmethods_extract_symlink_src");

@@ -117,7 +117,7 @@ impl LayerIndex {
             let provider_chain = self.provider_chain(&key_path);
             let providers = self.sources_containing(&key);
             let before_provider_index = vfs.winner_provider_index(&key);
-            let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
+            let Some(after_idx) = Self::winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
             let Some(before_provider) = before_provider_index.and_then(|index| {

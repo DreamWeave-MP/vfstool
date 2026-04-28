@@ -89,6 +89,7 @@ fn normalized_safe_raw_bytes(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"/")
         || bytes.starts_with(b"\\")
         || bytes.get(1) == Some(&b':')
+        || bytes.contains(&b'\0')
     {
         return false;
     }
@@ -99,7 +100,11 @@ fn normalized_safe_raw_bytes(bytes: &[u8]) -> bool {
 }
 
 pub(crate) fn normalized_safe_normalized_bytes(bytes: &[u8]) -> bool {
-    if bytes.is_empty() || bytes.starts_with(b"/") || bytes.get(1) == Some(&b':') {
+    if bytes.is_empty()
+        || bytes.starts_with(b"/")
+        || bytes.get(1) == Some(&b':')
+        || bytes.contains(&b'\0')
+    {
         return false;
     }
     bytes
@@ -121,6 +126,11 @@ pub(crate) fn key_is_at_or_under_prefix(key: &NormalizedPath, prefix: &Normalize
 #[must_use]
 pub(crate) fn key_to_path_buf_lossy(key: &NormalizedPath) -> PathBuf {
     PathBuf::from(String::from_utf8_lossy(key.as_bytes()).into_owned())
+}
+
+#[must_use]
+pub(crate) fn key_to_path_buf_bytes(key: &NormalizedPath) -> PathBuf {
+    PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(key.as_bytes().to_vec()) })
 }
 
 #[must_use]

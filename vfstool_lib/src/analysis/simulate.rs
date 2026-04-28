@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use super::{
-    BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta, SourceKind,
-};
+use super::{BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta};
 use crate::{NormalizedPath, VFS, path_glob_matches, paths::key_to_path_buf_lossy};
 use ahash::AHashSet;
 use std::io;
@@ -42,7 +40,7 @@ impl LayerIndex {
             }
 
             let before_idx = Self::current_winner_source_idx(vfs, &key, providers);
-            let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
+            let Some(after_idx) = Self::winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
 
@@ -209,20 +207,12 @@ impl LayerIndex {
     }
 
     pub(super) fn winner_after_reorder(
-        &self,
         providers: &[usize],
         rank_by_source: &[usize],
     ) -> Option<usize> {
         providers
             .iter()
             .copied()
-            .filter(|idx| self.sources[*idx].kind == SourceKind::LooseDir)
             .max_by_key(|idx| rank_by_source[*idx])
-            .or_else(|| {
-                providers
-                    .iter()
-                    .copied()
-                    .max_by_key(|idx| rank_by_source[*idx])
-            })
     }
 }

@@ -108,40 +108,37 @@ fn simulate_with_buckets_reports_counts() {
 }
 
 #[test]
-fn simulate_reorder_preserves_loose_over_archive_precedence() {
-    let loose = TempDir::new("analysis_sim_loose_archive_loose");
+#[cfg(feature = "zip")]
+fn simulate_full_order_preserves_manual_archive_winner() {
+    use std::io::Write as _;
+
+    let loose = TempDir::new("analysis_sim_manual_archive_loose");
     loose.write("textures/a.dds", b"loose");
-    let loose_file = loose.path().join("textures/a.dds");
-    let archive = PathBuf::from("/archives/base.bsa");
-    let mut vfs = VFS::new();
-    vfs.set_winner_loose_file("textures/a.dds", loose_file);
-    let index = LayerIndex::from_file_lists(vec![
-        (
-            SourceMeta {
-                path: loose.path().to_path_buf(),
-                kind: SourceKind::LooseDir,
-            },
-            vec![PathBuf::from("textures/a.dds")],
-        ),
-        (
-            SourceMeta {
-                path: archive.clone(),
-                kind: SourceKind::Archive,
-            },
-            vec![PathBuf::from("textures/a.dds")],
-        ),
-    ]);
+    let archive_root = TempDir::new("analysis_sim_manual_archive_root");
+    let archive_path = archive_root.path().join("override.zip");
+    let file = fs::File::create(&archive_path).expect("zip should be created");
+    let mut writer = zip::ZipWriter::new(file);
+    writer
+        .start_file("textures/a.dds", zip::write::SimpleFileOptions::default())
+        .expect("zip entry should start");
+    writer
+        .write_all(b"archive")
+        .expect("zip entry should write");
+    writer.finish().expect("zip should finish");
+
+    let mut vfs = VFS::from_directories([loose.path()], None);
+    assert!(vfs.push_archive(&archive_path));
+    let index = vfs.layer_index().clone();
 
     let delta = index
         .simulate(
             &vfs,
-            ReorderOp::FullOrder(vec![loose.path().to_path_buf(), archive]),
+            ReorderOp::FullOrder(vec![loose.path().to_path_buf(), archive_path]),
         )
         .expect("simulation should succeed");
 
     assert_eq!(delta.changed_winners, 0);
-    assert_eq!(delta.by_source_gain_loss[0].wins_after, 1);
-    assert_eq!(delta.by_source_gain_loss[1].wins_after, 0);
+    assert_eq!(delta.by_source_gain_loss[1].wins_after, 1);
 }
 
 #[test]

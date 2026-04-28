@@ -265,10 +265,11 @@ pub fn changed_files<S: BuildHasher + Sync>(
     Ok(changed)
 }
 
-/// Walk `dir` and return relative paths whose metadata or content differs from `baseline`.
+/// Walk `dir` and return relative paths whose content differs from `baseline`.
 ///
-/// Files whose size and modification time match the baseline are treated as unchanged without
-/// rehashing. Files with changed metadata are hashed to avoid reporting metadata-only touches.
+/// New files are reported immediately. Existing files are hashed even when size and modification
+/// time match the baseline, because child tools can rewrite in place while preserving coarse
+/// metadata. Trusting timestamps here would be faster, and wrong. An attractive nuisance.
 ///
 /// # Errors
 ///
@@ -297,14 +298,6 @@ pub fn changed_files_metadata<S: BuildHasher + Sync>(
             let Some(baseline_entry) = baseline.get(&rel) else {
                 return Some(Ok(rel));
             };
-            let metadata = match std::fs::metadata(entry.path()) {
-                Ok(metadata) => metadata,
-                Err(err) => return Some(Err(err)),
-            };
-            let modified = metadata.modified().ok();
-            if metadata.len() == baseline_entry.size && modified == baseline_entry.modified {
-                return None;
-            }
             let hash = match hash_file(entry.path()) {
                 Ok(hash) => hash,
                 Err(err) => return Some(Err(err)),
@@ -496,6 +489,18 @@ mod tests {
         dir.write("f.txt", b"hello");
         let baseline = snapshot_directory_metadata(dir.path()).unwrap();
         dir.write("f.txt", b"hello world");
+
+        let changed = changed_files_metadata(dir.path(), &baseline).unwrap();
+
+        assert_eq!(changed, vec![PathBuf::from("f.txt")]);
+    }
+
+    #[test]
+    fn changed_files_metadata_reports_same_size_content_change() {
+        let dir = TempDir::new("runtest_metadata_changed_same_size");
+        dir.write("f.txt", b"hello");
+        let baseline = snapshot_directory_metadata(dir.path()).unwrap();
+        dir.write("f.txt", b"jello");
 
         let changed = changed_files_metadata(dir.path(), &baseline).unwrap();
 

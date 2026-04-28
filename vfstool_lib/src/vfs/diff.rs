@@ -44,7 +44,7 @@ impl VFS {
         let dir = dir.as_ref().to_path_buf();
 
         // Walk the directory in parallel — I/O is the bottleneck here.
-        let entries: Vec<(PathBuf, VfsFile)> = WalkDir::new(&dir)
+        let entries: Vec<(NormalizedPath, PathBuf, VfsFile)> = WalkDir::new(&dir)
             .follow_links(true)
             .into_iter()
             .filter_map(|entry| match entry {
@@ -66,6 +66,7 @@ impl VFS {
                     .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
                 let normalized = normalized_safe_key(&relative)?;
                 Some((
+                    normalized.clone(),
                     crate::paths::key_to_path_buf_lossy(&normalized),
                     VfsFile::from(entry.path()),
                 ))
@@ -76,8 +77,7 @@ impl VFS {
         let mut conflicts = Vec::new();
         let mut additions = Vec::new();
 
-        for (key, incoming) in entries {
-            let lookup_key = NormalizedPath::new(key.as_os_str().as_encoded_bytes());
+        for (lookup_key, key, incoming) in entries {
             match self.file_map.get(&lookup_key) {
                 Some(existing) => conflicts.push((key, incoming, existing)),
                 None => additions.push((key, incoming)),

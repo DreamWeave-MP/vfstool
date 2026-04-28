@@ -54,7 +54,12 @@ impl LayerIndex {
             };
 
             let resolved_path = match src.kind {
-                SourceKind::LooseDir => self.provider_path(provider).display().to_string(),
+                SourceKind::LooseDir => vfs
+                    .provider_file_for_key_index(&key, provider.provider_index)
+                    .map_or_else(
+                        || self.provider_path(provider).display().to_string(),
+                        |file| file.path().display().to_string(),
+                    ),
                 SourceKind::Archive => {
                     format!(
                         "{}::{}",

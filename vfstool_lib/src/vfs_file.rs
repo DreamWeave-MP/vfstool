@@ -28,19 +28,19 @@ pub enum FileType {
     /// File stored inside a BSA, BA2, ZIP, or PK3 archive.
     #[cfg(any(feature = "beth-archives", feature = "zip"))]
     Archive(ArchiveReference),
-    /// Loose file on the real filesystem, identified by its absolute path.
+    /// Loose file on the real filesystem, stored exactly as the caller or scanner provided it.
     Loose(PathBuf),
 }
 
-/// Represents a file within the Virtual File System (VFS).
+/// Backing file handle stored by the Virtual File System (VFS).
 ///
-/// This struct encapsulates a file that exists in the real filesystem but is managed
-/// within the VFS. Each `VfsFile` maintains a reference to its original, **non-normalized**
-/// path to ensure correct file operations. Paths should only be normalized when **retrieved**,
-/// not when constructing the file, as normalization may affect OS file resolution.
+/// Loose files keep the host path exactly as supplied by the caller or directory scanner. Archive
+/// files keep the original in-archive entry path plus an archive handle. Neither path is normalized
+/// here; normalization belongs to VFS keys and provider stacks, not to the object that opens bytes.
 ///
-/// Files in the VFS should be **unique** and stored in a `HashMap` inside the `VFS` struct.
-/// They are typically wrapped in `Arc<VfsFile>` for safe concurrent access.
+/// Provider identity is owned by [`crate::VFS`]. The same `VfsFile` value can appear in different
+/// provider stacks, and a resolved VFS key is not required to be unique merely because a loose host
+/// path is unique. Pretending otherwise is how provenance reports become fiction.
 #[derive(Debug, Clone)]
 pub struct VfsFile {
     file: FileType,
@@ -196,11 +196,16 @@ impl VfsFile {
         }
     }
 
-    /// Opens the file and returns a standard `File` handle.
+    /// Opens the file and returns a reader.
+    ///
+    /// Loose files are streamed from a standard filesystem handle. Bethesda archive entries use
+    /// `dream_archive`'s reader API, so callers get ordinary streaming reads there too. ZIP/PK3
+    /// entries are still buffered by this crate before the returned reader is handed out; that is
+    /// VFS-level work left for a custom ZIP reader, not something `dream_archive` should know about.
     ///
     /// # Returns
     ///
-    /// * `Ok(StdFile)` - If the file exists and can be opened.
+    /// * `Ok(Box<dyn Read>)` - If the file exists and can be opened/read.
     /// * `Err(io::Error)` - If the file does not exist or cannot be opened.
     ///
     /// # Errors

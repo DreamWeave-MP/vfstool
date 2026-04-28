@@ -87,13 +87,18 @@ impl VFS {
         source: &SourceMeta,
         entries: impl IntoIterator<Item = (NormalizedPath, VfsFile)>,
     ) -> usize {
+        let entries = entries
+            .into_iter()
+            .filter(|(key, _)| normalized_safe_normalized_bytes(key.as_bytes()))
+            .collect::<Vec<_>>();
+        if entries.is_empty() {
+            return 0;
+        }
+
         let source_index = self.push_source(source.clone());
         let mut touched = Vec::new();
         let mut inserted = 0;
         for (key, file) in entries {
-            if !normalized_safe_normalized_bytes(key.as_bytes()) {
-                continue;
-            }
             self.providers
                 .entry(key.clone())
                 .or_default()
@@ -216,8 +221,11 @@ impl VFS {
     pub fn remove_resolved_file<K: VfsKeyInput + ?Sized>(&mut self, key: &K) -> Option<VfsFile> {
         let key = key.to_vfs_key();
         self.providers.remove(&key);
-        self.layer_index.remove_key(&key);
-        self.file_map.remove(&key)
+        let removed = self.file_map.remove(&key);
+        if removed.is_some() {
+            self.rebuild_layer_index();
+        }
+        removed
     }
 
     /// Remove all providers for `key` whose source path matches `source` lexically.
@@ -271,9 +279,7 @@ impl VFS {
             .filter(|key| key_is_at_or_under_prefix(key, &prefix))
             .cloned()
             .collect::<Vec<_>>();
-        keys.into_iter()
-            .filter_map(|key| self.remove_resolved_file(&key).map(|file| (key, file)))
-            .collect()
+        self.remove_resolved_keys(keys)
     }
 
     /// Remove providers accepted by `matcher`, revealing lower-priority providers where available.
@@ -312,9 +318,24 @@ impl VFS {
             .cloned()
             .collect::<Vec<_>>();
 
-        keys.into_iter()
-            .filter_map(|key| self.remove_resolved_file(&key).map(|file| (key, file)))
-            .collect()
+        self.remove_resolved_keys(keys)
+    }
+
+    fn remove_resolved_keys(
+        &mut self,
+        keys: impl IntoIterator<Item = NormalizedPath>,
+    ) -> Vec<(NormalizedPath, VfsFile)> {
+        let mut removed = Vec::new();
+        for key in keys {
+            self.providers.remove(&key);
+            if let Some(file) = self.file_map.remove(&key) {
+                removed.push((key, file));
+            }
+        }
+        if !removed.is_empty() {
+            self.rebuild_layer_index();
+        }
+        removed
     }
 }
 

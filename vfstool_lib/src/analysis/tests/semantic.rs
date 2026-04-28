@@ -198,9 +198,52 @@ fn semantic_conflicts_disabled_archive_hash_mode_does_not_read_deltas() {
         .expect("archive conflict should be reported");
 
     assert_eq!(entry.distinct_versions, 0);
+    assert!(!entry.all_identical);
     assert!(entry.providers.iter().all(|provider| {
         provider.hash_blake3.is_none() && provider.semantic_delta_to_winner.is_none()
     }));
+}
+
+#[test]
+#[cfg(feature = "zip")]
+fn semantic_conflicts_winner_only_does_not_call_unknown_losers_identical() {
+    use crate::semantic::ArchiveHashMode;
+    use std::io::Write as _;
+
+    let data = TempDir::new("analysis_semantic_winner_only_unknown_loser");
+    data.write("config/example.ini", b"[x]\na=loose\n");
+    let zip_path = data.path().join("low.zip");
+    let file = fs::File::create(&zip_path).expect("zip file should be created");
+    let mut writer = zip::ZipWriter::new(file);
+    writer
+        .start_file(
+            "config/example.ini",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .expect("entry should start");
+    writer
+        .write_all(b"[x]\na=archive\n")
+        .expect("entry should be written");
+    writer.finish().expect("zip should finish");
+
+    let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], Some(vec!["low.zip"]));
+    let report = index
+        .semantic_conflicts_with_opts(
+            &vfs,
+            SemanticOpts {
+                archive_hash_mode: ArchiveHashMode::WinnerOnly,
+                include_semantic_deltas: false,
+            },
+        )
+        .expect("semantic report should build");
+    let entry = report
+        .entries
+        .iter()
+        .find(|entry| entry.key == Path::new("config/example.ini"))
+        .expect("archive/loose conflict should be reported");
+
+    assert!(!entry.all_identical);
+    assert_eq!(entry.distinct_versions, 1);
 }
 
 #[test]

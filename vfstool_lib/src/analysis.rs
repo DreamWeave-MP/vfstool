@@ -14,7 +14,7 @@ mod semantic_conflicts;
 mod simulate;
 
 /// Source type in the load order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum SourceKind {

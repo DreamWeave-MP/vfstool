@@ -118,6 +118,28 @@ fn diff_dir_skips_filenames_that_normalize_to_unsafe_keys() {
     assert!(diff.conflicts.is_empty());
 }
 
+#[test]
+#[cfg(unix)]
+fn diff_dir_uses_byte_keys_for_non_utf8_filenames() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let file_name = OsString::from_vec(vec![b'f', 0xff, b'o', b'.', b'd', b'd', b's']);
+    let vfs_dir = TempDir::new("vfsdiff_non_utf8_base");
+    fs::write(vfs_dir.path().join(&file_name), b"base").unwrap();
+    let vfs = VFS::from_directories(vec![vfs_dir.path()], None);
+
+    let mod_dir = TempDir::new("vfsdiff_non_utf8_mod");
+    let replacement = mod_dir.path().join(&file_name);
+    fs::write(&replacement, b"replacement").unwrap();
+
+    let diff = vfs.diff_directory(mod_dir.path());
+
+    assert_eq!(diff.conflicts.len(), 1);
+    assert!(diff.additions.is_empty());
+    assert_eq!(diff.conflicts[0].1.path(), replacement);
+}
+
 /// Deeply nested files and subdirectories are all classified correctly.
 #[test]
 fn diff_dir_handles_deep_nesting() {

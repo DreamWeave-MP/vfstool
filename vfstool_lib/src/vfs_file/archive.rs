@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use std::{
-    io::{self, Cursor, Read},
+    io::{self, Read},
     path::PathBuf,
     sync::Arc,
 };
@@ -60,10 +60,10 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
     match parent {
         #[cfg(feature = "beth-archives")]
         TypedArchive::Bethesda(archive) => {
-            let bytes = archive
-                .read_file_required(&archive_ref.raw_path)
+            let reader = archive
+                .open_file_required(&archive_ref.raw_path)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-            Ok(Box::new(Cursor::new(bytes)))
+            Ok(reader)
         }
 
         #[cfg(feature = "zip")]
@@ -89,7 +89,7 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
                 io::copy(&mut entry, &mut buf)?;
                 buf
             };
-            Ok(Box::new(Cursor::new(buf)))
+            Ok(Box::new(std::io::Cursor::new(buf)))
         }
     }
 }
