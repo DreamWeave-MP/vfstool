@@ -1,6 +1,9 @@
 use super::*;
 use crate::CollapseOptions;
-use std::{fs, io, path::Path};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 struct TempDir(PathBuf);
 

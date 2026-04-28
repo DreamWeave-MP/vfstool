@@ -2,7 +2,7 @@
 use super::{
     BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta, SourceKind,
 };
-use crate::{VFS, normalize_path, path_glob_matches};
+use crate::{NormalizedPath, VFS, normalize_path, path_glob_matches, paths::key_to_path_buf_lossy};
 use ahash::AHashSet;
 use std::{io, path::Path};
 
@@ -73,7 +73,7 @@ impl LayerIndex {
                 bucket: bucket.clone(),
                 changed_winners: changed
                     .iter()
-                    .filter(|key| path_glob_matches(bucket, key))
+                    .filter(|key| path_glob_matches(bucket, &key_to_path_buf_lossy(key)))
                     .count(),
             })
             .collect();
@@ -83,7 +83,11 @@ impl LayerIndex {
             unchanged_winners: wins_after.iter().sum::<usize>() - changed.len(),
             by_source_gain_loss: rows,
             by_bucket: bucket_rows,
-            changed_keys_sample: changed.into_iter().take(opts.sample_limit).collect(),
+            changed_keys_sample: changed
+                .into_iter()
+                .take(opts.sample_limit)
+                .map(|key| key_to_path_buf_lossy(&key))
+                .collect(),
         })
     }
 
@@ -198,10 +202,10 @@ impl LayerIndex {
     pub(super) fn current_winner_source_idx(
         &self,
         vfs: &VFS,
-        key: &Path,
+        key: &NormalizedPath,
         providers: &[usize],
     ) -> Option<usize> {
-        let winner = vfs.get_file(key)?;
+        let winner = vfs.get_file(key_to_path_buf_lossy(key))?;
         if winner.is_loose() {
             let normalized_path = normalize_path(winner.path());
             if let Some(idx) = providers.iter().copied().find(|idx| {

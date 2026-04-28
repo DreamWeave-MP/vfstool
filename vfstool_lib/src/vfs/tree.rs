@@ -2,7 +2,7 @@
 use super::VFS;
 #[cfg(feature = "serialize")]
 use crate::SerializeType;
-use crate::{DirectoryNode, DisplayTree, VfsFile};
+use crate::{DirectoryNode, DisplayTree, NormalizedPath, VfsFile, paths::key_to_path_buf_lossy};
 #[cfg(feature = "serialize")]
 use std::io::{Error, ErrorKind, Result};
 use std::{
@@ -15,7 +15,7 @@ impl VFS {
     /// Returns a sorted version of the VFS contents as a binary tree.
     #[must_use]
     pub fn tree(&self, relative: bool) -> DisplayTree {
-        self.build_tree(relative, None::<&fn(&Path, &VfsFile) -> bool>)
+        self.build_tree(relative, None::<&fn(&NormalizedPath, &VfsFile) -> bool>)
     }
 
     /// Returns a sorted tree containing only files accepted by `file_filter`.
@@ -32,12 +32,12 @@ impl VFS {
     pub fn tree_filtered(
         &self,
         relative: bool,
-        file_filter: impl Fn(&Path, &VfsFile) -> bool,
+        file_filter: impl Fn(&NormalizedPath, &VfsFile) -> bool,
     ) -> DisplayTree {
         self.build_tree(relative, Some(&file_filter))
     }
 
-    fn build_tree<F: Fn(&Path, &VfsFile) -> bool>(
+    fn build_tree<F: Fn(&NormalizedPath, &VfsFile) -> bool>(
         &self,
         relative: bool,
         file_filter: Option<&F>,
@@ -56,12 +56,12 @@ impl VFS {
             .map_or_else(
                 || {
                     if relative {
-                        key.into()
+                        key_to_path_buf_lossy(key)
                     } else {
                         entry.path().to_path_buf()
                     }
                 },
-                |parent| PathBuf::from(parent).join(key),
+                |parent| PathBuf::from(parent).join(key_to_path_buf_lossy(key)),
             );
 
             if file_filter.as_ref().is_some_and(|f| !f(key, entry)) {
@@ -119,7 +119,7 @@ impl VFS {
     pub fn display_filtered(
         &self,
         relative: bool,
-        file_filter: impl Fn(&Path, &VfsFile) -> bool,
+        file_filter: impl Fn(&NormalizedPath, &VfsFile) -> bool,
     ) -> String {
         let tree = self.tree_filtered(relative, file_filter);
         let mut output = String::new();

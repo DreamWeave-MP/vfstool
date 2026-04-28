@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::VFS;
 use crate::{
-    SourceKind, SourceMeta, VfsFile, normalize_path, path_glob_matches, paths::normalized_safe_key,
+    NormalizedPath, SourceKind, SourceMeta, VfsFile, path_glob_matches,
+    paths::key_to_path_buf_lossy,
 };
 use std::path::{Path, PathBuf};
 
@@ -10,8 +11,12 @@ impl VFS {
     ///
     /// This is a winner-only mutation: replacing or removing a key does not reveal lower-priority
     /// providers that may have existed when the VFS was originally constructed.
-    pub fn insert_file<P: AsRef<Path>>(&mut self, key: P, file: VfsFile) -> Option<VfsFile> {
-        let normalized = normalized_safe_key(key.as_ref())?;
+    pub fn insert_file<P: crate::VfsKeyInput + ?Sized>(
+        &mut self,
+        key: &P,
+        file: VfsFile,
+    ) -> Option<VfsFile> {
+        let normalized = key.to_safe_vfs_key()?;
         let (source, provider_path) = provider_source_and_path(&file);
         self.layer_index
             .set_single_provider(&normalized, source, provider_path);
@@ -24,6 +29,7 @@ impl VFS {
         key: K,
         physical_path: P,
     ) -> Option<VfsFile> {
+        let key = key.as_ref();
         self.insert_file(key, VfsFile::from(physical_path))
     }
 
@@ -32,22 +38,22 @@ impl VFS {
     /// This does not reveal any lower-priority provider; it removes the key from the materialized
     /// map entirely.
     pub fn remove_file<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsFile> {
-        let normalized = normalize_path(key.as_ref()).into_owned();
+        let normalized = NormalizedPath::new(key.as_ref().as_os_str().as_encoded_bytes());
         self.layer_index.remove_key(&normalized);
         self.file_map.remove(&normalized)
     }
 
     /// Remove every current winner whose normalized key starts with `prefix`.
-    pub fn remove_prefix<P: AsRef<Path>>(&mut self, prefix: P) -> Vec<(PathBuf, VfsFile)> {
-        let normalized = normalize_path(prefix.as_ref()).into_owned();
-        self.remove_matching(|key, _| key.starts_with(&normalized))
+    pub fn remove_prefix<P: AsRef<Path>>(&mut self, prefix: P) -> Vec<(NormalizedPath, VfsFile)> {
+        let normalized = NormalizedPath::new(prefix.as_ref().as_os_str().as_encoded_bytes());
+        self.remove_matching(|key, _| key.as_bytes().starts_with(normalized.as_bytes()))
     }
 
     /// Remove every current winner accepted by `matcher`.
     pub fn remove_matching(
         &mut self,
-        mut matcher: impl FnMut(&Path, &VfsFile) -> bool,
-    ) -> Vec<(PathBuf, VfsFile)> {
+        mut matcher: impl FnMut(&NormalizedPath, &VfsFile) -> bool,
+    ) -> Vec<(NormalizedPath, VfsFile)> {
         let keys = self
             .file_map
             .iter()
@@ -63,8 +69,8 @@ impl VFS {
     }
 
     /// Remove every current winner whose normalized key matches `glob`.
-    pub fn remove_matching_glob(&mut self, glob: &str) -> Vec<(PathBuf, VfsFile)> {
-        self.remove_matching(|key, _| path_glob_matches(glob, key))
+    pub fn remove_matching_glob(&mut self, glob: &str) -> Vec<(NormalizedPath, VfsFile)> {
+        self.remove_matching(|key, _| path_glob_matches(glob, &key_to_path_buf_lossy(key)))
     }
 }
 

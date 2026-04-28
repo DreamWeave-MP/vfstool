@@ -95,6 +95,14 @@ impl VfsFile {
         }
     }
 
+    /// Creates a [`VfsFile`] backed by a byte-named entry inside `parent_archive`.
+    #[cfg(any(feature = "bsa", feature = "zip"))]
+    pub fn from_archive_bytes(path: &[u8], parent_archive: Arc<StoredArchive>) -> Self {
+        VfsFile {
+            file: FileType::Archive(ArchiveReference::from_bytes(path, parent_archive)),
+        }
+    }
+
     /// Returns `true` if this file is a loose file on the real filesystem.
     #[must_use]
     pub fn is_loose(&self) -> bool {

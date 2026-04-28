@@ -8,12 +8,15 @@ use walkdir::WalkDir;
 
 #[cfg(any(feature = "bsa", feature = "zip"))]
 use crate::archives;
-use crate::{SourceKind, SourceMeta, VfsFile, paths::normalized_safe_key};
+use crate::{
+    NormalizedPath, SourceKind, SourceMeta, VfsFile,
+    paths::{key_to_path_buf_lossy, normalized_safe_key},
+};
 use std::path::{Path, PathBuf};
 
 pub(super) struct SourceEntries {
     pub(super) source: SourceMeta,
-    pub(super) entries: Vec<(PathBuf, VfsFile)>,
+    pub(super) entries: Vec<(NormalizedPath, VfsFile)>,
 }
 
 #[cfg(any(feature = "bsa", feature = "zip"))]
@@ -25,7 +28,7 @@ pub(super) fn collect_archive_sources(
         return Vec::new();
     };
 
-    let loose_lookup: AHashMap<PathBuf, VfsFile> = loose_sources
+    let loose_lookup: AHashMap<NormalizedPath, VfsFile> = loose_sources
         .iter()
         .flat_map(|source| {
             source
@@ -74,7 +77,7 @@ pub(super) fn layer_sources_from(sources: &[SourceEntries]) -> Vec<(SourceMeta, 
                         if source.source.kind == SourceKind::LooseDir {
                             file.path()
                                 .strip_prefix(&source.source.path)
-                                .map_or_else(|_| key.clone(), Path::to_path_buf)
+                                .map_or_else(|_| key_to_path_buf_lossy(key), Path::to_path_buf)
                         } else {
                             file.path().to_path_buf()
                         }
@@ -87,7 +90,7 @@ pub(super) fn layer_sources_from(sources: &[SourceEntries]) -> Vec<(SourceMeta, 
 
 fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
     dir: I,
-) -> impl ParallelIterator<Item = (PathBuf, VfsFile)> {
+) -> impl ParallelIterator<Item = (NormalizedPath, VfsFile)> {
     let dir = dir.as_ref().to_path_buf();
     let walk_root = dir.clone();
 

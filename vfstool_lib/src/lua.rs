@@ -11,13 +11,13 @@ use crate::{
     ConflictIndex, ConflictSourceEntry, ConflictsReport, DiffReport, DirectoryDiff, DriftEntry,
     DriftKind, DriftReport, DuplicateEntry, DuplicateReport, ExplainReport, LayerIndex,
     LayerProvider, MaterializationAction, MaterializationIssue, MaterializationPlan,
-    MetadataSnapshot, MutableVfs, SemanticConflictReport, SemanticDelta, SemanticOpts,
-    SemanticProvider, SemanticRelation, ShadowedReport, ShadowedSource, Snapshot,
+    MetadataSnapshot, MutableVfs, NormalizedPath, SemanticConflictReport, SemanticDelta,
+    SemanticOpts, SemanticProvider, SemanticRelation, ShadowedReport, ShadowedSource, Snapshot,
     SourceContribution, SourceContributionReport, SourceKind, SourceMeta, VFS, ValidationIssue,
     ValidationReport, VfsFile, VfsLock, VfsLockEntry, VfsProvider, VfsProviderRecord, analyze_pair,
     changed_files, changed_files_metadata, normalize_path_in_place, path_glob_matches,
-    run_finalize, run_finalize_tracked, run_setup, run_setup_tracked, snapshot_directory,
-    snapshot_directory_metadata, source_glob_matches,
+    paths::key_to_path_buf_lossy, run_finalize, run_finalize_tracked, run_setup, run_setup_tracked,
+    snapshot_directory, snapshot_directory_metadata, source_glob_matches,
 };
 #[cfg(feature = "serialize")]
 use crate::{SerializeType, serialize_value};
@@ -303,10 +303,10 @@ fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method("len", |_, this, ()| Ok(this.0.iter().count()));
     methods.add_method("is_empty", |_, this, ()| Ok(this.0.iter().next().is_none()));
     methods.add_method("keys", |lua, this, ()| {
-        paths_to_table(lua, this.0.iter().map(|(k, _)| k))
+        normalized_paths_to_table(lua, this.0.iter().map(|(k, _)| k))
     });
     methods.add_method("entries", |lua, this, ()| {
-        vfs_entries_to_table(lua, this.0.iter().map(|(key, file)| (key.as_path(), file)))
+        vfs_entries_to_table(lua, this.0.iter())
     });
     methods.add_method("get_file", |_, this, path: String| {
         Ok(this.0.get_file(path).cloned().map(LuaVfsFile))
@@ -370,7 +370,7 @@ fn add_vfs_mutation_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
         "insert_file",
         |_, this, (key, file): (String, AnyUserData)| {
             let file = file.borrow::<LuaVfsFile>()?;
-            Ok(this.0.insert_file(key, file.0.clone()).map(LuaVfsFile))
+            Ok(this.0.insert_file(&key, file.0.clone()).map(LuaVfsFile))
         },
     );
     methods.add_method_mut("remove_file", |_, this, key: String| {
@@ -507,7 +507,7 @@ impl UserData for LuaMutableVfs {
             "push_provider",
             |_, this, (key, provider): (String, AnyUserData)| {
                 let provider = provider.borrow::<LuaVfsProvider>()?;
-                Ok(this.0.push_provider(key, provider.0.clone()))
+                Ok(this.0.push_provider(&key, provider.0.clone()))
             },
         );
         #[cfg(any(feature = "bsa", feature = "zip"))]
@@ -554,7 +554,7 @@ impl UserData for LuaVfsProvider {
 impl UserData for LuaLayerIndex {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_method("keys", |lua, this, ()| {
-            paths_to_table(lua, this.0.keys().iter())
+            normalized_paths_to_table(lua, this.0.keys().iter())
         });
         methods.add_method("sources", |lua, this, ()| {
             sources_to_table(lua, &this.0.sources)
@@ -587,7 +587,7 @@ impl UserData for LuaLayerIndex {
             layer_providers_to_table(lua, &this.0.provider_chain(Path::new(&path)))
         });
         methods.add_method("duplicate_keys", |lua, this, ()| {
-            paths_to_table(lua, this.0.duplicate_keys().iter())
+            normalized_paths_to_table(lua, this.0.duplicate_keys().iter())
         });
         methods.add_method("source_contributions", |lua, this, ()| {
             source_contribution_report_to_table(lua, &this.0.source_contributions())
@@ -867,6 +867,17 @@ fn paths_to_table<'a>(lua: &Lua, paths: impl IntoIterator<Item = &'a PathBuf>) -
     Ok(table)
 }
 
+fn normalized_paths_to_table<'a>(
+    lua: &Lua,
+    paths: impl IntoIterator<Item = &'a NormalizedPath>,
+) -> LuaResult<Table> {
+    let table = lua.create_table()?;
+    for (index, path) in paths.into_iter().enumerate() {
+        table.set(index + 1, path_to_string(key_to_path_buf_lossy(path)))?;
+    }
+    Ok(table)
+}
+
 fn indices_to_table(lua: &Lua, indices: &[usize]) -> LuaResult<Table> {
     let table = lua.create_table()?;
     for (index, source_index) in indices.iter().enumerate() {
@@ -903,23 +914,26 @@ fn vfs_file_to_table(lua: &Lua, file: &VfsFile) -> LuaResult<Table> {
 
 fn vfs_entries_to_table<'a>(
     lua: &Lua,
-    entries: impl IntoIterator<Item = (&'a Path, &'a VfsFile)>,
+    entries: impl IntoIterator<Item = (&'a NormalizedPath, &'a VfsFile)>,
 ) -> LuaResult<Table> {
     let table = lua.create_table()?;
     for (index, (key, file)) in entries.into_iter().enumerate() {
         let row = lua.create_table()?;
-        row.set("key", path_to_string_ref(key))?;
+        row.set("key", path_to_string(key_to_path_buf_lossy(key)))?;
         row.set("file", LuaVfsFile(file.clone()))?;
         table.set(index + 1, row)?;
     }
     Ok(table)
 }
 
-fn removed_vfs_files_to_table(lua: &Lua, entries: Vec<(PathBuf, VfsFile)>) -> LuaResult<Table> {
+fn removed_vfs_files_to_table(
+    lua: &Lua,
+    entries: Vec<(NormalizedPath, VfsFile)>,
+) -> LuaResult<Table> {
     let table = lua.create_table()?;
     for (index, (key, file)) in entries.into_iter().enumerate() {
         let row = lua.create_table()?;
-        row.set("key", path_to_string(key))?;
+        row.set("key", path_to_string(key_to_path_buf_lossy(&key)))?;
         row.set("file", LuaVfsFile(file))?;
         table.set(index + 1, row)?;
     }
@@ -1338,11 +1352,14 @@ fn mutable_providers_to_table(lua: &Lua, providers: &[VfsProvider]) -> LuaResult
     Ok(table)
 }
 
-fn removed_providers_to_table(lua: &Lua, removed: &[(PathBuf, VfsProvider)]) -> LuaResult<Table> {
+fn removed_providers_to_table(
+    lua: &Lua,
+    removed: &[(NormalizedPath, VfsProvider)],
+) -> LuaResult<Table> {
     let table = lua.create_table()?;
     for (index, (key, provider)) in removed.iter().enumerate() {
         let row = lua.create_table()?;
-        row.set("key", path_to_string(key.clone()))?;
+        row.set("key", path_to_string(key_to_path_buf_lossy(key)))?;
         row.set("provider", mutable_provider_to_table(lua, provider)?)?;
         table.set(index + 1, row)?;
     }

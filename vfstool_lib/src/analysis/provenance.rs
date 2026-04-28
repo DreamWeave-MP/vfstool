@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{LayerIndex, ProvenanceChain, ProviderRecord, SourceKind};
-use crate::{VFS, normalize_path_in_place, semantic::ArchiveHashMode};
+use crate::{
+    NormalizedPath, VFS,
+    paths::{key_to_path_buf_lossy, key_to_string_lossy},
+    semantic::ArchiveHashMode,
+};
 use std::{io, path::Path};
 
 use super::provider_io::ProviderIoCache;
@@ -17,8 +21,7 @@ impl LayerIndex {
         path: &Path,
         with_hashes: bool,
     ) -> io::Result<Option<ProvenanceChain>> {
-        let mut key = path.to_path_buf();
-        normalize_path_in_place(&mut key);
+        let key = NormalizedPath::new(path.as_os_str().as_encoded_bytes());
 
         let provider_indices = self.sources_containing(&key);
         if provider_indices.is_empty() {
@@ -54,7 +57,9 @@ impl LayerIndex {
 
             let resolved_path = match src.kind {
                 SourceKind::LooseDir => self.provider_path(idx, &key).display().to_string(),
-                SourceKind::Archive => format!("{}::{}", src.path.display(), key.display()),
+                SourceKind::Archive => {
+                    format!("{}::{}", src.path.display(), key_to_string_lossy(&key))
+                }
             };
 
             providers.push(ProviderRecord {
@@ -66,7 +71,7 @@ impl LayerIndex {
         }
 
         Ok(Some(ProvenanceChain {
-            key,
+            key: key_to_path_buf_lossy(&key),
             providers,
             winner,
         }))

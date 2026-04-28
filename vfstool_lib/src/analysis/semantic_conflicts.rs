@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::LayerIndex;
 use crate::{
-    VFS,
+    NormalizedPath, VFS,
     semantic::{
         AssetClass, SemanticConflict, SemanticConflictReport, SemanticOpts, SemanticProvider,
         SemanticRelation, analyze_pair,
@@ -110,12 +110,15 @@ impl LayerIndex {
         opts: SemanticOpts,
         hash_cache: &mut ProviderIoCache,
     ) -> io::Result<Option<SemanticConflict>> {
-        let provider_indices = self.sources_containing(key);
+        let normalized_key = NormalizedPath::new(key.as_os_str().as_encoded_bytes());
+        let provider_indices = self.sources_containing(&normalized_key);
         if provider_indices.len() < 2 {
             return Ok(None);
         }
 
-        let Some(winner_idx) = self.current_winner_source_idx(vfs, key, provider_indices) else {
+        let Some(winner_idx) =
+            self.current_winner_source_idx(vfs, &normalized_key, provider_indices)
+        else {
             return Ok(None);
         };
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{MaybeFile, VFS, VFSTuple};
-use crate::{DisplayTree, normalize_path};
+use crate::{DisplayTree, NormalizedPath, VfsKeyInput, normalize_path, paths::key_to_string_lossy};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
@@ -10,14 +10,8 @@ impl VFS {
     /// Already-normalized paths skip the allocation — the fast path is a
     /// direct `&Path` lookup with no heap activity.
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile<'_> {
-        let p = path.as_ref();
-        let bytes = p.as_os_str().as_encoded_bytes();
-        if bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
-            let normalized = normalize_path(p);
-            self.file_map.get(&*normalized)
-        } else {
-            self.file_map.get(p)
-        }
+        let key = NormalizedPath::new(path.as_ref().as_os_str().as_encoded_bytes());
+        self.file_map.get(&key)
     }
 
     /// Search the VFS using a case-insensitive regex pattern.
@@ -37,7 +31,7 @@ impl VFS {
             .case_insensitive(true)
             .build()?;
         Ok(self.tree_filtered(relative, |key, _file| {
-            re.is_match(&normalize_path(key).to_string_lossy())
+            re.is_match(&key_to_string_lossy(key))
         }))
     }
 
@@ -84,9 +78,9 @@ impl VFS {
     ) -> impl Iterator<Item = VFSTuple<'_>> {
         let needle = Self::normalize_substring(substring);
         self.file_map.iter().filter_map(move |(path, file)| {
-            path.to_string_lossy()
+            key_to_string_lossy(path)
                 .contains(&needle)
-                .then_some((path.as_path(), file))
+                .then_some((path, file))
         })
     }
 
@@ -97,18 +91,19 @@ impl VFS {
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
         let needle = Self::normalize_substring(substring);
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            path.to_string_lossy()
+            key_to_string_lossy(path)
                 .contains(&needle)
-                .then_some((path.as_path(), file))
+                .then_some((path, file))
         })
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
     pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl Iterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = normalize_path(prefix.as_ref()).into_owned();
+        let normalized_prefix = NormalizedPath::new(prefix.as_ref().as_os_str().as_encoded_bytes());
         self.file_map.iter().filter_map(move |(path, file)| {
-            path.starts_with(&normalized_prefix)
-                .then_some((path.as_path(), file))
+            path.as_bytes()
+                .starts_with(normalized_prefix.as_bytes())
+                .then_some((path, file))
         })
     }
 
@@ -117,10 +112,11 @@ impl VFS {
         &self,
         prefix: P,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = normalize_path(prefix.as_ref()).into_owned();
+        let normalized_prefix = NormalizedPath::new(prefix.as_ref().as_os_str().as_encoded_bytes());
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            path.starts_with(&normalized_prefix)
-                .then_some((path.as_path(), file))
+            path.as_bytes()
+                .starts_with(normalized_prefix.as_bytes())
+                .then_some((path, file))
         })
     }
 
@@ -134,13 +130,8 @@ impl VFS {
     /// The path is normalized before lookup, so case and separator variants
     /// are accepted. Already-normalized keys skip the allocation.
     #[must_use]
-    pub fn contains(&self, key: &Path) -> bool {
-        let bytes = key.as_os_str().as_encoded_bytes();
-        if bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
-            let normalized = normalize_path(key);
-            self.file_map.contains_key(&*normalized)
-        } else {
-            self.file_map.contains_key(key)
-        }
+    pub fn contains<K: VfsKeyInput + ?Sized>(&self, key: &K) -> bool {
+        let key = key.to_vfs_key();
+        self.file_map.contains_key(&key)
     }
 }

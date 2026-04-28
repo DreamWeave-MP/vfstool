@@ -60,7 +60,7 @@ fn layer_index_skips_unsafe_provider_keys() {
         ),
     ]);
 
-    assert_eq!(index.keys(), vec![PathBuf::from("safe.txt")]);
+    assert_eq!(index.keys(), vec![crate::NormalizedPath::from("safe.txt")]);
 }
 
 #[test]

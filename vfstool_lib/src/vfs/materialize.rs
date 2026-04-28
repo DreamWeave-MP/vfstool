@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::VFS;
-use crate::{CollapseOptions, VfsFile, paths::normalized_safe_key};
+use crate::{
+    CollapseOptions, NormalizedPath, VfsFile,
+    paths::{key_to_path_buf_lossy, key_to_string_lossy, normalized_safe_normalized_bytes},
+};
 use rayon::prelude::*;
 use std::{
     collections::BTreeSet,
@@ -28,7 +31,8 @@ impl VFS {
             .file_map
             .par_iter()
             .map(|(relative_path, file)| -> std::io::Result<bool> {
-                let dest = dir.join(relative_path);
+                let relative_path_buf = key_to_path_buf_lossy(relative_path);
+                let dest = dir.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dir, &dest)?;
                 if let Some(parent) = dest.parent() {
                     std::fs::create_dir_all(parent)?;
@@ -37,7 +41,7 @@ impl VFS {
                     if !file.path().exists() {
                         eprintln!(
                             "vfstool: skipping {}: source no longer exists at {}",
-                            relative_path.display(),
+                            key_to_string_lossy(relative_path),
                             file.path().display()
                         );
                         return Ok(false);
@@ -65,7 +69,10 @@ impl VFS {
                             std::io::copy(&mut reader, &mut out)?;
                         }
                         Err(e) => {
-                            eprintln!("vfstool: skipping {}: {e}", relative_path.display());
+                            eprintln!(
+                                "vfstool: skipping {}: {e}",
+                                key_to_string_lossy(relative_path)
+                            );
                             return Ok(false);
                         }
                     }
@@ -92,7 +99,8 @@ impl VFS {
         self.file_map
             .par_iter()
             .map(|(relative_path, file)| -> io::Result<()> {
-                let merged_path = dest.join(relative_path);
+                let relative_path_buf = key_to_path_buf_lossy(relative_path);
+                let merged_path = dest.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dest, &merged_path)?;
                 let Some(merged_dir) = merged_path.parent() else {
                     eprintln!(
@@ -118,7 +126,7 @@ impl VFS {
                 } else {
                     eprintln!(
                         "vfstool: skipping {}, loaded from archive: {}",
-                        relative_path.display(),
+                        key_to_string_lossy(relative_path),
                         file.parent_archive_path().unwrap_or_default()
                     );
                 }
@@ -178,7 +186,7 @@ impl VFS {
         }
     }
 
-    fn collapse_archive_file(file: &VfsFile, relative_path: &Path, merged_path: &Path) {
+    fn collapse_archive_file(file: &VfsFile, relative_path: &NormalizedPath, merged_path: &Path) {
         match file.open() {
             Ok(mut data) => {
                 let result = (|| -> io::Result<()> {
@@ -190,7 +198,7 @@ impl VFS {
                 if let Err(e) = result {
                     eprintln!(
                         "vfstool: failed to extract {} to {}: {}",
-                        relative_path.display(),
+                        key_to_string_lossy(relative_path),
                         merged_path.display(),
                         e
                     );
@@ -198,7 +206,7 @@ impl VFS {
             }
             Err(e) => eprintln!(
                 "vfstool: failed to open archived file {}: {}",
-                relative_path.display(),
+                key_to_string_lossy(relative_path),
                 e
             ),
         }
@@ -285,26 +293,33 @@ impl VFS {
     fn validate_materialization_paths(&self) -> io::Result<()> {
         let keys = self.file_map.keys().cloned().collect::<BTreeSet<_>>();
         for key in &keys {
-            if normalized_safe_key(key).as_ref() != Some(key) {
+            if !normalized_safe_normalized_bytes(key.as_bytes()) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    format!("VFS key '{}' cannot be safely materialized", key.display()),
+                    format!(
+                        "VFS key '{}' cannot be safely materialized",
+                        key_to_string_lossy(key)
+                    ),
                 ));
             }
 
-            let mut prefix = PathBuf::new();
-            for component in key.components() {
-                prefix.push(component.as_os_str());
-                if &prefix == key {
+            let mut prefix = Vec::new();
+            for component in key.as_bytes().split(|&byte| byte == b'/') {
+                if !prefix.is_empty() {
+                    prefix.push(b'/');
+                }
+                prefix.extend_from_slice(component);
+                if prefix.as_slice() == key.as_bytes() {
                     break;
                 }
-                if keys.contains(&prefix) {
+                let prefix_key = NormalizedPath::from_normalized_bytes_unchecked(prefix.clone());
+                if keys.contains(&prefix_key) {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
                         format!(
                             "VFS keys '{}' and '{}' cannot both be materialized as filesystem paths",
-                            prefix.display(),
-                            key.display()
+                            String::from_utf8_lossy(&prefix),
+                            key_to_string_lossy(key)
                         ),
                     ));
                 }

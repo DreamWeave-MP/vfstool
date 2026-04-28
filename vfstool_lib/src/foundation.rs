@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use crate::normalize_path;
+use crate::{NormalizedPath, VfsKeyInput, paths::key_to_path_buf_lossy};
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -28,26 +28,37 @@ impl SourceId {
 ///
 /// This type guarantees lowercase ASCII and forward slash separators.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-pub struct NormalizedKey(PathBuf);
+pub struct NormalizedKey(NormalizedPath);
 
 impl NormalizedKey {
     /// Create a normalized key from any path-like value.
     #[must_use]
     pub fn new(path: impl AsRef<Path>) -> Self {
-        Self(normalize_path(path.as_ref()).into_owned())
+        Self(path.as_ref().to_vfs_key())
     }
 
     /// Borrow as a [`Path`].
     #[must_use]
-    pub fn as_path(&self) -> &Path {
-        &self.0
+    pub fn as_path(&self) -> PathBuf {
+        key_to_path_buf_lossy(&self.0)
     }
 
     /// Convert to an owned [`PathBuf`].
     #[must_use]
     pub fn into_path_buf(self) -> PathBuf {
-        self.0
+        key_to_path_buf_lossy(&self.0)
+    }
+
+    #[must_use]
+    /// Borrow the byte-first normalized path.
+    pub fn as_normalized_path(&self) -> &NormalizedPath {
+        &self.0
+    }
+}
+
+impl From<NormalizedPath> for NormalizedKey {
+    fn from(value: NormalizedPath) -> Self {
+        Self(value)
     }
 }
 
@@ -65,7 +76,28 @@ impl From<&Path> for NormalizedKey {
 
 impl fmt::Display for NormalizedKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.display())
+        write!(f, "{}", String::from_utf8_lossy(self.0.as_bytes()))
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl serde::Serialize for NormalizedKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&String::from_utf8_lossy(self.0.as_bytes()))
+    }
+}
+
+#[cfg(feature = "serialize")]
+impl<'de> serde::Deserialize<'de> for NormalizedKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self(NormalizedPath::from(value)))
     }
 }
 

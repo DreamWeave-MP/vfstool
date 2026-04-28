@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #[cfg(any(feature = "bsa", feature = "zip"))]
 use crate::archives;
-use crate::{SourceKind, SourceMeta, VFS, VfsFile, normalize_path, paths::normalized_safe_key};
+use crate::{
+    NormalizedPath, SourceKind, SourceMeta, VFS, VfsFile, VfsKeyInput, paths::normalized_safe_key,
+};
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -24,7 +26,7 @@ pub struct VfsProvider {
 /// that was used when providers were inserted.
 #[derive(Debug, Default)]
 pub struct MutableVfs {
-    providers: AHashMap<PathBuf, Vec<VfsProvider>>,
+    providers: AHashMap<NormalizedPath, Vec<VfsProvider>>,
 }
 
 impl MutableVfs {
@@ -89,7 +91,7 @@ impl MutableVfs {
             };
             for (key, file) in archives::file_map(&vec![std::sync::Arc::clone(archive)]) {
                 mutable.push_provider(
-                    key,
+                    &key,
                     VfsProvider {
                         source: source.clone(),
                         file,
@@ -100,7 +102,7 @@ impl MutableVfs {
 
         for entries in directory_entries {
             for (key, provider) in entries {
-                mutable.push_provider(key, provider);
+                mutable.push_provider(&key, provider);
             }
         }
 
@@ -126,7 +128,7 @@ impl MutableVfs {
         };
         for (key, file) in archives::file_map(&vec![archive]) {
             self.push_provider(
-                key,
+                &key,
                 VfsProvider {
                     source: source.clone(),
                     file,
@@ -139,8 +141,12 @@ impl MutableVfs {
     /// Insert a provider at the highest priority for `key`.
     ///
     /// Returns `false` and leaves the VFS unchanged when `key` is not a safe relative VFS path.
-    pub fn push_provider<P: AsRef<Path>>(&mut self, key: P, provider: VfsProvider) -> bool {
-        let Some(key) = normalized_safe_key(key.as_ref()) else {
+    pub fn push_provider<K: VfsKeyInput + ?Sized>(
+        &mut self,
+        key: &K,
+        provider: VfsProvider,
+    ) -> bool {
+        let Some(key) = key.to_safe_vfs_key() else {
             return false;
         };
         self.providers.entry(key).or_default().push(provider);
@@ -154,7 +160,7 @@ impl MutableVfs {
     /// Returns an error if directory traversal fails.
     pub fn push_directory<P: AsRef<Path>>(&mut self, root: P) -> std::io::Result<()> {
         for (key, provider) in Self::directory_providers(root)? {
-            self.push_provider(key, provider);
+            self.push_provider(&key, provider);
         }
 
         Ok(())
@@ -162,7 +168,7 @@ impl MutableVfs {
 
     fn directory_providers<P: AsRef<Path>>(
         root: P,
-    ) -> std::io::Result<Vec<(PathBuf, VfsProvider)>> {
+    ) -> std::io::Result<Vec<(NormalizedPath, VfsProvider)>> {
         let root = root.as_ref();
         let source = SourceMeta {
             path: root.to_path_buf(),
@@ -216,13 +222,13 @@ impl MutableVfs {
     /// Return providers for `key`, ordered low-to-high priority.
     #[must_use]
     pub fn providers_for<P: AsRef<Path>>(&self, key: P) -> Option<&[VfsProvider]> {
-        let key = normalize_path(key.as_ref()).into_owned();
+        let key = key.as_ref().to_vfs_key();
         self.providers.get(&key).map(Vec::as_slice)
     }
 
     /// Remove the current winner for `key`, revealing the next lower-priority provider if present.
     pub fn remove_winner<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsProvider> {
-        let key = normalize_path(key.as_ref()).into_owned();
+        let key = key.as_ref().to_vfs_key();
         let providers = self.providers.get_mut(&key)?;
         let removed = providers.pop();
         if providers.is_empty() {
@@ -233,7 +239,7 @@ impl MutableVfs {
 
     /// Remove all providers for `key` whose source path matches `source`.
     pub fn remove_provider<P: AsRef<Path>>(&mut self, key: P, source: &Path) -> Vec<VfsProvider> {
-        let key = normalize_path(key.as_ref()).into_owned();
+        let key = key.as_ref().to_vfs_key();
         let Some(providers) = self.providers.get_mut(&key) else {
             return Vec::new();
         };
@@ -254,21 +260,24 @@ impl MutableVfs {
     }
 
     /// Remove every provider from `source`.
-    pub fn remove_source(&mut self, source: &Path) -> Vec<(PathBuf, VfsProvider)> {
+    pub fn remove_source(&mut self, source: &Path) -> Vec<(NormalizedPath, VfsProvider)> {
         self.remove_matching_provider(|_, provider| provider.source.path == source)
     }
 
     /// Remove providers under `prefix` regardless of source.
-    pub fn remove_prefix<P: AsRef<Path>>(&mut self, prefix: P) -> Vec<(PathBuf, VfsProvider)> {
-        let prefix = normalize_path(prefix.as_ref()).into_owned();
-        self.remove_matching_provider(|key, _| key.starts_with(&prefix))
+    pub fn remove_prefix<P: AsRef<Path>>(
+        &mut self,
+        prefix: P,
+    ) -> Vec<(NormalizedPath, VfsProvider)> {
+        let prefix = prefix.as_ref().to_vfs_key();
+        self.remove_matching_provider(|key, _| key.as_bytes().starts_with(prefix.as_bytes()))
     }
 
     /// Remove providers accepted by `matcher`.
     pub fn remove_matching_provider(
         &mut self,
-        mut matcher: impl FnMut(&Path, &VfsProvider) -> bool,
-    ) -> Vec<(PathBuf, VfsProvider)> {
+        mut matcher: impl FnMut(&NormalizedPath, &VfsProvider) -> bool,
+    ) -> Vec<(NormalizedPath, VfsProvider)> {
         let keys = self.providers.keys().cloned().collect::<Vec<_>>();
         let mut removed = Vec::new();
 

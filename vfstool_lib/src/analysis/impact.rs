@@ -6,6 +6,7 @@ use super::{
 };
 use crate::{
     VFS, path_glob_matches,
+    paths::key_to_path_buf_lossy,
     semantic::{SemanticDelta, analyze_pair},
 };
 use ahash::AHashSet;
@@ -129,9 +130,10 @@ impl LayerIndex {
             let after_bytes =
                 self.read_provider_bytes(vfs, after_idx, &key, &mut provider_cache)?;
             if let (Some(before), Some(after)) = (before_bytes, after_bytes) {
-                let (_, delta) = analyze_pair(&key, &after, &before);
+                let key_path = key_to_path_buf_lossy(&key);
+                let (_, delta) = analyze_pair(&key_path, &after, &before);
                 if matches!(delta, SemanticDelta::BehaviorChanging { .. }) {
-                    behavior_changing.insert(key);
+                    behavior_changing.insert(key_path);
                 }
             }
         }

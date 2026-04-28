@@ -2,27 +2,26 @@
 #[cfg(feature = "zip")]
 use super::keys::is_zip_or_pk3;
 use super::{ArchiveList, StoredArchive, TypedArchive};
-use crate::VfsFile;
+use crate::{NormalizedPath, VfsFile};
 use ahash::AHashMap;
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+#[cfg(feature = "zip")]
+use std::fs::File;
+use std::{path::Path, sync::Arc};
 
-#[cfg(feature = "bsa")]
-use ba2::{self, prelude::*, tes3::Archive as TES3Archive};
 #[cfg(feature = "zip")]
 use std::sync::Mutex;
 
 /// Open every archive named in `archive_list` that can be resolved through `file_map`.
 #[must_use]
-pub fn from_set(file_map: &AHashMap<PathBuf, VfsFile>, archive_list: &[&str]) -> ArchiveList {
+pub fn from_set(
+    file_map: &AHashMap<NormalizedPath, VfsFile>,
+    archive_list: &[&str],
+) -> ArchiveList {
     archive_list
         .iter()
         .copied()
         .filter_map(|archive| {
-            let archive_path = crate::normalize_path(archive).into_owned();
+            let archive_path = NormalizedPath::new(archive.as_bytes());
 
             let Some(valid_archive) = file_map.get(&archive_path) else {
                 eprintln!("vfstool: warning: archive '{archive}' not found in any data directory, skipping");
@@ -70,66 +69,19 @@ pub(crate) fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
 
     #[cfg(feature = "bsa")]
     {
-        let mut file_handle = match File::open(path) {
-            Ok(f) => f,
+        return match dream_archive::Archive::open_path(path) {
+            Ok(archive) => Some(Arc::new(StoredArchive {
+                file_handle: None,
+                archive: TypedArchive::Bethesda(archive),
+                path: path.to_path_buf(),
+            })),
             Err(e) => {
                 eprintln!(
-                    "vfstool: warning: failed to open archive '{}': {e}",
+                    "vfstool: warning: failed to read Bethesda archive '{}': {e}",
                     path.display()
                 );
-                return None;
+                None
             }
-        };
-        let Some(format) = ba2::guess_format(&mut file_handle) else {
-            eprintln!(
-                "vfstool: warning: could not determine format of archive '{}', skipping",
-                path.display()
-            );
-            return None;
-        };
-        return match format {
-            ba2::FileFormat::TES3 => match TES3Archive::read(&file_handle) {
-                Ok(archive) => Some(Arc::new(StoredArchive {
-                    file_handle: Some(file_handle),
-                    archive: TypedArchive::Tes3(archive),
-                    path: path.to_path_buf(),
-                })),
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to read TES3 archive '{}': {e}",
-                        path.display()
-                    );
-                    None
-                }
-            },
-            ba2::FileFormat::TES4 => match ba2::tes4::Archive::read(&file_handle) {
-                Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
-                    file_handle: Some(file_handle),
-                    archive: TypedArchive::Tes4(archive),
-                    path: path.to_path_buf(),
-                })),
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to read TES4 archive '{}': {e}",
-                        path.display()
-                    );
-                    None
-                }
-            },
-            ba2::FileFormat::FO4 => match ba2::fo4::Archive::read(&file_handle) {
-                Ok((archive, _meta)) => Some(Arc::new(StoredArchive {
-                    file_handle: Some(file_handle),
-                    archive: TypedArchive::Fo4(archive),
-                    path: path.to_path_buf(),
-                })),
-                Err(e) => {
-                    eprintln!(
-                        "vfstool: warning: failed to read FO4 archive '{}': {e}",
-                        path.display()
-                    );
-                    None
-                }
-            },
         };
     }
 

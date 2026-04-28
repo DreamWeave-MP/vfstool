@@ -2,9 +2,8 @@
 use super::VFS;
 use ahash::AHashMap;
 use rayon::prelude::*;
-use std::path::PathBuf;
 
-use crate::{LayerIndex, VfsFile};
+use crate::{LayerIndex, NormalizedPath, VfsFile};
 
 impl VFS {
     pub(super) const DIR_PREFIX: &str = "├── ";
@@ -20,7 +19,7 @@ impl VFS {
     }
 
     /// Returns an iterator over all `(normalized_key, file)` pairs in the VFS.
-    pub fn iter(&self) -> impl Iterator<Item = (&PathBuf, &VfsFile)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&NormalizedPath, &VfsFile)> {
         self.file_map.iter()
     }
 
@@ -32,7 +31,7 @@ impl VFS {
 
     /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.
     #[must_use]
-    pub fn par_iter(&self) -> impl ParallelIterator<Item = (&PathBuf, &VfsFile)> {
+    pub fn par_iter(&self) -> impl ParallelIterator<Item = (&NormalizedPath, &VfsFile)> {
         self.file_map.par_iter()
     }
 }

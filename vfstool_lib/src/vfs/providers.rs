@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::VFS;
-use crate::{CollapseOptions, SourceContributionReport, SourceKind, SourceMeta, normalize_path};
+use crate::{
+    CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
+    normalize_path, paths::key_to_path_buf_lossy,
+};
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
@@ -226,12 +229,17 @@ pub struct MaterializationPlan {
 }
 
 impl VFS {
-    fn provider_record_for(&self, key: &Path, source_index: usize) -> Option<VfsProviderRecord> {
+    fn provider_record_for(
+        &self,
+        key: &NormalizedPath,
+        source_index: usize,
+    ) -> Option<VfsProviderRecord> {
+        let key_path = key_to_path_buf_lossy(key);
         let source = self.layer_index.sources.get(source_index)?.clone();
         let original_path = self
             .layer_index
             .provider_original_path(source_index, key)
-            .map_or_else(|| key.to_path_buf(), Path::to_path_buf);
+            .map_or_else(|| key_path.clone(), Path::to_path_buf);
         let resolved_path = if source.kind == SourceKind::Archive {
             format!("{}::{}", source.path.display(), original_path.display())
         } else {
@@ -240,13 +248,13 @@ impl VFS {
         Some(VfsProviderRecord {
             source_index,
             source,
-            key: key.to_path_buf(),
+            key: key_path,
             original_path,
             resolved_path,
         })
     }
 
-    fn provider_records_for_key(&self, key: &Path) -> Vec<VfsProviderRecord> {
+    fn provider_records_for_key(&self, key: &NormalizedPath) -> Vec<VfsProviderRecord> {
         self.layer_index
             .sources_containing(key)
             .iter()
@@ -257,18 +265,18 @@ impl VFS {
     /// Return providers for a normalized key in low-to-high priority order.
     #[must_use]
     pub fn providers_for(&self, path: impl AsRef<Path>) -> Vec<VfsProviderRecord> {
-        let key = normalize_path(path.as_ref()).into_owned();
+        let key = NormalizedPath::new(path.as_ref().as_os_str().as_encoded_bytes());
         self.provider_records_for_key(&key)
     }
 
     /// Explain why `path` resolves to its current winner.
     #[must_use]
     pub fn explain(&self, path: impl AsRef<Path>) -> Option<ExplainReport> {
-        let key = normalize_path(path.as_ref()).into_owned();
+        let key = NormalizedPath::new(path.as_ref().as_os_str().as_encoded_bytes());
         let mut providers = self.provider_records_for_key(&key);
         let winner = providers.pop()?;
         Some(ExplainReport {
-            key,
+            key: key_to_path_buf_lossy(&key),
             winner,
             overridden: providers,
         })
@@ -284,7 +292,7 @@ impl VFS {
             .filter_map(|key| {
                 let providers = self.provider_records_for_key(&key);
                 (providers.len() > 1).then(|| DuplicateEntry {
-                    key,
+                    key: key_to_path_buf_lossy(&key),
                     winner_index: providers.len() - 1,
                     providers,
                 })
@@ -350,7 +358,7 @@ impl VFS {
                     && normalize_path(&p.source.path).as_ref() == archive.as_path()
             }) {
                 entries.push(ArchiveEntry {
-                    key: key.clone(),
+                    key: key_to_path_buf_lossy(&key),
                     archive_path: provider.source.path.clone(),
                     original_path: provider.original_path.clone(),
                     wins: provider.source_index == winner.source_index,
@@ -380,7 +388,7 @@ impl VFS {
                 providers.iter().map(|p| p.original_path.clone()).collect();
             if spellings.len() > 1 {
                 collisions.push(CaseCollision {
-                    key,
+                    key: key_to_path_buf_lossy(&key),
                     providers: providers.clone(),
                 });
             }
@@ -402,20 +410,19 @@ impl VFS {
         for (key, file) in &self.file_map {
             if file.is_loose() && !file.path().exists() {
                 issues.push(ValidationIssue::MissingLooseSource {
-                    key: key.clone(),
+                    key: key_to_path_buf_lossy(key),
                     source: file.path().to_path_buf(),
                 });
             }
         }
         let keys: Vec<_> = self.file_map.keys().collect();
         for key in &keys {
-            if let Some(child) = keys
-                .iter()
-                .find(|candidate| *candidate != key && candidate.starts_with(key))
-            {
+            if let Some(child) = keys.iter().find(|candidate| {
+                *candidate != key && candidate.as_bytes().starts_with(key.as_bytes())
+            }) {
                 issues.push(ValidationIssue::FileDirectoryConflict {
-                    file_key: (*key).clone(),
-                    directory_key: (*child).clone(),
+                    file_key: key_to_path_buf_lossy(key),
+                    directory_key: key_to_path_buf_lossy(child),
                 });
             }
         }
@@ -444,13 +451,13 @@ impl VFS {
         let mut issues = Vec::new();
         let keys: Vec<_> = self.file_map.keys().cloned().collect();
         for (key, file) in &self.file_map {
-            let target = dest.join(key);
-            if keys
-                .iter()
-                .any(|candidate| candidate != key && candidate.starts_with(key))
-            {
+            let key_path = key_to_path_buf_lossy(key);
+            let target = dest.join(&key_path);
+            if keys.iter().any(|candidate| {
+                candidate != key && candidate.as_bytes().starts_with(key.as_bytes())
+            }) {
                 issues.push(MaterializationIssue::FileDirectoryConflict {
-                    key: key.clone(),
+                    key: key_path.clone(),
                     dest: target.clone(),
                 });
                 continue;
@@ -458,44 +465,44 @@ impl VFS {
             if file.is_loose() {
                 if !file.path().exists() {
                     issues.push(MaterializationIssue::MissingLooseSource {
-                        key: key.clone(),
+                        key: key_path.clone(),
                         source: file.path().to_path_buf(),
                     });
                     continue;
                 }
                 if opts.extract_archives && super::VFS::is_archive_file(file) {
                     actions.push(MaterializationAction::SkipArchiveFile {
-                        key: key.clone(),
+                        key: key_path.clone(),
                         archive: file.path().to_path_buf(),
                     });
                 } else if opts.use_symlinks {
                     actions.push(MaterializationAction::Symlink {
-                        key: key.clone(),
+                        key: key_path.clone(),
                         source: file.path().to_path_buf(),
                         dest: target,
                     });
                 } else if opts.allow_copying {
                     actions.push(MaterializationAction::Copy {
-                        key: key.clone(),
+                        key: key_path.clone(),
                         source: file.path().to_path_buf(),
                         dest: target,
                     });
                 } else {
                     actions.push(MaterializationAction::Hardlink {
-                        key: key.clone(),
+                        key: key_path.clone(),
                         source: file.path().to_path_buf(),
                         dest: target,
                     });
                 }
             } else if opts.extract_archives {
                 actions.push(MaterializationAction::ExtractArchive {
-                    key: key.clone(),
+                    key: key_path.clone(),
                     archive: PathBuf::from(file.parent_archive_path().unwrap_or_default()),
                     dest: target,
                 });
             } else {
                 actions.push(MaterializationAction::SkipArchiveFile {
-                    key: key.clone(),
+                    key: key_path,
                     archive: PathBuf::from(file.parent_archive_path().unwrap_or_default()),
                 });
             }

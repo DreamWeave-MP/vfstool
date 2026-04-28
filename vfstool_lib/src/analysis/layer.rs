@@ -2,7 +2,10 @@
 use super::{
     LayerIndex, LayerProvider, SourceContribution, SourceContributionReport, SourceKind, SourceMeta,
 };
-use crate::{NormalizedKey, SourceId, paths::normalized_safe_key};
+use crate::{
+    NormalizedKey, NormalizedPath, SourceId, VfsKeyInput,
+    paths::{key_to_path_buf_lossy, normalized_safe_key},
+};
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
 
@@ -25,7 +28,7 @@ impl LayerIndex {
                 let Some(normalized_path) = normalized_safe_key(&path) else {
                     continue;
                 };
-                let key = NormalizedKey::new(&normalized_path);
+                let key = NormalizedKey::from(normalized_path);
                 if seen.insert(key.clone()) {
                     provider_paths.insert((idx, key.clone()), path);
                     path_to_sources.entry(key).or_default().push(idx);
@@ -42,12 +45,11 @@ impl LayerIndex {
 
     /// Returns all normalized keys in sorted order.
     #[must_use]
-    pub fn keys(&self) -> Vec<PathBuf> {
-        let mut keys: Vec<PathBuf> = self
+    pub fn keys(&self) -> Vec<NormalizedPath> {
+        let mut keys: Vec<NormalizedPath> = self
             .path_to_sources
             .keys()
-            .cloned()
-            .map(NormalizedKey::into_path_buf)
+            .map(|key| key.as_normalized_path().clone())
             .collect();
         keys.sort();
         keys
@@ -69,8 +71,8 @@ impl LayerIndex {
     }
 
     /// Returns source indices that provide `path`, in load order.
-    pub fn sources_containing(&self, path: &Path) -> &[usize] {
-        let normalized = NormalizedKey::new(path);
+    pub fn sources_containing<K: VfsKeyInput + ?Sized>(&self, path: &K) -> &[usize] {
+        let normalized = NormalizedKey::from(path.to_vfs_key());
         self.path_to_sources
             .get(&normalized)
             .map_or(&[], Vec::as_slice)
@@ -78,8 +80,12 @@ impl LayerIndex {
 
     /// Returns the original provider path recorded for `source_index` and `path`.
     #[must_use]
-    pub fn provider_original_path(&self, source_index: usize, path: &Path) -> Option<&Path> {
-        let normalized = NormalizedKey::new(path);
+    pub fn provider_original_path<K: VfsKeyInput + ?Sized>(
+        &self,
+        source_index: usize,
+        path: &K,
+    ) -> Option<&Path> {
+        let normalized = NormalizedKey::from(path.to_vfs_key());
         self.provider_paths
             .get(&(source_index, normalized))
             .map(PathBuf::as_path)
@@ -88,18 +94,18 @@ impl LayerIndex {
     /// Returns the provider chain for `path` in low-to-high priority order.
     #[must_use]
     pub fn provider_chain(&self, path: &Path) -> Vec<LayerProvider> {
-        let key = NormalizedKey::new(path).into_path_buf();
+        let key = NormalizedPath::new(path.as_os_str().as_encoded_bytes());
         self.sources_containing(&key)
             .iter()
             .filter_map(|&source_index| {
                 let source = self.sources.get(source_index)?.clone();
                 let original_path = self
                     .provider_original_path(source_index, &key)
-                    .map_or_else(|| key.clone(), Path::to_path_buf);
+                    .map_or_else(|| key_to_path_buf_lossy(&key), Path::to_path_buf);
                 Some(LayerProvider {
                     source_index,
                     source,
-                    key: key.clone(),
+                    key: key_to_path_buf_lossy(&key),
                     original_path,
                 })
             })
@@ -108,7 +114,7 @@ impl LayerIndex {
 
     /// Returns all keys with more than one provider, sorted by normalized key.
     #[must_use]
-    pub fn duplicate_keys(&self) -> Vec<PathBuf> {
+    pub fn duplicate_keys(&self) -> Vec<NormalizedPath> {
         self.keys()
             .into_iter()
             .filter(|key| self.sources_containing(key).len() > 1)
@@ -172,12 +178,12 @@ impl LayerIndex {
     /// Replace the provider chain for `key` with a single winner provider.
     pub(crate) fn set_single_provider(
         &mut self,
-        key: &Path,
+        key: &NormalizedPath,
         source: SourceMeta,
         provider_path: PathBuf,
     ) {
         self.remove_key(key);
-        let normalized = NormalizedKey::new(key);
+        let normalized = NormalizedKey::from(key.clone());
         let source_index = self.sources.len();
         self.sources.push(source);
         self.path_to_sources
@@ -187,8 +193,8 @@ impl LayerIndex {
     }
 
     /// Remove all providers for `key` from the index.
-    pub(crate) fn remove_key(&mut self, key: &Path) {
-        let normalized = NormalizedKey::new(key);
+    pub(crate) fn remove_key(&mut self, key: &NormalizedPath) {
+        let normalized = NormalizedKey::from(key.clone());
         if let Some(source_indices) = self.path_to_sources.remove(&normalized) {
             for source_index in source_indices {
                 self.provider_paths

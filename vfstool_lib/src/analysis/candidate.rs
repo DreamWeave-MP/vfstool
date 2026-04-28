@@ -2,7 +2,7 @@
 use super::{
     CandidateConflict, CandidatePlan, CandidatePlanOpts, CandidatePlanSummary, LayerIndex,
 };
-use crate::VFS;
+use crate::{NormalizedPath, VFS};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
@@ -41,9 +41,10 @@ impl LayerIndex {
         let mut displaced_winners = Vec::new();
 
         for (key, (incoming, existing)) in conflicts_by_key {
-            let providers = self.sources_containing(&key);
+            let normalized_key = NormalizedPath::new(key.as_os_str().as_encoded_bytes());
+            let providers = self.sources_containing(&normalized_key);
             let current_winner_source = self
-                .current_winner_source_idx(vfs, &key, providers)
+                .current_winner_source_idx(vfs, &normalized_key, providers)
                 .map(|idx| self.sources[idx].path.clone())
                 .unwrap_or_default();
 

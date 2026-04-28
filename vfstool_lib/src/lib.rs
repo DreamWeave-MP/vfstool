@@ -165,10 +165,11 @@ pub use analysis::{
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;
+pub use dream_path::NormalizedPath;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
 pub use matchers::{path_glob_matches, source_glob_matches};
 pub use mutable_vfs::{MutableVfs, VfsProvider};
-pub use paths::{normalize_path, normalize_path_in_place};
+pub use paths::{VfsKeyInput, normalize_path, normalize_path_in_place};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource,

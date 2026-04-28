@@ -129,11 +129,11 @@ fn normalize_in_place_matches_allocating_version() {
 #[cfg(any(feature = "bsa", feature = "zip"))]
 fn archive_keys_reject_absolute_parent_and_drive_paths() {
     assert_eq!(
-        crate::archives::normalized_archive_key("Textures\\Foo.DDS"),
-        Some(PathBuf::from("textures/foo.dds"))
+        crate::archives::normalized_archive_key(b"Textures\\Foo.DDS"),
+        Some(crate::NormalizedPath::from("textures/foo.dds"))
     );
-    assert!(crate::archives::normalized_archive_key("../foo.dds").is_none());
-    assert!(crate::archives::normalized_archive_key("/foo.dds").is_none());
-    assert!(crate::archives::normalized_archive_key("C:\\foo.dds").is_none());
-    assert!(crate::archives::normalized_archive_key("c:/foo.dds").is_none());
+    assert!(crate::archives::normalized_archive_key(b"../foo.dds").is_none());
+    assert!(crate::archives::normalized_archive_key(b"/foo.dds").is_none());
+    assert!(crate::archives::normalized_archive_key(b"C:\\foo.dds").is_none());
+    assert!(crate::archives::normalized_archive_key(b"c:/foo.dds").is_none());
 }

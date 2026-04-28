@@ -1,5 +1,5 @@
 use super::*;
-use ba2::tes3::{Archive, ArchiveKey, File};
+use dream_archive::Tes3BsaBuilder;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -102,16 +102,11 @@ fn create_test_dirs_and_files(temp_path: &Path) -> (PathBuf, PathBuf, PathBuf) {
 
 fn create_bsa_archive(archive_dir: &Path, archive_name: &str, data: &[&str]) -> PathBuf {
     let archive_path = archive_dir.join(archive_name);
-    let archive: Archive = data
-        .iter()
-        .map(|s| {
-            let key: ArchiveKey = s.to_string().into();
-            let file: File = File::from(s.as_bytes());
-            (key, file)
-        })
-        .collect();
-    let mut dst = fs::File::create(&archive_path).unwrap();
-    archive.write(&mut dst).unwrap();
+    let mut builder = Tes3BsaBuilder::new();
+    for path in data {
+        builder.add_bytes(*path, path.as_bytes()).unwrap();
+    }
+    builder.write_path(&archive_path).unwrap();
     archive_path
 }
 
@@ -125,8 +120,7 @@ fn verify_file_locations(
     dir3: &Path,
 ) {
     assert_eq!(
-        vfs.file_map
-            .get(&PathBuf::from("file6.txt"))
+        vfs.get_file("file6.txt")
             .unwrap()
             .parent_archive_path()
             .unwrap(),
@@ -134,8 +128,7 @@ fn verify_file_locations(
     );
 
     assert_eq!(
-        vfs.file_map
-            .get(&PathBuf::from("file5.txt"))
+        vfs.get_file("file5.txt")
             .unwrap()
             .parent_archive_path()
             .unwrap(),
@@ -143,8 +136,7 @@ fn verify_file_locations(
     );
 
     assert_eq!(
-        vfs.file_map
-            .get(&PathBuf::from("file4.txt"))
+        vfs.get_file("file4.txt")
             .unwrap()
             .parent_archive_path()
             .unwrap(),
@@ -152,26 +144,17 @@ fn verify_file_locations(
     );
 
     assert_eq!(
-        vfs.file_map
-            .get(&PathBuf::from("file3.txt"))
-            .unwrap()
-            .path(),
+        vfs.get_file("file3.txt").unwrap().path(),
         dir1.join("file3.txt")
     );
 
     assert_eq!(
-        vfs.file_map
-            .get(&PathBuf::from("file2.txt"))
-            .unwrap()
-            .path(),
+        vfs.get_file("file2.txt").unwrap().path(),
         dir2.join("file2.txt")
     );
 
     assert_eq!(
-        vfs.file_map
-            .get(&PathBuf::from("file1.txt"))
-            .unwrap()
-            .path(),
+        vfs.get_file("file1.txt").unwrap().path(),
         dir3.join("file1.txt")
     );
 }

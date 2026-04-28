@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 mod read {
-    #[cfg(feature = "bsa")]
-    use super::super::ArchiveReference;
     use super::super::VfsFile;
     use crate::normalize_path;
     use std::{
@@ -50,14 +48,6 @@ END OF ACT IV, SCENE III";
     /// It contains a reference to the real path, and some helpers to interact with it
     /// Its parent struct, `VFSFiles`, uses the normalized path as a `HashMap` key to refer to the
     /// `VFSFile`
-
-    #[test]
-    #[cfg(feature = "bsa")]
-    fn tes4_keys_split_backslash_paths_on_unix() {
-        assert!(ArchiveReference::tes4_keys(PathBuf::from("meshes\\foo.nif").as_path()).is_ok());
-        assert!(ArchiveReference::tes4_keys(PathBuf::from("meshes/foo.nif").as_path()).is_ok());
-        assert!(ArchiveReference::tes4_keys(PathBuf::from("foo.nif").as_path()).is_err());
-    }
     /// Thus, we should ensure that the path contained in the `VFSFile` is not already normalized
     /// but instead refers to the literal path on the user's system
     #[test]

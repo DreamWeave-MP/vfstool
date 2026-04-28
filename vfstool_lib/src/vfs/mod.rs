@@ -18,13 +18,12 @@ pub use self::providers::{
     ValidationIssue, ValidationReport, VfsProviderRecord,
 };
 
-use crate::{LayerIndex, VfsFile};
-use std::path::{Path, PathBuf};
+use crate::{LayerIndex, NormalizedPath, VfsFile};
 
 // Owned
 type MaybeFile<'a> = Option<&'a VfsFile>;
-type VFSTuple<'a> = (&'a Path, &'a VfsFile);
-type VFSFiles = AHashMap<PathBuf, VfsFile>;
+type VFSTuple<'a> = (&'a NormalizedPath, &'a VfsFile);
+type VFSFiles = AHashMap<NormalizedPath, VfsFile>;
 
 /// Virtual file system built from an ordered list of data directories and optional archives.
 ///

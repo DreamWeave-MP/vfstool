@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::VFS;
-use crate::{VfsFile, normalize_path_in_place};
+use crate::{NormalizedPath, VfsFile, normalize_path_in_place};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -74,7 +74,8 @@ impl VFS {
         let mut additions = Vec::new();
 
         for (key, incoming) in entries {
-            match self.file_map.get(&key) {
+            let lookup_key = NormalizedPath::new(key.as_os_str().as_encoded_bytes());
+            match self.file_map.get(&lookup_key) {
                 Some(existing) => conflicts.push((key, incoming, existing)),
                 None => additions.push((key, incoming)),
             }

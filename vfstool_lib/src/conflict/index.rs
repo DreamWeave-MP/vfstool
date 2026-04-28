@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::{
-    LayerIndex, SourceKind, SourceMeta, normalize_path_in_place, paths::normalized_safe_key,
+    LayerIndex, SourceKind, SourceMeta, normalize_path_in_place,
+    paths::{key_to_path_buf_lossy, normalized_safe_key},
 };
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
@@ -105,7 +106,7 @@ impl ConflictIndex {
                 source_file_counts[source_idx] += 1;
             }
             if providers.len() > 1 {
-                path_to_sources.insert(key, providers.to_vec());
+                path_to_sources.insert(key_to_path_buf_lossy(&key), providers.to_vec());
             }
         }
 
@@ -162,7 +163,7 @@ impl ConflictIndex {
                     .strip_prefix(dir)
                     .expect("entry must be prefixed by scan dir")
                     .to_path_buf();
-                normalized_safe_key(&relative)
+                normalized_safe_key(&relative).map(|key| key_to_path_buf_lossy(&key))
             })
             .collect()
     }

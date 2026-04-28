@@ -6,7 +6,7 @@ mod search;
 mod tests;
 mod types;
 
-use crate::analysis::LayerIndex;
+use crate::{analysis::LayerIndex, paths::key_to_path_buf_lossy};
 use compile::{compile_constraints, precedence_edges, resolve_current_order, source_lookup};
 use evaluate::{changed_winner_count, indices_to_paths, move_count, precedence_cycle_violations};
 use search::{improve_candidate, stable_topological_sort};
@@ -31,10 +31,14 @@ impl LayerIndex {
 
         let source_lookup = source_lookup(self)?;
         let current = resolve_current_order(self, &request.current_order, &source_lookup)?;
-        let keys = self.keys();
+        let normalized_keys = self.keys();
+        let keys = normalized_keys
+            .iter()
+            .map(key_to_path_buf_lossy)
+            .collect::<Vec<_>>();
         let providers_by_key: Vec<&[usize]> = keys
             .iter()
-            .map(|key| self.sources_containing(key))
+            .map(|key| self.sources_containing(key.as_path()))
             .collect();
         let source_kinds = self
             .sources

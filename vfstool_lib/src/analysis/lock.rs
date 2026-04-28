@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{LayerIndex, VfsLock, VfsLockEntry};
-use crate::{VFS, semantic::ArchiveHashMode};
+use crate::{NormalizedPath, VFS, paths::key_to_path_buf_lossy, semantic::ArchiveHashMode};
 use rayon::prelude::*;
-use std::{io, path::Path};
+use std::io;
 
 use super::provider_io::ProviderIoCache;
 
@@ -29,7 +29,11 @@ impl LayerIndex {
         })
     }
 
-    fn lock_entry_for_key(&self, vfs: &VFS, key: &Path) -> io::Result<Option<VfsLockEntry>> {
+    fn lock_entry_for_key(
+        &self,
+        vfs: &VFS,
+        key: &NormalizedPath,
+    ) -> io::Result<Option<VfsLockEntry>> {
         let providers = self.sources_containing(key);
         if providers.is_empty() {
             return Ok(None);
@@ -49,7 +53,7 @@ impl LayerIndex {
         )?;
 
         Ok(Some(VfsLockEntry {
-            key: key.to_path_buf(),
+            key: key_to_path_buf_lossy(key),
             winner_source: winner_source.path.clone(),
             winner_kind: winner_source.kind,
             winner_hash_blake3: winner_fp.as_ref().map(|f| f.to_digest().hex),
