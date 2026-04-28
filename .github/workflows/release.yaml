@@ -18,7 +18,7 @@ jobs:
     with:
       crate_names: '["vfstool_lib"]'
       dependent_repo_names: '["DreamWeave-MP/Morrobroom"]'
-      generate_benchmarks: true
+      generate_benchmarks: false
 
   build-app:
     needs: build-lib
@@ -31,3 +31,4 @@ jobs:
     with:
       binary_names: '["vfstool"]'
       publish_docs: false
+      generate_benchmarks: true
