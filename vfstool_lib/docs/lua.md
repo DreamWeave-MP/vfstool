@@ -17,14 +17,23 @@ let module = vfstool_lib::lua::open(&lua)?;
 lua.globals().set("vfstool", module)?;
 ```
 
-Enable it with:
+Enable the binding layer with:
 
 ```toml
 vfstool_lib = { version = "1", features = ["lua"] }
 ```
 
-`lua-vendored` is an alias for hosts that want to spell out the vendored Lua choice. The binding is
-embedded either way. There is no dynamic Lua module pretending to be a stable C ABI. Good.
+The bare `lua` feature intentionally does **not** select a Lua runtime or link a standalone LuaJIT.
+It is for host workspaces that provide one central Lua crate/runtime and re-export `mlua`, so ten
+library crates do not all try to choose and build their own Lua backend. If `vfstool_lib` is built on
+its own and you want it to select a vendored LuaJIT backend, use:
+
+```toml
+vfstool_lib = { version = "1", features = ["standalone-lua"] }
+```
+
+The binding is embedded either way. There is no dynamic Lua module pretending to be a stable C ABI.
+Good.
 
 ## Scope
 

@@ -3,6 +3,9 @@ use crate::NormalizedKey;
 use ahash::AHashMap;
 use std::{collections::BTreeMap, path::PathBuf};
 
+/// Current serialized lock manifest schema version.
+pub const VFS_LOCK_SCHEMA_VERSION: u32 = 1;
+
 mod candidate;
 mod drift;
 mod impact;
@@ -16,6 +19,7 @@ mod simulate;
 /// Source type in the load order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum SourceKind {
     /// A loose data directory.
@@ -305,6 +309,7 @@ pub struct SimulationDelta {
 /// Per-key drift kind when comparing current state to a lock file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum DriftKind {
     /// Key exists now but not in lock.
     Added,
@@ -341,6 +346,7 @@ pub struct DriftReport {
 /// Optional risk level for candidate planning workflows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum RiskLevel {
     /// Lowest risk.
     Low,

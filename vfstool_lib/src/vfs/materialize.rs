@@ -116,13 +116,10 @@ impl VFS {
 
     /// Collapse the entire VFS into `dest`, creating hardlinks, symlinks, or copies.
     ///
-    /// Per-file errors are reported via `eprintln!` rather than aborting -
-    /// this matches the original CLI behavior of continuing past individual
-    /// link/copy failures.
-    ///
     /// # Errors
     ///
-    /// Returns an error if creating the destination root directory fails.
+    /// Returns an error if creating the destination root directory fails or any selected file cannot
+    /// be materialized.
     pub fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()> {
         self.validate_materialization_paths()?;
         std::fs::create_dir_all(dest)?;
@@ -134,26 +131,23 @@ impl VFS {
                 let merged_path = dest.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dest, &merged_path)?;
                 let Some(merged_dir) = merged_path.parent() else {
-                    eprintln!(
-                        "vfstool: failed to resolve parent dir for {}",
+                    return Err(io::Error::other(format!(
+                        "failed to resolve parent dir for {}",
                         merged_path.display()
-                    );
-                    return Ok(());
+                    )));
                 };
 
-                if let Err(e) = std::fs::create_dir_all(merged_dir) {
-                    eprintln!(
-                        "vfstool: failed to create directory {}: {}",
-                        merged_dir.display(),
-                        e
-                    );
-                    return Ok(());
-                }
+                std::fs::create_dir_all(merged_dir).map_err(|e| {
+                    io::Error::new(
+                        e.kind(),
+                        format!("failed to create directory {}: {e}", merged_dir.display()),
+                    )
+                })?;
 
                 if file.is_loose() {
-                    Self::collapse_loose_file(file, &merged_path, opts);
+                    Self::collapse_loose_file(file, &merged_path, opts)?;
                 } else if opts.extract_archives {
-                    Self::collapse_archive_file(file, relative_path, &merged_path);
+                    Self::collapse_archive_file(file, relative_path, &merged_path)?;
                 } else {
                     eprintln!(
                         "vfstool: skipping {}, loaded from archive: {}",
@@ -167,14 +161,20 @@ impl VFS {
             .collect()
     }
 
-    fn collapse_loose_file(file: &VfsFile, merged_path: &Path, opts: &CollapseOptions) {
+    fn collapse_loose_file(
+        file: &VfsFile,
+        merged_path: &Path,
+        opts: &CollapseOptions,
+    ) -> io::Result<()> {
         if !file.path().exists() {
-            eprintln!(
-                "vfstool: skipping {}: source file no longer exists at {}",
-                merged_path.display(),
-                file.path().display()
-            );
-            return;
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "source file no longer exists for {} at {}",
+                    merged_path.display(),
+                    file.path().display()
+                ),
+            ));
         }
 
         if Self::is_archive_file(file) && opts.extract_archives {
@@ -182,19 +182,20 @@ impl VFS {
                 "vfstool: skipping archive {}",
                 file.file_name().unwrap_or_default().to_string_lossy()
             );
-            return;
+            return Ok(());
         }
 
         match std::fs::remove_file(merged_path) {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => {
-                eprintln!(
-                    "vfstool: failed to remove existing file at {}: {}",
-                    merged_path.display(),
-                    e
-                );
-                return;
+                return Err(io::Error::new(
+                    e.kind(),
+                    format!(
+                        "failed to remove existing file at {}: {e}",
+                        merged_path.display()
+                    ),
+                ));
             }
         }
 
@@ -204,44 +205,56 @@ impl VFS {
             std::fs::hard_link(file.path(), merged_path)
         };
 
-        if let Err(e) = link_result {
-            eprintln!("vfstool: link failed for {}: {}", file.path().display(), e);
-            if opts.allow_copying {
-                if let Err(copy_err) = Self::copy_replacing_output(file.path(), merged_path) {
-                    eprintln!(
-                        "vfstool: fallback copy of {} to {} failed: {}",
-                        file.path().display(),
-                        merged_path.display(),
-                        copy_err
-                    );
-                }
-            }
+        match link_result {
+            Ok(()) => Ok(()),
+            Err(_) if opts.allow_copying => Self::copy_replacing_output(file.path(), merged_path)
+                .map(|_| ())
+                .map_err(|copy_err| {
+                    io::Error::new(
+                        copy_err.kind(),
+                        format!(
+                            "link failed for {}; fallback copy to {} also failed: {copy_err}",
+                            file.path().display(),
+                            merged_path.display()
+                        ),
+                    )
+                }),
+            Err(e) => Err(io::Error::new(
+                e.kind(),
+                format!("link failed for {}: {e}", file.path().display()),
+            )),
         }
     }
 
-    fn collapse_archive_file(file: &VfsFile, relative_path: &NormalizedPath, merged_path: &Path) {
+    fn collapse_archive_file(
+        file: &VfsFile,
+        relative_path: &NormalizedPath,
+        merged_path: &Path,
+    ) -> io::Result<()> {
         match file.open() {
-            Ok(mut data) => {
-                let result = (|| -> io::Result<()> {
-                    Self::remove_existing_output_file(merged_path)?;
-                    let mut out = std::fs::File::create(merged_path)?;
-                    std::io::copy(&mut data, &mut out)?;
-                    Ok(())
-                })();
-                if let Err(e) = result {
-                    eprintln!(
-                        "vfstool: failed to extract {} to {}: {}",
+            Ok(mut data) => (|| -> io::Result<()> {
+                Self::remove_existing_output_file(merged_path)?;
+                let mut out = std::fs::File::create(merged_path)?;
+                std::io::copy(&mut data, &mut out)?;
+                Ok(())
+            })()
+            .map_err(|e| {
+                io::Error::new(
+                    e.kind(),
+                    format!(
+                        "failed to extract {} to {}: {e}",
                         key_to_string_lossy(relative_path),
-                        merged_path.display(),
-                        e
-                    );
-                }
-            }
-            Err(e) => eprintln!(
-                "vfstool: failed to open archived file {}: {}",
-                key_to_string_lossy(relative_path),
-                e
-            ),
+                        merged_path.display()
+                    ),
+                )
+            }),
+            Err(e) => Err(io::Error::new(
+                e.kind(),
+                format!(
+                    "failed to open archived file {}: {e}",
+                    key_to_string_lossy(relative_path)
+                ),
+            )),
         }
     }
 

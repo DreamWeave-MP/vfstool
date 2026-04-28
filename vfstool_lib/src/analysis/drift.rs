@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use super::{DriftEntry, DriftKind, DriftReport, LayerIndex, VfsLock, VfsLockEntry};
+use super::{
+    DriftEntry, DriftKind, DriftReport, LayerIndex, VFS_LOCK_SCHEMA_VERSION, VfsLock, VfsLockEntry,
+};
 use crate::VFS;
 use ahash::AHashMap;
 use std::{collections::BTreeMap, io, path::PathBuf};
@@ -11,6 +13,16 @@ impl LayerIndex {
     ///
     /// Returns an error when building current lock state fails.
     pub fn diff_against_lock(&self, vfs: &VFS, expected: &VfsLock) -> io::Result<DriftReport> {
+        if expected.schema_version != VFS_LOCK_SCHEMA_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "unsupported VFS lock schema_version {}; expected {}",
+                    expected.schema_version, VFS_LOCK_SCHEMA_VERSION
+                ),
+            ));
+        }
+
         let current = self.lock_manifest(vfs)?;
 
         let mut expected_map: AHashMap<PathBuf, &VfsLockEntry> = AHashMap::new();

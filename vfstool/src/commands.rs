@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use std::{
     fs,
-    io::Result,
+    io::{self, Result},
     path::{Path, PathBuf},
 };
 
@@ -554,10 +554,25 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
             (Ok(()), Some(status))
         })();
 
-    if !params.keep_merged {
-        let _ = fs::remove_dir_all(&merged);
-    }
+    let cleanup_result = if params.keep_merged {
+        Ok(())
+    } else {
+        fs::remove_dir_all(&merged).map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!("failed to remove merged dir '{}': {e}", merged.display()),
+            )
+        })
+    };
+
     inner_result?;
+    if let Err(e) = cleanup_result {
+        if subprocess_status.is_some_and(|status| !status.success()) {
+            eprintln!("vfstool: {e}");
+        } else {
+            return Err(e);
+        }
+    }
     std::process::exit(
         subprocess_status
             .and_then(|s| s.code())

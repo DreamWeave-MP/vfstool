@@ -184,7 +184,8 @@ pub mod vfs_file;
 
 pub use analysis::{
     DriftEntry, DriftKind, DriftReport, LayerIndex, LayerProvider, SourceContribution,
-    SourceContributionReport, SourceKind, SourceMeta, VfsLock, VfsLockEntry,
+    SourceContributionReport, SourceKind, SourceMeta, VFS_LOCK_SCHEMA_VERSION, VfsLock,
+    VfsLockEntry,
 };
 pub use conflict::{ConflictIndex, SourceConflicts};
 pub(crate) use directory_node::DirectoryNode;

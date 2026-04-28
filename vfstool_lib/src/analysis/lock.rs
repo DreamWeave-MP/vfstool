@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use super::{LayerIndex, VfsLock, VfsLockEntry};
+use super::{LayerIndex, VFS_LOCK_SCHEMA_VERSION, VfsLock, VfsLockEntry};
 use crate::{NormalizedPath, VFS, paths::key_to_path_buf_lossy, semantic::ArchiveHashMode};
 use rayon::prelude::*;
 use std::io;
@@ -24,7 +24,7 @@ impl LayerIndex {
 
         entries.sort_by(|a, b| a.key.cmp(&b.key));
         Ok(VfsLock {
-            schema_version: 1,
+            schema_version: VFS_LOCK_SCHEMA_VERSION,
             entries,
         })
     }

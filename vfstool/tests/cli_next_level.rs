@@ -217,6 +217,23 @@ fn missing_drift_lock_exits_runtime_failure() {
 }
 
 #[test]
+fn drift_rejects_unsupported_lock_schema_version() {
+    let fixture = Fixture::new("unsupported_lock_schema");
+    let lock_path = fixture.path("lock.json");
+    fs::write(&lock_path, r#"{"schema_version":999,"entries":[]}"#)
+        .expect("lock file should be writable");
+
+    let output = fixture.run(&[
+        "drift",
+        lock_path.to_str().expect("lock path should be utf-8"),
+    ]);
+
+    assert_eq!(output.status.code(), Some(9));
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
+    assert!(stderr.contains("unsupported VFS lock schema_version 999"));
+}
+
+#[test]
 fn lock_rejects_incomplete_vfs() {
     let fixture = Fixture::new("lock_rejects_missing_archive");
     fs::write(

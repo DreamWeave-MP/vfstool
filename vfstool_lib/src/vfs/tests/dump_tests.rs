@@ -168,6 +168,29 @@ fn collapse_rejects_file_directory_key_conflicts() {
 }
 
 #[test]
+fn collapse_reports_missing_loose_source() {
+    let src = TempDir::new("collapse_missing_loose_src");
+    let missing = src.path().join("missing.txt");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("missing.txt", &missing);
+
+    let dest = TempDir::new("collapse_missing_loose_dest");
+    let err = vfs
+        .collapse_into(
+            dest.path(),
+            &CollapseOptions {
+                allow_copying: true,
+                extract_archives: true,
+                use_symlinks: false,
+            },
+        )
+        .expect_err("missing source should fail collapse");
+
+    assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    assert!(err.to_string().contains("source file no longer exists"));
+}
+
+#[test]
 #[cfg(feature = "zip")]
 fn collapse_extract_archives_skips_loose_archive_without_deleting_existing_output() {
     let src = TempDir::new("collapse_skip_loose_archive_src");

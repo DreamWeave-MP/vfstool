@@ -111,6 +111,7 @@ pub struct CaseCollisionReport {
 /// Structural validation issue for a VFS.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum ValidationIssue {
     /// Loose winner no longer exists on disk.
     MissingLooseSource {
@@ -146,6 +147,7 @@ pub struct ValidationReport {
 /// Action that materialization would perform.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum MaterializationAction {
     /// Create a hardlink.
     Hardlink {
@@ -195,6 +197,7 @@ pub enum MaterializationAction {
 /// Issue that materialization planning can detect without writing files.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum MaterializationIssue {
     /// Loose source is missing.
     MissingLooseSource {

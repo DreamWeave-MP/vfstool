@@ -8,6 +8,7 @@ use std::{
 /// Asset family used for semantic analysis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum AssetClass {
     /// INI-style key-value config files.
     Ini,
@@ -30,6 +31,7 @@ pub enum AssetClass {
 /// Semantic change classification between two versions of one file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum SemanticDelta {
     /// No semantic or byte-level change.
     NoOpEquivalent,
@@ -47,6 +49,7 @@ pub enum SemanticDelta {
 /// Per-provider relation to winner content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum SemanticRelation {
     /// Byte-identical to winner.
     IdenticalToWinner,
@@ -107,6 +110,7 @@ pub struct SemanticConflictReport {
 /// archive-path/key pair. Read or decompression failures are returned as I/O errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
 pub enum ArchiveHashMode {
     /// Do not hash archive providers.
     Disabled,
