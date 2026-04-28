@@ -239,8 +239,9 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
   `vfstool_lib` so applications can use the same serialization stack as the library instead of
   pinning duplicate parser versions.
 - ZIP/PK3 support is intentionally narrower: `zip` is built without default features and currently
-  supports stored/deflated and LZMA-compressed entries. AES, bzip2, PPMd, deflate64, and zstd are not
-  pulled in unless we deliberately decide they are worth the dependency cost.
+  supports stored/deflated and LZMA-compressed entries. ZIP/PK3 entries are buffered on open with a
+  512 MiB uncompressed-entry cap; they are not streamed in 1.0. AES, bzip2, PPMd, deflate64, and
+  zstd are not pulled in unless we deliberately decide they are worth the dependency cost.
 - `MutableVfs` was removed before 1.0. `VFS` now owns provider stacks directly, so there is no second
   VFS implementation to drift out of sync. The old distinction is represented by explicit method
   names instead of a second type.

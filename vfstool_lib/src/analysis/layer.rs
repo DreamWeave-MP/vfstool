@@ -150,7 +150,7 @@ impl LayerIndex {
             .collect();
 
         for source_indices in self.path_to_sources.values() {
-            let Some(&winner) = source_indices.last() else {
+            let Some(winner_position) = source_indices.len().checked_sub(1) else {
                 continue;
             };
             let is_unique = source_indices.len() == 1;
@@ -165,7 +165,7 @@ impl LayerIndex {
                     } else {
                         row.duplicate_files += 1;
                     }
-                    if source_index == winner {
+                    if position == winner_position {
                         row.winning_files += 1;
                     } else if source_indices[position + 1..]
                         .iter()

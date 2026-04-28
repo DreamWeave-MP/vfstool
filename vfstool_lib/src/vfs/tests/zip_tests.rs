@@ -243,6 +243,21 @@ fn zip_entry_open_is_repeatable() {
     }
 }
 
+#[test]
+fn zip_entry_open_rejects_entries_over_buffer_cap() {
+    let dir = TempDir::new("vfszip_buffer_cap");
+    let oversized = [b'x'; 65];
+    dir.create_zip("data.zip", &[("big.bin", oversized.as_slice())]);
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+    let file = vfs.get_file("big.bin").unwrap();
+
+    let Err(err) = file.open() else {
+        panic!("test ZIP cap should reject oversized entries");
+    };
+    assert_eq!(err.kind(), std::io::ErrorKind::OutOfMemory);
+}
+
 // ---- Priority ----
 
 #[test]

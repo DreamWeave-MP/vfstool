@@ -176,7 +176,7 @@ impl ConflictIndex {
                     .strip_prefix(dir)
                     .expect("entry must be prefixed by scan dir")
                     .to_path_buf();
-                normalized_safe_key(&relative).map(|key| key_to_path_buf_bytes(&key))
+                normalized_safe_key(&relative).and_then(|key| key_to_path_buf_bytes(&key))
             })
             .collect()
     }

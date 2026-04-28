@@ -357,6 +357,31 @@ fn materialization_plan_rejects_file_directory_conflict() {
 }
 
 #[test]
+fn materialization_plan_finds_non_adjacent_file_directory_conflict() {
+    let dir = TempDir::new("vfsloose_materialization_plan_non_adjacent_conflict");
+    let file = dir.write("file_source", b"a");
+    let sibling = dir.write("sibling_source", b"b");
+    let child = dir.write("child_source", b"c");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("a", &file);
+    vfs.set_winner_loose_file("a.b", &sibling);
+    vfs.set_winner_loose_file("a/c", &child);
+
+    let out = TempDir::new("vfsloose_materialization_plan_non_adjacent_conflict_out");
+    let plan = vfs.materialization_plan(
+        out.path(),
+        &crate::CollapseOptions {
+            allow_copying: false,
+            extract_archives: false,
+            use_symlinks: false,
+        },
+    );
+
+    assert_eq!(plan.issues.len(), 1);
+    assert_eq!(plan.actions.len(), 2);
+}
+
+#[test]
 fn remove_resolved_matching_glob_removes_matching_winners() {
     let dir = TempDir::new("vfsloose_remove_glob");
     let tex = dir.write("foo.dds", b"a");

@@ -9,6 +9,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
+
 /// Normalize a host/source path by converting backslashes to forward slashes and lowercasing ASCII letters.
 ///
 /// Returns a borrowed `Cow` when no transformation is needed, avoiding allocation on the fast path.
@@ -129,8 +132,28 @@ pub(crate) fn key_to_path_buf_lossy(key: &NormalizedPath) -> PathBuf {
 }
 
 #[must_use]
-pub(crate) fn key_to_path_buf_bytes(key: &NormalizedPath) -> PathBuf {
-    PathBuf::from(unsafe { OsString::from_encoded_bytes_unchecked(key.as_bytes().to_vec()) })
+#[cfg(unix)]
+pub(crate) fn key_to_path_buf_bytes(key: &NormalizedPath) -> Option<PathBuf> {
+    if key.as_bytes().contains(&b'\0') {
+        return None;
+    }
+    Some(key_to_path_buf_raw_bytes(key.as_bytes()))
+}
+
+#[must_use]
+#[cfg(not(unix))]
+pub(crate) fn key_to_path_buf_bytes(key: &NormalizedPath) -> Option<PathBuf> {
+    key_to_path_buf_raw_bytes(key.as_bytes())
+}
+
+#[cfg(unix)]
+fn key_to_path_buf_raw_bytes(bytes: &[u8]) -> PathBuf {
+    PathBuf::from(OsString::from_vec(bytes.to_vec()))
+}
+
+#[cfg(not(unix))]
+fn key_to_path_buf_raw_bytes(bytes: &[u8]) -> Option<PathBuf> {
+    String::from_utf8(bytes.to_vec()).ok().map(PathBuf::from)
 }
 
 #[must_use]

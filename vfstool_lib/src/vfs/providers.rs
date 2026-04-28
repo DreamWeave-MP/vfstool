@@ -3,10 +3,7 @@ use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
     normalize_host_path,
-    paths::{
-        key_is_at_or_under_prefix, key_to_path_buf_bytes, key_to_path_buf_lossy,
-        key_to_string_lossy,
-    },
+    paths::{key_to_path_buf_bytes, key_to_path_buf_lossy, key_to_string_lossy},
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -510,17 +507,27 @@ impl VFS {
         let mut keys: Vec<_> = self.file_map.keys().cloned().collect();
         keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
         let conflicting_files: AHashSet<_> = keys
-            .windows(2)
-            .filter_map(|window| {
-                let [key, candidate] = window else {
-                    return None;
-                };
-                key_is_at_or_under_prefix(candidate, key).then_some(key.clone())
+            .iter()
+            .filter_map(|key| {
+                let mut child_prefix = key.as_bytes().to_vec();
+                child_prefix.push(b'/');
+                let child_index = keys
+                    .partition_point(|candidate| candidate.as_bytes() < child_prefix.as_slice());
+                keys.get(child_index)
+                    .filter(|candidate| candidate.as_bytes().starts_with(&child_prefix))
+                    .map(|_| key.clone())
             })
             .collect();
         for key in keys {
             let file = &self.file_map[&key];
-            let key_path = key_to_path_buf_bytes(&key);
+            let Some(key_path) = key_to_path_buf_bytes(&key) else {
+                let display_key = key_to_path_buf_lossy(&key);
+                issues.push(MaterializationIssue::UnsafeDestination {
+                    key: display_key.clone(),
+                    dest: dest.join(display_key),
+                });
+                continue;
+            };
             let target = dest.join(&key_path);
             if conflicting_files.contains(&key) {
                 issues.push(MaterializationIssue::FileDirectoryConflict {

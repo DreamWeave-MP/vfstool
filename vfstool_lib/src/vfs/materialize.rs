@@ -26,13 +26,30 @@ impl VFS {
     /// Returns an error for hardlink/copy/write failures not explicitly handled
     /// as skippable cases.
     pub fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize> {
+        self.dump_to_directory_impl(dir, use_hardlinks, false)
+    }
+
+    pub(crate) fn dump_to_directory_strict(
+        &self,
+        dir: &Path,
+        use_hardlinks: bool,
+    ) -> std::io::Result<usize> {
+        self.dump_to_directory_impl(dir, use_hardlinks, true)
+    }
+
+    fn dump_to_directory_impl(
+        &self,
+        dir: &Path,
+        use_hardlinks: bool,
+        strict: bool,
+    ) -> std::io::Result<usize> {
         self.validate_materialization_paths()?;
 
         let written: std::io::Result<Vec<bool>> = self
             .file_map
             .par_iter()
             .map(|(relative_path, file)| -> std::io::Result<bool> {
-                let relative_path_buf = key_to_path_buf_bytes(relative_path);
+                let relative_path_buf = Self::materialization_path(relative_path)?;
                 let dest = dir.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dir, &dest)?;
                 if let Some(parent) = dest.parent() {
@@ -40,6 +57,16 @@ impl VFS {
                 }
                 if file.is_loose() {
                     if !file.path().exists() {
+                        if strict {
+                            return Err(io::Error::new(
+                                io::ErrorKind::NotFound,
+                                format!(
+                                    "source for VFS key '{}' no longer exists at {}",
+                                    key_to_string_lossy(relative_path),
+                                    file.path().display()
+                                ),
+                            ));
+                        }
                         eprintln!(
                             "vfstool: skipping {}: source no longer exists at {}",
                             key_to_string_lossy(relative_path),
@@ -70,6 +97,9 @@ impl VFS {
                             std::io::copy(&mut reader, &mut out)?;
                         }
                         Err(e) => {
+                            if strict {
+                                return Err(e);
+                            }
                             eprintln!(
                                 "vfstool: skipping {}: {e}",
                                 key_to_string_lossy(relative_path)
@@ -100,7 +130,7 @@ impl VFS {
         self.file_map
             .par_iter()
             .map(|(relative_path, file)| -> io::Result<()> {
-                let relative_path_buf = key_to_path_buf_bytes(relative_path);
+                let relative_path_buf = Self::materialization_path(relative_path)?;
                 let merged_path = dest.join(&relative_path_buf);
                 Self::ensure_output_parent_safe(dest, &merged_path)?;
                 let Some(merged_dir) = merged_path.parent() else {
@@ -155,15 +185,17 @@ impl VFS {
             return;
         }
 
-        if let Err(e) = std::fs::remove_file(merged_path)
-            && e.kind() != io::ErrorKind::NotFound
-        {
-            eprintln!(
-                "vfstool: failed to remove existing file at {}: {}",
-                merged_path.display(),
-                e
-            );
-            return;
+        match std::fs::remove_file(merged_path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                eprintln!(
+                    "vfstool: failed to remove existing file at {}: {}",
+                    merged_path.display(),
+                    e
+                );
+                return;
+            }
         }
 
         let link_result = if opts.use_symlinks {
@@ -174,15 +206,15 @@ impl VFS {
 
         if let Err(e) = link_result {
             eprintln!("vfstool: link failed for {}: {}", file.path().display(), e);
-            if opts.allow_copying
-                && let Err(copy_err) = Self::copy_replacing_output(file.path(), merged_path)
-            {
-                eprintln!(
-                    "vfstool: fallback copy of {} to {} failed: {}",
-                    file.path().display(),
-                    merged_path.display(),
-                    copy_err
-                );
+            if opts.allow_copying {
+                if let Err(copy_err) = Self::copy_replacing_output(file.path(), merged_path) {
+                    eprintln!(
+                        "vfstool: fallback copy of {} to {} failed: {}",
+                        file.path().display(),
+                        merged_path.display(),
+                        copy_err
+                    );
+                }
             }
         }
     }
@@ -257,7 +289,7 @@ impl VFS {
 
         std::fs::create_dir_all(dest_dir)?;
 
-        let normalized_path = key_to_path_buf_bytes(&normalized_key);
+        let normalized_path = Self::materialization_path(&normalized_key)?;
         let file_name = normalized_path.file_name().ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidInput, "vfs_path has no file name")
         })?;
@@ -330,6 +362,18 @@ impl VFS {
             }
         }
         Ok(())
+    }
+
+    fn materialization_path(key: &NormalizedPath) -> io::Result<PathBuf> {
+        key_to_path_buf_bytes(key).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "VFS key '{}' cannot be represented as a path on this platform",
+                    key_to_string_lossy(key)
+                ),
+            )
+        })
     }
 
     fn ensure_output_parent_safe(root: &Path, output: &Path) -> io::Result<()> {

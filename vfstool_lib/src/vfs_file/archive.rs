@@ -7,8 +7,11 @@ use std::{
 
 use crate::archives::{StoredArchive, TypedArchive};
 
-#[cfg(feature = "zip")]
+#[cfg(all(feature = "zip", not(test)))]
 const MAX_BUFFERED_ZIP_ENTRY_SIZE: u64 = 512 * 1024 * 1024;
+
+#[cfg(all(feature = "zip", test))]
+const MAX_BUFFERED_ZIP_ENTRY_SIZE: u64 = 64;
 
 /// A reference to a single file within an open [`StoredArchive`].
 #[derive(Debug, Clone)]
@@ -85,7 +88,7 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
                         "zip archive reference is missing central-directory index",
                     ));
                 };
-                let mut entry = guard
+                let entry = guard
                     .by_index(zip_index)
                     .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
                 if entry.size() > MAX_BUFFERED_ZIP_ENTRY_SIZE {
@@ -106,8 +109,9 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
                     )
                 })?;
                 let mut buf = Vec::with_capacity(capacity);
-                let copied = io::copy(&mut entry, &mut buf)?;
-                if copied > MAX_BUFFERED_ZIP_ENTRY_SIZE {
+                let mut limited_entry = entry.take(MAX_BUFFERED_ZIP_ENTRY_SIZE + 1);
+                limited_entry.read_to_end(&mut buf)?;
+                if u64::try_from(buf.len()).unwrap_or(u64::MAX) > MAX_BUFFERED_ZIP_ENTRY_SIZE {
                     return Err(io::Error::new(
                         io::ErrorKind::OutOfMemory,
                         format!(

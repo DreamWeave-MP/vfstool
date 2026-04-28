@@ -122,7 +122,7 @@ fn same_source_duplicate_occurrences_do_not_count_as_cross_source_overrides() {
     let source = &contributions.sources[0];
 
     assert_eq!(source.duplicate_files, 2);
-    assert_eq!(source.winning_files, 2);
+    assert_eq!(source.winning_files, 1);
     assert_eq!(source.overriding_files, 0);
     assert_eq!(source.overridden_files, 0);
 }

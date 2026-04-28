@@ -54,7 +54,7 @@ pub fn run_setup(
         std::fs::remove_dir_all(merged_dir)?;
     }
     std::fs::create_dir_all(merged_dir)?;
-    let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
+    let count = vfs.dump_to_directory_strict(merged_dir, use_hardlinks)?;
     let baseline = snapshot_directory(merged_dir)?;
     Ok((count, baseline))
 }
@@ -77,7 +77,7 @@ pub fn run_setup_tracked(
         std::fs::remove_dir_all(merged_dir)?;
     }
     std::fs::create_dir_all(merged_dir)?;
-    let count = vfs.dump_to_directory(merged_dir, use_hardlinks)?;
+    let count = vfs.dump_to_directory_strict(merged_dir, use_hardlinks)?;
     let baseline = snapshot_directory_metadata(merged_dir)?;
     Ok((count, baseline))
 }
@@ -316,6 +316,9 @@ mod tests {
     use super::*;
     use std::fs;
 
+    #[cfg(feature = "zip")]
+    use std::io::Write as IoWrite;
+
     struct TempDir(PathBuf);
 
     impl TempDir {
@@ -341,6 +344,21 @@ mod tests {
             fs::create_dir_all(target.parent().unwrap()).unwrap();
             fs::write(&target, data).unwrap();
             target
+        }
+
+        #[cfg(feature = "zip")]
+        fn create_zip(&self, filename: &str, entries: &[(&str, &[u8])]) -> PathBuf {
+            let path = self.0.join(filename);
+            let file = fs::File::create(&path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+            for (name, data) in entries {
+                zip.start_file(*name, options).unwrap();
+                zip.write_all(data).unwrap();
+            }
+            zip.finish().unwrap();
+            path
         }
     }
 
@@ -562,6 +580,21 @@ mod tests {
         let (_, snapshot) = run_setup_tracked(&vfs, merged.path(), false).unwrap();
 
         assert!(snapshot.contains_key(Path::new("file.txt")));
+    }
+
+    #[test]
+    #[cfg(feature = "zip")]
+    fn run_setup_tracked_fails_when_archive_entry_cannot_be_materialized() {
+        let src = TempDir::new("run_setup_tracked_archive_failure_src");
+        let oversized = [b'x'; 65];
+        src.create_zip("data.zip", &[("big.bin", oversized.as_slice())]);
+        let vfs = VFS::from_directories(vec![src.path()], Some(vec!["data.zip"]));
+
+        let merged = TempDir::new("run_setup_tracked_archive_failure_merged");
+        let err = run_setup_tracked(&vfs, merged.path(), false)
+            .expect_err("archive read failure must abort run setup");
+
+        assert_eq!(err.kind(), io::ErrorKind::OutOfMemory);
     }
 
     #[test]

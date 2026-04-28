@@ -72,12 +72,13 @@ pub(super) fn improve_candidate(
     };
     search.improve_candidate_locally(candidate, &mut violations);
 
-    if !violations.is_empty()
-        && let Some(exact) =
+    if !violations.is_empty() {
+        if let Some(exact) =
             best_satisfying_topological_order(current, eval.source_count, precedence_edges, eval)
-    {
-        *candidate = exact;
-        violations.clear();
+        {
+            *candidate = exact;
+            violations.clear();
+        }
     }
 
     violations

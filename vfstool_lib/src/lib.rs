@@ -127,7 +127,8 @@
 //! # Feature flags
 //!
 //! - `beth-archives`: BSA/BA2 archive support.
-//! - `zip`: ZIP/PK3 archive support.
+//! - `zip`: ZIP/PK3 archive support. Entries are buffered on open with a 512 MiB
+//!   uncompressed-entry cap; they are not streamed in 1.0.
 //! - `serialize`: JSON/YAML/TOML serialization and structured JSON/TOML semantic comparison.
 //!   Without `serialize`, JSON and TOML semantic deltas are reported as unknown rather than parsed.
 //!   This also re-exports [`serde`], [`serde_json`], [`serde_yaml`], and [`toml`] so downstream
