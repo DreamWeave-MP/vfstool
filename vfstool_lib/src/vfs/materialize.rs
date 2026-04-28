@@ -218,7 +218,8 @@ impl VFS {
         };
         let ext = ext.to_ascii_lowercase();
         let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
-        (ext == "bsa" || ext == "ba2") && name != "archiveinvalidationinvalidated!.bsa"
+        matches!(ext.to_str(), Some("bsa" | "ba2" | "zip" | "pk3"))
+            && name != "archiveinvalidationinvalidated!.bsa"
     }
 
     #[cfg(unix)]

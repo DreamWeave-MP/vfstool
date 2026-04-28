@@ -9,7 +9,11 @@ use std::path::PathBuf;
 pub struct CollapseOptions {
     /// Fall back to copying when hardlinking fails.
     pub allow_copying: bool,
-    /// Extract files from BSA/BA2 archives (write their contents as loose files).
+    /// Extract supported archive entries as loose files.
+    ///
+    /// With archive features enabled, this covers BSA/BA2 (`beth-archives`) and ZIP/PK3 (`zip`).
+    /// Configured loose archive files are skipped so the output does not contain both an archive and
+    /// its extracted contents.
     pub extract_archives: bool,
     /// Use symbolic links instead of hard links (allows cross-device linking).
     pub use_symlinks: bool,

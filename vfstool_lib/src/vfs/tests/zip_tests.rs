@@ -1,5 +1,5 @@
 use super::*;
-use crate::DirectoryNode;
+use crate::{CollapseOptions, DirectoryNode, MaterializationAction};
 use std::{
     fs,
     io::Write as IoWrite,
@@ -389,6 +389,81 @@ fn zip_duplicate_normalized_entries_are_reported() {
     let collisions = vfs.case_collisions();
     assert_eq!(collisions.collisions.len(), 1);
     assert_eq!(collisions.collisions[0].providers.len(), 2);
+}
+
+#[test]
+fn materialization_plan_skips_loose_zip_when_extracting_archive_entries() {
+    let dir = TempDir::new("vfszip_materialization_plan_skip_zip");
+    dir.create_zip("data.zip", &[("scripts/test.lua", b"return 42")]);
+    let out = TempDir::new("vfszip_materialization_plan_skip_zip_out");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+    let plan = vfs.materialization_plan(
+        out.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    );
+
+    assert!(plan.issues.is_empty());
+    assert!(plan.actions.iter().any(|action| matches!(
+        action,
+        MaterializationAction::SkipArchiveFile { key, .. } if key == Path::new("data.zip")
+    )));
+    assert!(plan.actions.iter().any(|action| matches!(
+        action,
+        MaterializationAction::ExtractArchive { key, .. } if key == Path::new("scripts/test.lua")
+    )));
+}
+
+#[test]
+fn collapse_extract_archives_skips_loose_zip_file() {
+    let dir = TempDir::new("vfszip_collapse_skip_zip");
+    dir.create_zip("data.zip", &[("scripts/test.lua", b"return 42")]);
+    let out = TempDir::new("vfszip_collapse_skip_zip_out");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+    vfs.collapse_into(
+        out.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read(out.path().join("scripts/test.lua")).unwrap(),
+        b"return 42"
+    );
+    assert!(!out.path().join("data.zip").exists());
+}
+
+#[test]
+fn collapse_extract_archives_skips_loose_pk3_file() {
+    let dir = TempDir::new("vfszip_collapse_skip_pk3");
+    dir.create_zip("pak0.pk3", &[("sound/ambient/wind.wav", b"wave_data")]);
+    let out = TempDir::new("vfszip_collapse_skip_pk3_out");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["pak0.pk3"]));
+    vfs.collapse_into(
+        out.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read(out.path().join("sound/ambient/wind.wav")).unwrap(),
+        b"wave_data"
+    );
+    assert!(!out.path().join("pak0.pk3").exists());
 }
 
 // ---- PK3 ----
