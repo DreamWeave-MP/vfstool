@@ -373,6 +373,19 @@ fn zip_duplicate_normalized_entries_are_reported() {
 
     let entries = vfs.archive_entries(archive);
     assert_eq!(entries.len(), 2);
+    assert_eq!(entries.iter().filter(|entry| entry.wins).count(), 1);
+    assert_eq!(
+        entries
+            .iter()
+            .find(|entry| entry.wins)
+            .unwrap()
+            .original_path,
+        PathBuf::from("textures/foo.dds")
+    );
+    let archive_info = vfs.archives();
+    assert_eq!(archive_info.len(), 1);
+    assert_eq!(archive_info[0].entry_count, 2);
+    assert_eq!(archive_info[0].winning_entry_count, 1);
     let collisions = vfs.case_collisions();
     assert_eq!(collisions.collisions.len(), 1);
     assert_eq!(collisions.collisions[0].providers.len(), 2);

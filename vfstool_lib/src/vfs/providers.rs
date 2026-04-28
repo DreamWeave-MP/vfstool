@@ -338,18 +338,18 @@ impl VFS {
     #[must_use]
     pub fn archives(&self) -> Vec<ArchiveInfo> {
         let mut counts: AHashMap<usize, (usize, usize)> = AHashMap::new();
-        for key in self.providers.keys() {
-            let providers = self.provider_records_for_key(key);
-            let Some(winner) = providers.last() else {
+        for providers in self.providers.values() {
+            let Some(winner_index) = providers.len().checked_sub(1) else {
                 continue;
             };
-            for provider in providers
+            for (provider_index, entry) in providers
                 .iter()
-                .filter(|p| p.source.kind == SourceKind::Archive)
+                .enumerate()
+                .filter(|(_, entry)| entry.provider.source.kind == SourceKind::Archive)
             {
-                let counts = counts.entry(provider.source_index).or_default();
+                let counts = counts.entry(entry.source_index).or_default();
                 counts.0 += 1;
-                if provider.source_index == winner.source_index {
+                if provider_index == winner_index {
                     counts.1 += 1;
                 }
             }
@@ -379,24 +379,32 @@ impl VFS {
     pub fn archive_entries(&self, archive: impl AsRef<Path>) -> Vec<ArchiveEntry> {
         let archive = normalize_host_path(archive.as_ref()).into_owned();
         let mut entries = Vec::new();
-        for key in self.providers.keys() {
-            let providers = self.provider_records_for_key(key);
-            let Some(winner) = providers.last() else {
+        for (key, providers) in &self.providers {
+            let Some(winner_index) = providers.len().checked_sub(1) else {
                 continue;
             };
-            for provider in providers.iter().filter(|p| {
-                p.source.kind == SourceKind::Archive
-                    && normalize_host_path(&p.source.path).as_ref() == archive.as_path()
+            for (provider_index, entry) in providers.iter().enumerate().filter(|(_, entry)| {
+                entry.provider.source.kind == SourceKind::Archive
+                    && normalize_host_path(&entry.provider.source.path).as_ref()
+                        == archive.as_path()
             }) {
+                let original_path =
+                    VFS::provider_original_path(&entry.provider.source, key, &entry.provider.file);
                 entries.push(ArchiveEntry {
                     key: key_to_path_buf_lossy(key),
-                    archive_path: provider.source.path.clone(),
-                    original_path: provider.original_path.clone(),
-                    wins: provider.source_index == winner.source_index,
+                    archive_path: entry.provider.source.path.clone(),
+                    original_path,
+                    wins: provider_index == winner_index,
                 });
             }
         }
-        entries.sort_by(|a, b| a.key.cmp(&b.key));
+        entries.sort_by(|a, b| {
+            a.key
+                .cmp(&b.key)
+                .then_with(|| a.archive_path.cmp(&b.archive_path))
+                .then_with(|| a.original_path.cmp(&b.original_path))
+                .then_with(|| a.wins.cmp(&b.wins))
+        });
         entries
     }
 

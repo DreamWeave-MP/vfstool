@@ -50,16 +50,22 @@ pub fn file_entries(archives: &ArchiveList) -> Vec<(NormalizedPath, VfsFile)> {
                 })),
                 #[cfg(feature = "zip")]
                 TypedArchive::Zip(archive) => {
-                    let entries: Vec<(NormalizedPath, VfsFile)> = if let Ok(guard) = archive.lock()
+                    let entries: Vec<(NormalizedPath, VfsFile)> = if let Ok(mut guard) =
+                        archive.lock()
                     {
-                        guard
-                            .file_names()
-                            .filter(|name| !name.ends_with('/'))
-                            .filter_map(|name| {
-                                let original_name = name.to_string();
-                                normalized_archive_key(name.as_bytes()).map(|normalized| {
-                                    let vfs_file = VfsFile::from_archive(
+                        (0..guard.len())
+                            .filter_map(|zip_index| {
+                                let Ok(entry) = guard.by_index(zip_index) else {
+                                    return None;
+                                };
+                                if entry.is_dir() {
+                                    return None;
+                                }
+                                let original_name = entry.name().to_string();
+                                normalized_archive_key(original_name.as_bytes()).map(|normalized| {
+                                    let vfs_file = VfsFile::from_zip_archive(
                                         &original_name,
+                                        zip_index,
                                         Arc::clone(stored_archive),
                                     );
                                     (normalized, vfs_file)

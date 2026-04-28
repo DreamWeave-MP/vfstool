@@ -95,6 +95,25 @@ impl VfsFile {
         }
     }
 
+    /// Creates a [`VfsFile`] backed by a ZIP entry at a specific central-directory index.
+    ///
+    /// ZIP archives may contain exact duplicate entry names. The index is therefore part of the
+    /// provider identity; opening by name would be a causality bug wearing a compression format.
+    #[cfg(feature = "zip")]
+    pub fn from_zip_archive<S: AsRef<str>>(
+        path: S,
+        zip_index: usize,
+        parent_archive: Arc<StoredArchive>,
+    ) -> Self {
+        VfsFile {
+            file: FileType::Archive(ArchiveReference::new_zip(
+                path.as_ref(),
+                zip_index,
+                parent_archive,
+            )),
+        }
+    }
+
     /// Creates a [`VfsFile`] backed by a byte-named entry inside `parent_archive`.
     #[cfg(any(feature = "beth-archives", feature = "zip"))]
     pub fn from_archive_bytes(path: &[u8], parent_archive: Arc<StoredArchive>) -> Self {
