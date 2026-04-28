@@ -166,11 +166,105 @@ fn handle_archives(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> 
 
 fn handle_archive_list(
     vfs: &VFS,
-    archive: &Path,
+    archive: Option<&Path>,
+    source_index: Option<usize>,
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> Result<()> {
+    let archive = resolve_archive_selector(vfs, archive, source_index);
     write_serialized(output, format, &vfs.archive_entries(archive))
+}
+
+fn normalized_path_text(path: &Path) -> String {
+    normalize_path(path).to_string_lossy().into_owned()
+}
+
+fn archive_selector_matches(selector: &Path, archive_path: &Path) -> bool {
+    let selector_text = normalized_path_text(selector);
+    let archive_text = normalized_path_text(archive_path);
+
+    if selector_text == archive_text {
+        return true;
+    }
+
+    archive_path
+        .file_name()
+        .is_some_and(|name| normalize_path(Path::new(name)) == Path::new(&selector_text))
+        || archive_text
+            .strip_suffix(&selector_text)
+            .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with('/'))
+}
+
+fn resolve_archive_selector(
+    vfs: &VFS,
+    archive: Option<&Path>,
+    source_index: Option<usize>,
+) -> PathBuf {
+    let archives = vfs.archives();
+
+    if let Some(source_index) = source_index {
+        return archives
+            .iter()
+            .find(|info| info.source_index == source_index)
+            .map_or_else(|| {
+                eprintln!(
+                    "{}No loaded archive has source index {source_index}. Available archives: {}",
+                    print::err_prefix(),
+                    format_archive_choices(&archives)
+                );
+                std::process::exit(VFSToolExitCode::InvalidInput.into());
+            }, |info| info.path.clone());
+    }
+
+    let Some(selector) = archive else {
+        eprintln!(
+            "{}archive-list needs an archive selector or --source-index. Available archives: {}",
+            print::err_prefix(),
+            format_archive_choices(&archives)
+        );
+        std::process::exit(VFSToolExitCode::InvalidInput.into());
+    };
+
+    let matches: Vec<_> = archives
+        .iter()
+        .filter(|info| archive_selector_matches(selector, &info.path))
+        .collect();
+
+    match matches.as_slice() {
+        [info] => info.path.clone(),
+        [] => {
+            eprintln!(
+                "{}No loaded archive matches '{}'. Available archives: {}",
+                print::err_prefix(),
+                selector.display(),
+                format_archive_choices(&archives)
+            );
+            std::process::exit(VFSToolExitCode::InvalidInput.into());
+        }
+        _ => {
+            eprintln!(
+                "{}Archive selector '{}' is ambiguous. Use --source-index or a longer path suffix. Matches: {}",
+                print::err_prefix(),
+                selector.display(),
+                format_archive_choices(matches.iter().copied())
+            );
+            std::process::exit(VFSToolExitCode::InvalidInput.into());
+        }
+    }
+}
+
+fn format_archive_choices<'a>(
+    archives: impl IntoIterator<Item = &'a vfstool_lib::ArchiveInfo>,
+) -> String {
+    let choices: Vec<_> = archives
+        .into_iter()
+        .map(|info| format!("{}={}", info.source_index, info.path.display()))
+        .collect();
+    if choices.is_empty() {
+        "<none>".to_owned()
+    } else {
+        choices.join(", ")
+    }
 }
 
 fn handle_case_collisions(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
@@ -205,10 +299,11 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
         }
         Commands::ArchiveList {
             archive,
+            source_index,
             format,
             output,
         } => {
-            handle_archive_list(vfs, archive.as_path(), format, output)?;
+            handle_archive_list(vfs, archive.as_deref(), source_index, format, output)?;
             Ok(None)
         }
         Commands::CaseCollisions { format, output } => {

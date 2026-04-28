@@ -17,3 +17,6 @@ vfstool_lib = { path = "../vfstool_lib", version = "1.0", features = [
     "serialize",
     "beth-archives",
 ] }
+
+[dev-dependencies]
+dream_archive = { version = "0.1.5", default-features = false, features = ["bsa"] }

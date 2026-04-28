@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
+use dream_archive::Tes3BsaBuilder;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -98,6 +99,20 @@ fn write_file(path: &Path, bytes: &[u8]) {
 
 fn write_text(path: &Path, text: &str) {
     write_file(path, text.as_bytes());
+}
+
+fn create_tes3_bsa_archive(archive_dir: &Path, archive_name: &str, paths: &[&str]) -> PathBuf {
+    let archive_path = archive_dir.join(archive_name);
+    let mut builder = Tes3BsaBuilder::new();
+    for path in paths {
+        builder
+            .add_bytes(*path, path.as_bytes())
+            .expect("archive entry should be accepted");
+    }
+    builder
+        .write_path(&archive_path)
+        .expect("test archive should be writable");
+    archive_path
 }
 
 fn quote_path(path: &Path) -> String {
@@ -247,6 +262,83 @@ fn duplicate_report_lists_shared_vfs_keys() {
         .as_array()
         .expect("entries should be an array");
     assert!(entries.iter().any(|entry| entry["key"] == "textures/a.dds"));
+}
+
+#[test]
+fn archive_list_accepts_unique_archive_filename() {
+    let fixture = Fixture::new("archive_filename");
+    create_tes3_bsa_archive(&fixture.low, "Morrowind.bsa", &["Meshes/Used.NIF"]);
+    write_text(
+        &fixture.config_dir.join("openmw.cfg"),
+        &format!(
+            "data=\"{}\"\ndata=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Morrowind.bsa\n",
+            fixture.low.display(),
+            fixture.high.display(),
+            fixture.data_local.display()
+        ),
+    );
+
+    let output = fixture.run(&["archive-list", "Morrowind.bsa", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    let entries = payload.as_array().expect("archive-list should be an array");
+    assert!(entries.iter().any(|entry| {
+        entry["key"] == "meshes/used.nif"
+            && entry["archive_path"] == fixture.low.join("Morrowind.bsa").display().to_string()
+            && entry["wins"] == true
+    }));
+}
+
+#[test]
+fn archive_list_accepts_source_index_from_archives_report() {
+    let fixture = Fixture::new("archive_source_index");
+    create_tes3_bsa_archive(&fixture.low, "Morrowind.bsa", &["Meshes/Low.NIF"]);
+    create_tes3_bsa_archive(&fixture.high, "Tribunal.bsa", &["Meshes/High.NIF"]);
+    write_text(
+        &fixture.config_dir.join("openmw.cfg"),
+        &format!(
+            "data=\"{}\"\ndata=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Morrowind.bsa\nfallback-archive=Tribunal.bsa\n",
+            fixture.low.display(),
+            fixture.high.display(),
+            fixture.data_local.display()
+        ),
+    );
+
+    let archives = fixture.run(&["archives", "--format", "json"]);
+    assert_eq!(archives.status.code(), Some(0));
+    let archives_payload = stdout_json(&archives);
+    let tribunal = archives_payload
+        .as_array()
+        .expect("archives should be an array")
+        .iter()
+        .find(|entry| {
+            entry["path"]
+                .as_str()
+                .is_some_and(|path| path.ends_with("Tribunal.bsa"))
+        })
+        .expect("Tribunal.bsa should be loaded");
+    let source_index = tribunal["source_index"]
+        .as_u64()
+        .expect("source index should be numeric")
+        .to_string();
+
+    let output = fixture.run(&[
+        "archive-list",
+        "--source-index",
+        &source_index,
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    let entries = payload.as_array().expect("archive-list should be an array");
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry["key"] == "meshes/high.nif")
+    );
 }
 
 #[test]

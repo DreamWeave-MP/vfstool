@@ -165,8 +165,12 @@ pub enum Commands {
     },
     /// List entries supplied by one archive
     ArchiveList {
-        /// Archive path as listed in the loaded VFS
-        archive: PathBuf,
+        /// Archive selector: full path, unique filename, or unique path suffix
+        #[arg(required_unless_present = "source_index")]
+        archive: Option<PathBuf>,
+        /// Archive source index as printed by `vfstool archives`
+        #[arg(long, conflicts_with = "archive")]
+        source_index: Option<usize>,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]
