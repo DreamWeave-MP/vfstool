@@ -6,9 +6,8 @@ use std::path::{Path, PathBuf};
 impl ConflictIndex {
     /// Extract normalized VFS paths from an archive (BSA, BA2, ZIP, or PK3).
     ///
-    /// Logs a warning and returns an empty list on any failure (missing file,
-    /// unknown format, read error), consistent with how `VFS::from_directories`
-    /// treats bad archives.
+    /// Returns an empty list on any failure (missing file, unknown format, read
+    /// error), consistent with how `VFS::from_directories` treats bad archives.
     fn paths_from_archive(path: &Path) -> Vec<PathBuf> {
         crate::archives::open_archive(path)
             .as_deref()

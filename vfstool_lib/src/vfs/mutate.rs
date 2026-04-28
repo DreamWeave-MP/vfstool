@@ -152,11 +152,6 @@ impl VFS {
                 .strip_prefix(root)
                 .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
             let Some(key) = normalized_safe_key(&key) else {
-                eprintln!(
-                    "vfstool: skipping unsafe VFS path '{}' from {}",
-                    key.display(),
-                    entry.path().display()
-                );
                 continue;
             };
 

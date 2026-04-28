@@ -396,6 +396,11 @@ fn validate_reports_file_directory_conflict_json() {
     let output = fixture.run(&["validate", "--format", "json"]);
 
     assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "validate should report issues in its payload, not warn before it: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let payload = stdout_json(&output);
     let issues = payload["issues"]
         .as_array()
@@ -424,6 +429,11 @@ fn validate_reports_missing_openmw_config_sources() {
     let output = fixture.run(&["validate", "--format", "json"]);
 
     assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "validate should report missing config sources in its payload, not warn before it: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let payload = stdout_json(&output);
     let issues = payload["issues"]
         .as_array()

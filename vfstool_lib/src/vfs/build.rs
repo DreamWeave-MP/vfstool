@@ -92,21 +92,12 @@ fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
     dir: I,
 ) -> impl ParallelIterator<Item = (NormalizedPath, VfsFile)> {
     let dir = dir.as_ref().to_path_buf();
-    let walk_root = dir.clone();
-
     WalkDir::new(&dir)
         .follow_links(true)
         .into_iter()
         .filter_map(move |entry| match entry {
             Ok(entry) if entry.file_type().is_file() => Some(entry),
-            Ok(_) => None,
-            Err(err) => {
-                eprintln!(
-                    "vfstool: warning: failed to walk '{}': {err}",
-                    walk_root.display()
-                );
-                None
-            }
+            Ok(_) | Err(_) => None,
         })
         .par_bridge()
         .filter_map(move |entry| {
@@ -115,14 +106,7 @@ fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
                 .strip_prefix(&dir)
                 .expect("Entry path should always be prefixed by scan directory!");
 
-            let Some(normalized_path) = normalized_safe_key(target_path) else {
-                eprintln!(
-                    "vfstool: skipping unsafe VFS path '{}' from {}",
-                    target_path.display(),
-                    path.display()
-                );
-                return None;
-            };
+            let normalized_path = normalized_safe_key(target_path)?;
 
             let vfs_file = VfsFile::from(path);
             Some((normalized_path, vfs_file))
