@@ -29,36 +29,68 @@ pub fn from_set(
         .collect()
 }
 
+pub(crate) fn try_from_set(
+    file_map: &AHashMap<NormalizedPath, VfsFile>,
+    archive_list: &[&str],
+) -> Result<ArchiveList, crate::VfsBuildError> {
+    archive_list
+        .iter()
+        .copied()
+        .map(|archive| {
+            let archive_path = NormalizedPath::new(archive.as_bytes());
+            let Some(valid_archive) = file_map.get(&archive_path) else {
+                return Err(crate::VfsBuildError::ArchiveNotFound {
+                    archive: archive.to_owned(),
+                });
+            };
+            try_open_archive(valid_archive.path()).map_err(|message| {
+                crate::VfsBuildError::ArchiveLoad {
+                    archive: valid_archive.path().to_path_buf(),
+                    message,
+                }
+            })
+        })
+        .collect()
+}
+
 /// Try to open a single archive file, detecting its format by extension and content.
 ///
 /// ZIP/PK3 files are identified by extension; BSA/BA2 files are identified by
 /// magic bytes. Returns `None` on any failure.
 #[allow(unreachable_code)]
 pub(crate) fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
+    try_open_archive(path).ok()
+}
+
+#[allow(unreachable_code)]
+pub(crate) fn try_open_archive(path: &Path) -> Result<Arc<StoredArchive>, String> {
     #[cfg(feature = "zip")]
     if is_zip_or_pk3(path) {
-        let file = File::open(path).ok()?;
+        let file = File::open(path).map_err(|err| err.to_string())?;
         return match zip::ZipArchive::new(file) {
-            Ok(archive) => Some(Arc::new(StoredArchive {
+            Ok(archive) => Ok(Arc::new(StoredArchive {
                 file_handle: None,
                 archive: TypedArchive::Zip(Mutex::new(archive)),
                 path: path.to_path_buf(),
             })),
-            Err(_) => None,
+            Err(err) => Err(err.to_string()),
         };
     }
 
     #[cfg(feature = "beth-archives")]
     {
         return match dream_archive::Archive::open_path(path) {
-            Ok(archive) => Some(Arc::new(StoredArchive {
+            Ok(archive) => Ok(Arc::new(StoredArchive {
                 file_handle: None,
                 archive: TypedArchive::Bethesda(archive),
                 path: path.to_path_buf(),
             })),
-            Err(_) => None,
+            Err(err) => Err(err.to_string()),
         };
     }
 
-    None
+    Err(format!(
+        "unsupported archive type or archive feature not enabled: {}",
+        path.display()
+    ))
 }

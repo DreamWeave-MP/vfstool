@@ -101,6 +101,34 @@ fn zip_entries_appear_in_vfs() {
 }
 
 #[test]
+fn try_from_directories_reports_missing_configured_zip() {
+    let dir = TempDir::new("vfszip_missing_strict");
+
+    let Err(err) = VFS::try_from_directories([dir.path()], Some(vec!["missing.zip"])) else {
+        panic!("strict construction should reject a missing configured archive");
+    };
+
+    assert!(matches!(
+        err,
+        VfsBuildError::ArchiveNotFound { archive } if archive == "missing.zip"
+    ));
+}
+
+#[test]
+fn try_from_directories_reports_broken_configured_zip() {
+    let dir = TempDir::new("vfszip_broken_strict");
+    dir.write("data.zip", b"not actually a zip file");
+
+    let Err(err) = VFS::try_from_directories([dir.path()], Some(vec!["data.zip"])) else {
+        panic!("strict construction should reject a broken configured archive");
+    };
+
+    assert!(
+        matches!(err, VfsBuildError::ArchiveLoad { archive, .. } if archive.ends_with("data.zip"))
+    );
+}
+
+#[test]
 fn zip_entries_all_reachable() {
     // Verify all ZIP entries are in the VFS (the zip file itself also appears
     // as a loose entry since the data dir is walked, so we don't count total entries).

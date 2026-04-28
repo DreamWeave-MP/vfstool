@@ -45,6 +45,10 @@
 //! [`LayerIndex`] preserves same-source provider occurrences for provenance; [`ConflictIndex`]
 //! intentionally remains a source-vs-source projection rather than reporting a mod as conflicting
 //! with itself.
+//! The `from_directories*` constructors are legacy best-effort builders: traversal errors and broken
+//! configured archives are skipped for compatibility. Use the `try_from_directories*` constructors
+//! when partial VFS state is not acceptable; those fail with [`VfsBuildError`] instead of producing
+//! a neat-looking report over missing input. Neat lies are still lies.
 //!
 //! # Examples
 //!
@@ -202,7 +206,8 @@ pub use semantic::{
 pub use vfs::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DirectoryDiff, DuplicateEntry,
     DuplicateReport, ExplainReport, MaterializationAction, MaterializationIssue,
-    MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsProvider, VfsProviderRecord,
+    MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsBuildError, VfsProvider,
+    VfsProviderRecord,
 };
 pub use vfs_file::VfsFile;
 

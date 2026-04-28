@@ -4,6 +4,7 @@ use ahash::AHashMap;
 mod build;
 mod construct;
 mod core;
+mod diagnostics;
 mod diff;
 mod lookup;
 mod materialize;
@@ -11,6 +12,7 @@ mod mutate;
 mod providers;
 mod tree;
 
+pub use self::diagnostics::VfsBuildError;
 pub use self::diff::DirectoryDiff;
 pub use self::providers::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DuplicateEntry, DuplicateReport,

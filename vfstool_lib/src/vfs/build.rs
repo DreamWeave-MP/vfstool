@@ -9,7 +9,7 @@ use walkdir::WalkDir;
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
 use crate::archives;
 use crate::{
-    NormalizedPath, SourceKind, SourceMeta, VfsFile,
+    NormalizedPath, SourceKind, SourceMeta, VfsBuildError, VfsFile,
     paths::{key_to_path_buf_lossy, normalized_safe_key},
 };
 use std::path::{Path, PathBuf};
@@ -52,6 +52,41 @@ pub(super) fn collect_archive_sources(
         .collect()
 }
 
+#[cfg(any(feature = "beth-archives", feature = "zip"))]
+pub(super) fn try_collect_archive_sources(
+    loose_sources: &[SourceEntries],
+    archive_list: Option<Vec<&str>>,
+) -> Result<Vec<SourceEntries>, VfsBuildError> {
+    let Some(list) = archive_list else {
+        return Ok(Vec::new());
+    };
+
+    let loose_lookup: AHashMap<NormalizedPath, VfsFile> = loose_sources
+        .iter()
+        .flat_map(|source| {
+            source
+                .entries
+                .iter()
+                .map(|(key, file)| (key.clone(), VfsFile::from(file.path())))
+        })
+        .collect();
+    archives::try_from_set(&loose_lookup, &list).map(|archives| {
+        archives
+            .iter()
+            .map(|stored| {
+                let archive_list = vec![Arc::clone(stored)];
+                SourceEntries {
+                    source: SourceMeta {
+                        path: stored.path().to_path_buf(),
+                        kind: SourceKind::Archive,
+                    },
+                    entries: archives::file_entries(&archive_list),
+                }
+            })
+            .collect()
+    })
+}
+
 pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {
     dirs.into_iter()
         .map(|dir| {
@@ -69,6 +104,29 @@ pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {
                     kind: SourceKind::LooseDir,
                 },
             }
+        })
+        .collect()
+}
+
+pub(super) fn try_collect_loose_sources(
+    dirs: Vec<PathBuf>,
+) -> Result<Vec<SourceEntries>, VfsBuildError> {
+    dirs.into_iter()
+        .map(|dir| {
+            let mut entries = try_directory_contents_to_entries(&dir)?;
+            entries.sort_by(|(left_key, left_file), (right_key, right_file)| {
+                left_key
+                    .as_bytes()
+                    .cmp(right_key.as_bytes())
+                    .then_with(|| left_file.path().cmp(right_file.path()))
+            });
+            Ok(SourceEntries {
+                entries,
+                source: SourceMeta {
+                    path: dir,
+                    kind: SourceKind::LooseDir,
+                },
+            })
         })
         .collect()
 }
@@ -120,4 +178,32 @@ fn directory_contents_to_file_map<I: AsRef<Path> + Sync>(
             let vfs_file = VfsFile::from(path);
             Some((normalized_path, vfs_file))
         })
+}
+
+fn try_directory_contents_to_entries(
+    dir: &Path,
+) -> Result<Vec<(NormalizedPath, VfsFile)>, VfsBuildError> {
+    let mut entries = Vec::new();
+    for entry in WalkDir::new(dir).follow_links(true) {
+        let entry = entry.map_err(|err| VfsBuildError::Traversal {
+            path: err
+                .path()
+                .map_or_else(|| dir.to_path_buf(), Path::to_path_buf),
+            source: err.into_io_error().unwrap_or_else(|| {
+                std::io::Error::other("walkdir traversal failed without an I/O error")
+            }),
+        })?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path();
+        let target_path = path
+            .strip_prefix(dir)
+            .expect("Entry path should always be prefixed by scan directory!");
+        if let Some(normalized_path) = normalized_safe_key(target_path) {
+            entries.push((normalized_path, VfsFile::from(path)));
+        }
+    }
+    Ok(entries)
 }

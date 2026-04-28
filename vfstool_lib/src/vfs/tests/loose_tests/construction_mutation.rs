@@ -25,6 +25,39 @@ fn from_single_directory_all_files_present() {
 }
 
 #[test]
+fn try_from_directories_reports_missing_directory() {
+    let dir = TempDir::new("vfsloose_missing_strict");
+    let missing = dir.path().join("missing");
+
+    let Err(err) = VFS::try_from_directories([missing.as_path()], None) else {
+        panic!("strict construction should reject a missing directory");
+    };
+
+    assert!(matches!(err, VfsBuildError::Traversal { .. }));
+    assert!(err.to_string().contains("failed to traverse"));
+}
+
+#[test]
+#[cfg(unix)]
+fn try_from_directories_reports_unreadable_traversal_entries() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new("vfsloose_unreadable_strict");
+    dir.write("visible.txt", b"visible");
+    let unreadable = dir.path().join("locked");
+    fs::create_dir(&unreadable).unwrap();
+    let original_permissions = fs::metadata(&unreadable).unwrap().permissions();
+    fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o000)).unwrap();
+
+    let Err(err) = VFS::try_from_directories([dir.path()], None) else {
+        panic!("strict construction should reject unreadable traversal entries");
+    };
+
+    fs::set_permissions(&unreadable, original_permissions).unwrap();
+    assert!(matches!(err, VfsBuildError::Traversal { path, .. } if path == unreadable));
+}
+
+#[test]
 fn set_winner_loose_file_normalizes_key_and_returns_previous_winner() {
     let dir = TempDir::new("vfsloose_insert_file");
     let first = dir.write("first.txt", b"a");
