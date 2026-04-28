@@ -17,7 +17,9 @@ pub fn load_openmw_config(config_path: PathBuf) -> openmw_config::OpenMWConfigur
 
 pub fn build_conflict_index(config_path: PathBuf) -> (VFS, ConflictIndex) {
     let cfg = load_openmw_config(config_path);
-    let data_paths = cfg.data_directories();
+    let data_paths = cfg
+        .data_directories_iter()
+        .map(openmw_config::DirectorySetting::parsed);
     let archives: Vec<&str> = cfg
         .fallback_archives_iter()
         .map(|a| a.value().as_str())
@@ -27,7 +29,9 @@ pub fn build_conflict_index(config_path: PathBuf) -> (VFS, ConflictIndex) {
 
 pub fn build_layer_index(config_path: PathBuf) -> (VFS, LayerIndex) {
     let cfg = load_openmw_config(config_path);
-    let data_paths = cfg.data_directories();
+    let data_paths = cfg
+        .data_directories_iter()
+        .map(openmw_config::DirectorySetting::parsed);
     let archives: Vec<&str> = cfg
         .fallback_archives_iter()
         .map(|a| a.value().as_str())
@@ -95,7 +99,9 @@ pub fn construct_vfs(config_path: PathBuf) -> VFS {
         Ok(config) => config,
     };
 
-    let data_paths = config.data_directories();
+    let data_paths = config
+        .data_directories_iter()
+        .map(openmw_config::DirectorySetting::parsed);
     let archives = config
         .fallback_archives_iter()
         .map(|archive| archive.value().as_str())

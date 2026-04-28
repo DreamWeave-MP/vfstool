@@ -240,7 +240,7 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
     let cfg = load_openmw_config(resolved_config_dir);
     let data_local: PathBuf = params.output.unwrap_or_else(|| {
         if let Some(dir) = cfg.data_local() {
-            dir.parsed().clone()
+            dir.parsed().to_path_buf()
         } else {
             eprintln!(
                 "{}No data-local set in openmw.cfg; use --output to specify a destination.",
