@@ -142,7 +142,9 @@ impl VfsFile {
         }
     }
 
-    /// Returns the absolute path to the parent archive as a string, or `None` for loose files.
+    /// Returns the stored path to the parent archive as a string, or `None` for loose files.
+    ///
+    /// This is the path the archive was opened with; it is not canonicalized here.
     #[must_use]
     pub fn parent_archive_path(&self) -> Option<String> {
         match &self.file {
@@ -200,8 +202,9 @@ impl VfsFile {
     ///
     /// Loose files are streamed from a standard filesystem handle. Bethesda archive entries use
     /// `dream_archive`'s reader API, so callers get ordinary streaming reads there too. ZIP/PK3
-    /// entries are still buffered by this crate before the returned reader is handed out; that is
-    /// VFS-level work left for a custom ZIP reader, not something `dream_archive` should know about.
+    /// entries are still buffered by this crate before the returned reader is handed out, with a
+    /// per-entry cap; that is VFS-level work left for a custom ZIP reader, not something
+    /// `dream_archive` should know about.
     ///
     /// # Returns
     ///

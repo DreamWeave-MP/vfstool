@@ -529,6 +529,13 @@ impl VFS {
                 continue;
             };
             let target = dest.join(&key_path);
+            if Self::ensure_output_parent_safe(dest, &target).is_err() {
+                issues.push(MaterializationIssue::UnsafeDestination {
+                    key: key_path.clone(),
+                    dest: target.clone(),
+                });
+                continue;
+            }
             if conflicting_files.contains(&key) {
                 issues.push(MaterializationIssue::FileDirectoryConflict {
                     key: key_path.clone(),

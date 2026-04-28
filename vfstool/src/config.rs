@@ -109,3 +109,29 @@ pub fn construct_vfs(config_path: PathBuf) -> VFS {
 
     VFS::from_directories(data_paths, Some(archives))
 }
+
+pub fn construct_vfs_strict(config_path: PathBuf) -> VFS {
+    let config = match openmw_config::OpenMWConfiguration::new(Some(config_path)) {
+        Err(config_err) => {
+            eprintln!("Failed to load configuration file: {config_err}");
+            std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
+        }
+        Ok(config) => config,
+    };
+
+    let data_paths = config
+        .data_directories_iter()
+        .map(openmw_config::DirectorySetting::parsed);
+    let archives = config
+        .fallback_archives_iter()
+        .map(|archive| archive.value().as_str())
+        .collect();
+
+    match VFS::try_from_directories(data_paths, Some(archives)) {
+        Ok(vfs) => vfs,
+        Err(err) => {
+            eprintln!("Failed to build complete VFS: {err}");
+            std::process::exit(VFSToolExitCode::RuntimeFailure.into());
+        }
+    }
+}

@@ -47,7 +47,9 @@ impl StoredArchive {
         &self.archive
     }
 
-    /// Returns the absolute path to the archive file on disk.
+    /// Returns the stored path to the archive file on disk.
+    ///
+    /// This is the path the archive was opened with; it is not canonicalized here.
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path

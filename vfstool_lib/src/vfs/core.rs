@@ -4,7 +4,8 @@ use ahash::AHashMap;
 use rayon::prelude::*;
 
 use crate::{
-    LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsFile, paths::key_to_path_buf_lossy,
+    LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsFile,
+    paths::{key_to_path_buf_bytes, key_to_path_buf_lossy},
 };
 use std::path::{Path, PathBuf};
 
@@ -118,11 +119,12 @@ impl VFS {
         for (key, providers) in &self.providers {
             for entry in providers {
                 let source = &entry.provider.source;
-                files_by_source[entry.source_index].push(Self::provider_original_path(
-                    source,
-                    key,
-                    &entry.provider.file,
-                ));
+                let path_for_layer = if source.kind == SourceKind::Archive {
+                    key_to_path_buf_bytes(key).unwrap_or_else(|| key_to_path_buf_lossy(key))
+                } else {
+                    Self::provider_original_path(source, key, &entry.provider.file)
+                };
+                files_by_source[entry.source_index].push(path_for_layer);
             }
         }
 

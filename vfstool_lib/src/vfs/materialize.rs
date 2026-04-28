@@ -251,8 +251,11 @@ impl VFS {
         };
         let ext = ext.to_ascii_lowercase();
         let name = file.file_name().unwrap_or_default().to_ascii_lowercase();
-        matches!(ext.to_str(), Some("bsa" | "ba2" | "zip" | "pk3"))
-            && name != "archiveinvalidationinvalidated!.bsa"
+        let is_bethesda_archive = cfg!(feature = "beth-archives")
+            && matches!(ext.to_str(), Some("bsa" | "ba2"))
+            && name != "archiveinvalidationinvalidated!.bsa";
+        let is_zip_archive = cfg!(feature = "zip") && matches!(ext.to_str(), Some("zip" | "pk3"));
+        is_bethesda_archive || is_zip_archive
     }
 
     #[cfg(unix)]
@@ -376,7 +379,7 @@ impl VFS {
         })
     }
 
-    fn ensure_output_parent_safe(root: &Path, output: &Path) -> io::Result<()> {
+    pub(super) fn ensure_output_parent_safe(root: &Path, output: &Path) -> io::Result<()> {
         let relative = output
             .strip_prefix(root)
             .map_err(|_| io::Error::other("output path should be under root"))?;

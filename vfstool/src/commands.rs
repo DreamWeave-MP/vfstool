@@ -57,12 +57,12 @@ fn handle_extract(vfs: &VFS, source_file: &Path, target_dir: &Path) -> Result<()
 
 fn handle_find(
     vfs: &VFS,
-    path: &PathBuf,
+    path: &Path,
     format: OutputFormat,
     output: Option<PathBuf>,
     use_relative: bool,
 ) -> Result<()> {
-    let path_string = normalize_host_path(&path).to_string_lossy().to_string();
+    let path_string = path.to_string_lossy().to_string();
     let tree = match vfs.find_by_regex(&path_string, use_relative) {
         Ok(t) => t,
         Err(e) => {
@@ -644,7 +644,7 @@ fn run_core_vfs_command(
             format,
             output,
         } => {
-            handle_find(vfs, &path, format, output, use_relative)?;
+            handle_find(vfs, path.as_path(), format, output, use_relative)?;
             Ok(None)
         }
         Commands::FindFile {
@@ -796,7 +796,11 @@ pub fn run_command(
         return run_analysis_command(command, use_relative, resolved_config_dir);
     }
 
-    let vfs = construct_vfs(resolved_config_dir.clone());
+    let vfs = if matches!(command, Commands::Run { .. }) {
+        crate::config::construct_vfs_strict(resolved_config_dir.clone())
+    } else {
+        construct_vfs(resolved_config_dir.clone())
+    };
     let Some(command) =
         run_core_vfs_command(command, &vfs, use_relative, resolved_config_dir.clone())?
     else {

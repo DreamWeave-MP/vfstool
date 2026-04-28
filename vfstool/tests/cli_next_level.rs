@@ -197,6 +197,16 @@ fn bad_regex_exit_code_is_six() {
 }
 
 #[test]
+fn find_preserves_regex_escape_syntax() {
+    let fixture = Fixture::new("find_regex_escape");
+    let output = fixture.run(&["find", r".*\.dds$", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    assert!(payload.to_string().contains("a.dds"));
+}
+
+#[test]
 fn find_file_missing_exits_one() {
     let fixture = Fixture::new("find_missing");
     let output = fixture.run(&["find-file", "meshes/missing.nif", "--simple"]);
@@ -586,4 +596,38 @@ fn run_captures_new_file_to_data_local_and_removes_merged_dir() {
             .trim(),
         "captured"
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn run_rejects_incomplete_vfs_before_spawning_child() {
+    let fixture = Fixture::new("run_rejects_missing_archive");
+    let marker = fixture.path("child-ran");
+    fs::write(
+        fixture.config_dir.join("openmw.cfg"),
+        format!(
+            "data=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Missing.bsa\n",
+            fixture.low.display(),
+            fixture.data_local.display()
+        ),
+    )
+    .expect("openmw.cfg should be writable");
+
+    let output = fixture.run(&[
+        "run",
+        "--copy",
+        fixture
+            .path("merged")
+            .to_str()
+            .expect("path should be utf-8"),
+        "--",
+        "sh",
+        "-c",
+        "touch \"$1\"",
+        "sh",
+        marker.to_str().expect("path should be utf-8"),
+    ]);
+
+    assert_eq!(output.status.code(), Some(9));
+    assert!(!marker.exists(), "child command must not execute");
 }

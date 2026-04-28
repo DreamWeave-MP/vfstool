@@ -168,6 +168,7 @@ fn collapse_rejects_file_directory_key_conflicts() {
 }
 
 #[test]
+#[cfg(feature = "zip")]
 fn collapse_extract_archives_skips_loose_archive_without_deleting_existing_output() {
     let src = TempDir::new("collapse_skip_loose_archive_src");
     src.write("data.zip", b"source archive");
@@ -189,6 +190,31 @@ fn collapse_extract_archives_skips_loose_archive_without_deleting_existing_outpu
     assert_eq!(
         fs::read(dest.path().join("data.zip")).unwrap(),
         b"existing output"
+    );
+}
+
+#[test]
+#[cfg(not(feature = "zip"))]
+fn collapse_extract_archives_copies_loose_zip_when_zip_feature_is_disabled() {
+    let src = TempDir::new("collapse_copy_loose_zip_without_feature_src");
+    src.write("data.zip", b"source archive");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let dest = TempDir::new("collapse_copy_loose_zip_without_feature_dest");
+
+    vfs.collapse_into(
+        dest.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read(dest.path().join("data.zip")).unwrap(),
+        b"source archive"
     );
 }
 
@@ -314,6 +340,30 @@ fn collapse_rejects_symlinked_parent_directory() {
 
     assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     assert!(!outside.path().join("f.txt").exists());
+}
+
+#[test]
+#[cfg(unix)]
+fn materialization_plan_reports_symlinked_parent_directory() {
+    let src = TempDir::new("plan_parent_symlink_src");
+    src.write("textures/f.txt", b"new_content");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let dest = TempDir::new("plan_parent_symlink_dest");
+    let outside = TempDir::new("plan_parent_symlink_outside");
+    std::os::unix::fs::symlink(outside.path(), dest.path().join("textures")).unwrap();
+
+    let plan = vfs.materialization_plan(
+        dest.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    );
+
+    assert!(plan.actions.is_empty());
+    assert_eq!(plan.issues.len(), 1);
 }
 
 #[test]
