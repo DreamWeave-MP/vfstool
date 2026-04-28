@@ -107,3 +107,22 @@ fn public_and_experimental_modules_remain_reachable() {
     };
     assert_eq!(request.constraints.len(), 1);
 }
+
+#[cfg(feature = "serialize")]
+#[test]
+fn serialize_feature_reexports_serialization_crates() {
+    fn assert_serialize<T: vfstool_lib::serde::Serialize>(_value: &T) {}
+
+    let value = vfstool_lib::serde_json::json!({ "path": "textures/foo.dds" });
+    assert_serialize(&value);
+
+    let yaml = vfstool_lib::serde_yaml::to_string(&value).unwrap();
+    assert!(yaml.contains("textures/foo.dds"));
+
+    let toml = vfstool_lib::toml::to_string(&std::collections::BTreeMap::from([(
+        "path",
+        "textures/foo.dds",
+    )]))
+    .unwrap();
+    assert!(toml.contains("textures/foo.dds"));
+}

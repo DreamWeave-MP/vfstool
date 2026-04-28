@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
     time::{SystemTime, UNIX_EPOCH},
 };
+use vfstool_lib::serde_json::{self, Value};
 
 struct Fixture {
     root: PathBuf,

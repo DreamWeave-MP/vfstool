@@ -112,6 +112,10 @@
 //! - `zip`: ZIP/PK3 archive support.
 //! - `serialize`: JSON/YAML/TOML serialization and structured JSON/TOML semantic comparison.
 //!   Without `serialize`, JSON and TOML semantic deltas are reported as unknown rather than parsed.
+//!   This also re-exports [`serde`], [`serde_json`], [`serde_yaml`], and [`toml`] so downstream
+//!   tools can use the exact serialization stack selected by `vfstool_lib` instead of pinning a
+//!   parallel set of dependencies. Two TOML parsers in one tool is technically valid. It is also
+//!   how you get to debug nothing for an afternoon.
 //! - `lua`: embedded `mlua` bindings for the promoted stable API surface. This is not a `cdylib`
 //!   Lua module; hosts register `lua::open` or `lua::register` into their own Lua state.
 //!
@@ -189,6 +193,15 @@ pub use vfs::{
     MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsProviderRecord,
 };
 pub use vfs_file::VfsFile;
+
+#[cfg(feature = "serialize")]
+pub use serde;
+#[cfg(feature = "serialize")]
+pub use serde_json;
+#[cfg(feature = "serialize")]
+pub use serde_yaml;
+#[cfg(feature = "serialize")]
+pub use toml;
 
 use std::{collections::BTreeMap, path::PathBuf};
 
