@@ -113,24 +113,44 @@ impl LayerIndex {
         let mut provider_cache = ProviderIoCache::new();
 
         for key in self.keys() {
+            let key_path = key_to_path_buf_lossy(&key);
+            let provider_chain = self.provider_chain(&key_path);
             let providers = self.sources_containing(&key);
-            let before_idx = Self::current_winner_source_idx(vfs, &key, providers);
+            let before_provider_index = vfs.winner_provider_index(&key);
             let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
-            let Some(before_idx) = before_idx else {
+            let Some(before_provider) = before_provider_index.and_then(|index| {
+                provider_chain
+                    .iter()
+                    .find(|provider| provider.provider_index == index)
+            }) else {
                 continue;
             };
-            if before_idx == after_idx {
+            if before_provider.source_index == after_idx {
                 continue;
             }
+            let Some(after_provider) = provider_chain
+                .iter()
+                .rev()
+                .find(|provider| provider.source_index == after_idx)
+            else {
+                continue;
+            };
 
-            let before_bytes =
-                self.read_provider_bytes(vfs, before_idx, &key, &mut provider_cache)?;
-            let after_bytes =
-                self.read_provider_bytes(vfs, after_idx, &key, &mut provider_cache)?;
+            let before_bytes = self.read_provider_bytes(
+                vfs,
+                before_provider,
+                &mut provider_cache,
+                crate::semantic::ArchiveHashMode::AllProviders,
+            )?;
+            let after_bytes = self.read_provider_bytes(
+                vfs,
+                after_provider,
+                &mut provider_cache,
+                crate::semantic::ArchiveHashMode::AllProviders,
+            )?;
             if let (Some(before), Some(after)) = (before_bytes, after_bytes) {
-                let key_path = key_to_path_buf_lossy(&key);
                 let (_, delta) = analyze_pair(&key_path, &after, &before);
                 if matches!(delta, SemanticDelta::BehaviorChanging { .. }) {
                     behavior_changing.insert(key_path);

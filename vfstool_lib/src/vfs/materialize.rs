@@ -146,6 +146,14 @@ impl VFS {
             return;
         }
 
+        if Self::is_archive_file(file) && opts.extract_archives {
+            eprintln!(
+                "vfstool: skipping archive {}",
+                file.file_name().unwrap_or_default().to_string_lossy()
+            );
+            return;
+        }
+
         if let Err(e) = std::fs::remove_file(merged_path)
             && e.kind() != io::ErrorKind::NotFound
         {
@@ -153,14 +161,6 @@ impl VFS {
                 "vfstool: failed to remove existing file at {}: {}",
                 merged_path.display(),
                 e
-            );
-            return;
-        }
-
-        if Self::is_archive_file(file) && opts.extract_archives {
-            eprintln!(
-                "vfstool: skipping archive {}",
-                file.file_name().unwrap_or_default().to_string_lossy()
             );
             return;
         }

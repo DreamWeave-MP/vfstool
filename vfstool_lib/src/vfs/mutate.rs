@@ -4,7 +4,10 @@ use super::{ProviderEntry, VFS, VfsProvider};
 use crate::archives;
 use crate::{
     NormalizedPath, SourceKind, SourceMeta, VfsFile, VfsKeyInput, path_glob_matches,
-    paths::{key_is_at_or_under_prefix, key_to_path_buf_lossy, normalized_safe_key},
+    paths::{
+        key_is_at_or_under_prefix, key_to_path_buf_lossy, normalized_safe_key,
+        normalized_safe_normalized_bytes,
+    },
 };
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -88,6 +91,9 @@ impl VFS {
         let mut touched = Vec::new();
         let mut inserted = 0;
         for (key, file) in entries {
+            if !normalized_safe_normalized_bytes(key.as_bytes()) {
+                continue;
+            }
             self.providers
                 .entry(key.clone())
                 .or_default()

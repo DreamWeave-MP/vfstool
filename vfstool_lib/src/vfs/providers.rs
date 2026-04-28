@@ -464,6 +464,16 @@ impl VFS {
                 });
             }
         }
+        for collision in self.case_collisions().collisions {
+            issues.push(ValidationIssue::CaseCollision {
+                key: collision.key,
+                providers: collision
+                    .providers
+                    .into_iter()
+                    .map(|provider| provider.original_path)
+                    .collect(),
+            });
+        }
         let mut keys: Vec<_> = self.file_map.keys().collect();
         keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
         for key in &keys {
@@ -531,12 +541,6 @@ impl VFS {
                     });
                 } else if opts.use_symlinks {
                     actions.push(MaterializationAction::Symlink {
-                        key: key_path.clone(),
-                        source: file.path().to_path_buf(),
-                        dest: target,
-                    });
-                } else if opts.allow_copying {
-                    actions.push(MaterializationAction::Copy {
                         key: key_path.clone(),
                         source: file.path().to_path_buf(),
                         dest: target,

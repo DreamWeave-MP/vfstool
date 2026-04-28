@@ -27,6 +27,23 @@ fn lock_manifest_hashes_mixed_case_loose_winner_path() {
     assert_eq!(lock.entries[0].winner_size, Some(5));
     assert!(lock.entries[0].winner_hash_blake3.is_some());
 }
+
+#[test]
+fn lock_manifest_hashes_actual_same_source_winner_occurrence() {
+    let data = TempDir::new("analysis_lock_same_source_occurrence");
+    data.write("Textures/Foo.DDS", b"long losing content");
+    data.write("textures/foo.dds", b"win");
+
+    let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+    let winner_len = fs::read(vfs.get_file("textures/foo.dds").unwrap().path())
+        .unwrap()
+        .len() as u64;
+    let lock = index.lock_manifest(&vfs).expect("lock should build");
+
+    assert_eq!(lock.entries[0].key, PathBuf::from("textures/foo.dds"));
+    assert_eq!(lock.entries[0].winner_size, Some(winner_len));
+}
+
 #[test]
 fn lock_manifest_uses_actual_vfs_winner_presence() {
     let low = TempDir::new("analysis_lock_removed_low");

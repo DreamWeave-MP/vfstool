@@ -8,6 +8,20 @@ use super::build::{collect_archive_sources, try_collect_archive_sources};
 use crate::{ConflictIndex, LayerIndex, VfsBuildError, VfsProvider};
 use std::path::{Path, PathBuf};
 
+#[cfg(not(any(feature = "beth-archives", feature = "zip")))]
+fn reject_archive_list_without_archive_features(
+    archive_list: Option<&[&str]>,
+) -> Result<(), VfsBuildError> {
+    let Some(first_archive) = archive_list.and_then(|archives| archives.first()) else {
+        return Ok(());
+    };
+    Err(VfsBuildError::ArchiveLoad {
+        archive: PathBuf::from(first_archive),
+        message: "archive support is not enabled; enable the `beth-archives` or `zip` feature"
+            .to_owned(),
+    })
+}
+
 impl VFS {
     fn append_sources(&mut self, sources: &[SourceEntries]) {
         for source in sources {
@@ -95,6 +109,8 @@ impl VFS {
         let loose_sources = try_collect_loose_sources(dirs)?;
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
         let archive_sources = try_collect_archive_sources(&loose_sources, archive_list)?;
+        #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
+        reject_archive_list_without_archive_features(archive_list.as_deref())?;
 
         let mut vfs = Self::new();
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
@@ -160,7 +176,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.rebuild_layer_index();
+        vfs.layer_index = layer_index;
         (vfs, conflict_index)
     }
 
@@ -193,6 +209,8 @@ impl VFS {
 
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
         let archive_sources = try_collect_archive_sources(&loose_sources, archive_list)?;
+        #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
+        reject_archive_list_without_archive_features(archive_list.as_deref())?;
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
         {
             vfs.append_sources(&archive_sources);
@@ -210,7 +228,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.rebuild_layer_index();
+        vfs.layer_index = layer_index;
         Ok((vfs, conflict_index))
     }
 

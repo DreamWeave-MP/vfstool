@@ -79,44 +79,46 @@ impl LayerIndex {
         hash_cache: &mut ProviderIoCache,
     ) -> io::Result<Option<SemanticConflict>> {
         let normalized_key = NormalizedPath::new(key.as_os_str().as_encoded_bytes());
-        let provider_indices = self.sources_containing(&normalized_key);
-        if provider_indices.len() < 2 {
+        let provider_chain = self.provider_chain(key);
+        if provider_chain.len() < 2 {
             return Ok(None);
         }
 
-        let Some(winner_idx) =
-            Self::current_winner_source_idx(vfs, &normalized_key, provider_indices)
-        else {
+        let Some(winner_provider) = provider_chain.last() else {
             return Ok(None);
         };
 
-        let winner_source = self.sources[winner_idx].clone();
+        if vfs.winner_provider_index(&normalized_key) != Some(winner_provider.provider_index) {
+            return Ok(None);
+        }
+
+        let winner_source = winner_provider.source.clone();
         let winner_bytes = if opts.include_semantic_deltas {
-            self.read_provider_bytes(vfs, winner_idx, key, hash_cache)
+            self.read_provider_bytes(vfs, winner_provider, hash_cache, opts.archive_hash_mode)
         } else {
             Ok(None)
         }?;
         let winner_fp = if let Some(bytes) = &winner_bytes {
             Some(fingerprint_bytes(bytes))
         } else {
-            self.fingerprint_for_provider(vfs, winner_idx, key, hash_cache, opts.archive_hash_mode)?
+            self.fingerprint_for_provider(vfs, winner_provider, hash_cache, opts.archive_hash_mode)?
         };
 
         let mut seen_hashes = AHashSet::<String>::new();
-        let mut providers = Vec::with_capacity(provider_indices.len());
+        let mut providers = Vec::with_capacity(provider_chain.len());
         let mut inferred_asset_class = AssetClass::Unknown;
 
-        for &idx in provider_indices {
-            let src = self.sources[idx].clone();
+        for provider in &provider_chain {
+            let src = provider.source.clone();
             let current_bytes = if opts.include_semantic_deltas {
-                self.read_provider_bytes(vfs, idx, key, hash_cache)?
+                self.read_provider_bytes(vfs, provider, hash_cache, opts.archive_hash_mode)?
             } else {
                 None
             };
             let current = if let Some(bytes) = &current_bytes {
                 Some(fingerprint_bytes(bytes))
             } else {
-                self.fingerprint_for_provider(vfs, idx, key, hash_cache, opts.archive_hash_mode)?
+                self.fingerprint_for_provider(vfs, provider, hash_cache, opts.archive_hash_mode)?
             };
 
             let semantic_delta_to_winner = if opts.include_semantic_deltas {

@@ -126,6 +126,31 @@ fn collapse_rejects_file_directory_key_conflicts() {
 }
 
 #[test]
+fn collapse_extract_archives_skips_loose_archive_without_deleting_existing_output() {
+    let src = TempDir::new("collapse_skip_loose_archive_src");
+    src.write("data.zip", b"source archive");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let dest = TempDir::new("collapse_skip_loose_archive_dest");
+    dest.write("data.zip", b"existing output");
+
+    vfs.collapse_into(
+        dest.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read(dest.path().join("data.zip")).unwrap(),
+        b"existing output"
+    );
+}
+
+#[test]
 fn dump_copy_mode() {
     let src = TempDir::new("dump_copy_src");
     src.write("data.txt", b"hello world");

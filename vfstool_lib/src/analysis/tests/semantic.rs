@@ -57,6 +57,25 @@ fn semantic_conflicts_reads_mixed_case_loose_provider_paths() {
 }
 
 #[test]
+fn semantic_conflicts_reads_same_source_provider_occurrences() {
+    let data = TempDir::new("analysis_semantic_same_source_occurrences");
+    data.write("Textures/Foo.DDS", b"upper content");
+    data.write("textures/foo.dds", b"lower content with different bytes");
+
+    let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+    let report = index.semantic_conflicts(&vfs).expect("semantic report");
+    let entry = report
+        .entries
+        .iter()
+        .find(|entry| entry.key == Path::new("textures/foo.dds"))
+        .expect("same-source case collision should be reported");
+
+    assert_eq!(entry.providers.len(), 2);
+    assert_eq!(entry.distinct_versions, 2);
+    assert!(!entry.all_identical);
+}
+
+#[test]
 fn semantic_conflict_omits_key_without_actual_vfs_winner() {
     let low = TempDir::new("analysis_semantic_no_winner_hash_low");
     low.write("shared.txt", b"same");
@@ -131,6 +150,59 @@ fn semantic_conflicts_all_providers_hashes_zip_archives() {
             .all(|provider| provider.hash_blake3.is_some())
     );
 }
+
+#[test]
+#[cfg(feature = "zip")]
+fn semantic_conflicts_disabled_archive_hash_mode_does_not_read_deltas() {
+    use crate::semantic::ArchiveHashMode;
+    use std::io::Write as _;
+
+    fn write_zip(path: &Path, entry: &str, data: &[u8]) {
+        let file = fs::File::create(path).expect("zip file should be created");
+        let mut writer = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default();
+        writer
+            .start_file(entry, options)
+            .expect("entry should start");
+        writer.write_all(data).expect("entry should be written");
+        writer.finish().expect("zip should finish");
+    }
+
+    let data = TempDir::new("analysis_semantic_zip_disabled_deltas");
+    write_zip(
+        &data.path().join("low.zip"),
+        "config/example.ini",
+        b"[x]\na=1\n",
+    );
+    write_zip(
+        &data.path().join("high.zip"),
+        "config/example.ini",
+        b"[x]\na=2\n",
+    );
+
+    let (vfs, index) =
+        VFS::from_directories_with_layer_index([data.path()], Some(vec!["low.zip", "high.zip"]));
+    let report = index
+        .semantic_conflicts_with_opts(
+            &vfs,
+            SemanticOpts {
+                archive_hash_mode: ArchiveHashMode::Disabled,
+                include_semantic_deltas: true,
+            },
+        )
+        .expect("semantic report should build");
+    let entry = report
+        .entries
+        .iter()
+        .find(|entry| entry.key == Path::new("config/example.ini"))
+        .expect("archive conflict should be reported");
+
+    assert_eq!(entry.distinct_versions, 0);
+    assert!(entry.providers.iter().all(|provider| {
+        provider.hash_blake3.is_none() && provider.semantic_delta_to_winner.is_none()
+    }));
+}
+
 #[test]
 fn semantic_conflicts_enrich_adds_asset_class_and_delta() {
     let low = TempDir::new("analysis_semantic_enrich_low");

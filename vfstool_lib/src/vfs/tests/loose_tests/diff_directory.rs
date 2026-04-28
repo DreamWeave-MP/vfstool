@@ -100,6 +100,24 @@ fn diff_dir_conflict_detected_across_case_normalization() {
     assert_eq!(diff.conflicts[0].1.path(), replacement);
 }
 
+#[test]
+#[cfg(unix)]
+fn diff_dir_skips_filenames_that_normalize_to_unsafe_keys() {
+    let vfs_dir = TempDir::new("vfsdiff_unsafe_base");
+    let vfs = VFS::from_directories(vec![vfs_dir.path()], None);
+
+    let mod_dir = TempDir::new("vfsdiff_unsafe_mod");
+    mod_dir.write("..\\escape.txt", b"escape");
+    let safe = mod_dir.write("safe.txt", b"safe");
+
+    let diff = vfs.diff_directory(mod_dir.path());
+
+    assert_eq!(diff.additions.len(), 1);
+    assert_eq!(diff.additions[0].0, PathBuf::from("safe.txt"));
+    assert_eq!(diff.additions[0].1.path(), safe);
+    assert!(diff.conflicts.is_empty());
+}
+
 /// Deeply nested files and subdirectories are all classified correctly.
 #[test]
 fn diff_dir_handles_deep_nesting() {

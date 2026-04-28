@@ -118,3 +118,21 @@ fn remaining_replacements_true_includes_overridden_files() {
     // unique.txt is in dir1 and still served from dir1 — it should NOT appear
     assert_eq!(count, 1, "only the overridden shared.txt should appear");
 }
+
+#[test]
+fn remaining_uses_source_path_component_boundaries() {
+    let root = TempDir::new("vfs_newmethods_remaining_boundaries_root");
+    let dir = root.path().join("foo");
+    let dir_sibling = root.path().join("foobar");
+    fs::create_dir_all(&dir).unwrap();
+    fs::create_dir_all(&dir_sibling).unwrap();
+    fs::write(dir.join("from_foo.txt"), b"foo").unwrap();
+    fs::write(dir_sibling.join("from_foobar.txt"), b"foobar").unwrap();
+
+    let all_dirs = vec![dir.clone(), dir_sibling.clone()];
+    let vfs = VFS::from_directories(all_dirs.iter().map(std::path::PathBuf::as_path), None);
+
+    let tree = vfs.remaining(&dir, false, &all_dirs, true);
+
+    assert_eq!(count_files_in_tree(&tree), 1);
+}

@@ -34,20 +34,22 @@ impl LayerIndex {
         vfs: &VFS,
         key: &NormalizedPath,
     ) -> io::Result<Option<VfsLockEntry>> {
-        let providers = self.sources_containing(key);
+        let providers = self.provider_chain(&key_to_path_buf_lossy(key));
         if providers.is_empty() {
             return Ok(None);
         }
 
-        let Some(winner_idx) = Self::current_winner_source_idx(vfs, key, providers) else {
+        let Some(winner_provider) = providers.last() else {
             return Ok(None);
         };
-        let winner_source = &self.sources[winner_idx];
+        if vfs.winner_provider_index(key) != Some(winner_provider.provider_index) {
+            return Ok(None);
+        }
+        let winner_source = &winner_provider.source;
         let mut hash_cache = ProviderIoCache::new();
         let winner_fp = self.fingerprint_for_provider(
             vfs,
-            winner_idx,
-            key,
+            winner_provider,
             &mut hash_cache,
             ArchiveHashMode::WinnerOnly,
         )?;

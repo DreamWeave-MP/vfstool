@@ -38,6 +38,19 @@ fn try_from_directories_reports_missing_directory() {
 }
 
 #[test]
+#[cfg(not(any(feature = "beth-archives", feature = "zip")))]
+fn try_from_directories_rejects_archives_without_archive_features() {
+    let dir = TempDir::new("vfsloose_archives_without_features");
+
+    let Err(err) = VFS::try_from_directories([dir.path()], Some(vec!["missing.zip"])) else {
+        panic!("strict construction should reject requested archives when archive support is off");
+    };
+
+    assert!(matches!(err, VfsBuildError::ArchiveLoad { .. }));
+    assert!(err.to_string().contains("archive support is not enabled"));
+}
+
+#[test]
 #[cfg(unix)]
 fn try_from_directories_reports_unreadable_traversal_entries() {
     use std::os::unix::fs::PermissionsExt;
@@ -115,6 +128,33 @@ fn push_provider_batch_groups_entries_under_one_source() {
     assert_eq!(vfs.get_file("first.txt").unwrap().path(), first);
     assert_eq!(vfs.get_file("second.txt").unwrap().path(), second);
     assert_eq!(vfs.layer_index().sources.len(), 1);
+}
+
+#[test]
+fn push_provider_batch_rejects_unsafe_normalized_keys() {
+    let dir = TempDir::new("vfsloose_batch_provider_unsafe");
+    let unsafe_file = dir.write("unsafe.txt", b"unsafe");
+    let safe_file = dir.write("safe.txt", b"safe");
+    let mut vfs = VFS::new();
+    let source = SourceMeta {
+        path: dir.path().to_path_buf(),
+        kind: crate::SourceKind::LooseDir,
+    };
+
+    let inserted = vfs.push_provider_batch(
+        &source,
+        [
+            (
+                NormalizedPath::new(b"../unsafe.txt"),
+                VfsFile::from(&unsafe_file),
+            ),
+            (NormalizedPath::new(b"safe.txt"), VfsFile::from(&safe_file)),
+        ],
+    );
+
+    assert_eq!(inserted, 1);
+    assert!(vfs.get_file("safe.txt").is_some());
+    assert!(vfs.get_file("../unsafe.txt").is_none());
 }
 
 #[test]
@@ -218,6 +258,45 @@ fn materialization_plan_uses_path_component_conflicts() {
 
     assert!(plan.issues.is_empty());
     assert_eq!(plan.actions.len(), 2);
+}
+
+#[test]
+fn materialization_plan_reports_hardlink_when_copy_is_only_fallback() {
+    let dir = TempDir::new("vfsloose_materialization_plan_hardlink_fallback");
+    let source = dir.write("file.txt", b"a");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("file.txt", &source);
+
+    let out = TempDir::new("vfsloose_materialization_plan_hardlink_fallback_out");
+    let plan = vfs.materialization_plan(
+        out.path(),
+        &crate::CollapseOptions {
+            allow_copying: true,
+            extract_archives: false,
+            use_symlinks: false,
+        },
+    );
+
+    assert!(matches!(
+        plan.actions.as_slice(),
+        [crate::MaterializationAction::Hardlink { .. }]
+    ));
+}
+
+#[test]
+fn validate_reports_case_collisions() {
+    let dir = TempDir::new("vfsloose_validate_case_collision");
+    dir.write("Textures/Foo.DDS", b"upper");
+    dir.write("textures/foo.dds", b"lower");
+
+    let vfs = VFS::from_directories([dir.path()], None);
+    let report = vfs.validate();
+
+    assert!(report.issues.iter().any(|issue| matches!(
+        issue,
+        crate::ValidationIssue::CaseCollision { key, providers }
+            if key == Path::new("textures/foo.dds") && providers.len() == 2
+    )));
 }
 
 #[test]

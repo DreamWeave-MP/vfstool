@@ -62,7 +62,11 @@ pub struct LayerProvider {
     pub original_path: std::path::PathBuf,
 }
 
-/// Provider contribution counts for one source.
+/// Provider-occurrence contribution counts for one source.
+///
+/// Counts are per provider occurrence, not per distinct normalized key. A single source with two
+/// original paths that normalize to the same VFS key contributes two occurrences. Same-source
+/// duplicate occurrences are still not counted as cross-source overrides.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct SourceContribution {
@@ -70,17 +74,17 @@ pub struct SourceContribution {
     pub source_index: usize,
     /// Source metadata.
     pub source: SourceMeta,
-    /// Number of provided keys where this source is the highest-priority provider.
+    /// Number of provider occurrences where this source is the highest-priority provider.
     pub winning_files: usize,
-    /// Number of provided keys where this source overrides at least one lower-priority provider.
+    /// Number of provider occurrences where this source overrides at least one lower-priority provider.
     /// Same-source duplicate occurrences are not counted as cross-source overrides.
     pub overriding_files: usize,
-    /// Number of provided keys where this source is overridden by a higher-priority provider.
+    /// Number of provider occurrences where this source is overridden by a higher-priority provider.
     /// Same-source duplicate occurrences are not counted as cross-source overrides.
     pub overridden_files: usize,
-    /// Number of provided keys that have no other providers.
+    /// Number of provider occurrences whose normalized key has no other providers.
     pub unique_files: usize,
-    /// Number of provided keys that share a normalized key with another provider.
+    /// Number of provider occurrences that share a normalized key with another provider.
     pub duplicate_files: usize,
     /// Number of loose-file providers from this source.
     pub loose_files: usize,

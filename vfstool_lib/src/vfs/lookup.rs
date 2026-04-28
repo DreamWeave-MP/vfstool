@@ -65,11 +65,11 @@ impl VFS {
         let filtered_vfs = VFS::from_directories(filtered_dirs, None);
 
         self.tree_filtered(relative, |key, file| {
+            let file_path = normalize_host_path(file.path()).into_owned();
             if replacements_only {
-                filtered_vfs.contains(key)
-                    && !normalize_host_path(file.path()).starts_with(&filter_normalized)
+                filtered_vfs.contains(key) && !path_is_at_or_under(&file_path, &filter_normalized)
             } else {
-                normalize_host_path(file.path()).starts_with(&filter_normalized)
+                path_is_at_or_under(&file_path, &filter_normalized)
             }
         })
     }
@@ -138,4 +138,8 @@ impl VFS {
         let key = key.to_vfs_key();
         self.file_map.contains_key(&key)
     }
+}
+
+fn path_is_at_or_under(path: &Path, root: &Path) -> bool {
+    path == root || path.strip_prefix(root).is_ok()
 }

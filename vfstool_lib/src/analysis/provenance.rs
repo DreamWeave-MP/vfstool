@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{LayerIndex, ProvenanceChain, ProviderRecord, SourceKind};
-use crate::{
-    NormalizedPath, VFS,
-    paths::{key_to_path_buf_lossy, key_to_string_lossy},
-    semantic::ArchiveHashMode,
-};
+use crate::{NormalizedPath, VFS, paths::key_to_path_buf_lossy, semantic::ArchiveHashMode};
 use std::{io, path::Path};
 
 use super::provider_io::ProviderIoCache;
@@ -23,27 +19,29 @@ impl LayerIndex {
     ) -> io::Result<Option<ProvenanceChain>> {
         let key = NormalizedPath::new(path.as_os_str().as_encoded_bytes());
 
-        let provider_indices = self.sources_containing(&key);
-        if provider_indices.is_empty() {
+        let provider_chain = self.provider_chain(path);
+        if provider_chain.is_empty() {
             return Ok(None);
         }
 
-        let Some(winner_idx) = Self::current_winner_source_idx(vfs, &key, provider_indices) else {
+        let Some(winner_provider) = provider_chain.last() else {
             return Ok(None);
         };
-        let winner = self.sources[winner_idx].clone();
+        if vfs.winner_provider_index(&key) != Some(winner_provider.provider_index) {
+            return Ok(None);
+        }
+        let winner = winner_provider.source.clone();
         let mut hash_cache = ProviderIoCache::new();
 
-        let mut providers = Vec::with_capacity(provider_indices.len());
-        for &idx in provider_indices {
-            let src = self.sources[idx].clone();
+        let mut providers = Vec::with_capacity(provider_chain.len());
+        for provider in &provider_chain {
+            let src = provider.source.clone();
             let (hash_blake3, size) = if with_hashes {
                 match self.fingerprint_for_provider(
                     vfs,
-                    idx,
-                    &key,
+                    provider,
                     &mut hash_cache,
-                    ArchiveHashMode::WinnerOnly,
+                    ArchiveHashMode::AllProviders,
                 )? {
                     Some(fp) => {
                         let digest = fp.to_digest();
@@ -56,9 +54,13 @@ impl LayerIndex {
             };
 
             let resolved_path = match src.kind {
-                SourceKind::LooseDir => self.provider_path(idx, &key).display().to_string(),
+                SourceKind::LooseDir => self.provider_path(provider).display().to_string(),
                 SourceKind::Archive => {
-                    format!("{}::{}", src.path.display(), key_to_string_lossy(&key))
+                    format!(
+                        "{}::{}",
+                        src.path.display(),
+                        provider.original_path.display()
+                    )
                 }
             };
 

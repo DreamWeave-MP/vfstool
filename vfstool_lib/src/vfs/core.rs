@@ -75,16 +75,19 @@ impl VFS {
             .map(|entry| entry.source_index)
     }
 
-    pub(crate) fn provider_file_for_source_key(
+    pub(crate) fn provider_file_for_key_index(
         &self,
-        source_index: usize,
         key: &NormalizedPath,
+        provider_index: usize,
     ) -> Option<&VfsFile> {
         self.providers
             .get(key)?
-            .iter()
-            .find(|entry| entry.source_index == source_index)
+            .get(provider_index)
             .map(|entry| &entry.provider.file)
+    }
+
+    pub(crate) fn winner_provider_index(&self, key: &NormalizedPath) -> Option<usize> {
+        self.providers.get(key)?.len().checked_sub(1)
     }
 
     pub(crate) fn rebuild_layer_index(&mut self) {

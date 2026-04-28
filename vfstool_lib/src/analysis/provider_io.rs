@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use super::{LayerIndex, SourceKind};
-use crate::{
-    ContentDigest, NormalizedKey, NormalizedPath, VFS, VfsKeyInput, normalize_host_path,
-    semantic::ArchiveHashMode,
-};
+use super::{LayerIndex, LayerProvider, SourceKind};
+use crate::{ContentDigest, NormalizedPath, VFS, VfsKeyInput, semantic::ArchiveHashMode};
 use ahash::AHashMap;
 use std::{
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[derive(Clone)]
@@ -23,8 +20,8 @@ impl ContentFingerprint {
 }
 
 pub(super) struct ProviderIoCache {
-    fingerprints: AHashMap<(usize, NormalizedPath), Option<ContentFingerprint>>,
-    bytes: AHashMap<(usize, NormalizedPath), Option<Vec<u8>>>,
+    fingerprints: AHashMap<(usize, usize, NormalizedPath), Option<ContentFingerprint>>,
+    bytes: AHashMap<(usize, usize, NormalizedPath), Option<Vec<u8>>>,
 }
 
 impl ProviderIoCache {
@@ -40,21 +37,20 @@ impl LayerIndex {
     pub(super) fn fingerprint_for_provider(
         &self,
         vfs: &VFS,
-        source_idx: usize,
-        key: &(impl VfsKeyInput + ?Sized),
+        provider: &LayerProvider,
         cache: &mut ProviderIoCache,
         archive_hash_mode: ArchiveHashMode,
     ) -> io::Result<Option<ContentFingerprint>> {
-        let key = key.to_vfs_key();
-        let cache_key = (source_idx, key.clone());
+        let key = provider.key.to_vfs_key();
+        let cache_key = (provider.source_index, provider.provider_index, key.clone());
         if let Some(hit) = cache.fingerprints.get(&cache_key) {
             return Ok(hit.clone());
         }
 
-        let src = &self.sources[source_idx];
+        let src = &self.sources[provider.source_index];
         let fp = match src.kind {
             SourceKind::LooseDir => {
-                let path = self.provider_path(source_idx, &key);
+                let path = self.provider_path(provider);
                 if path.exists() {
                     Some(hash_reader(std::fs::File::open(path)?)?)
                 } else {
@@ -63,17 +59,13 @@ impl LayerIndex {
             }
             SourceKind::Archive => match archive_hash_mode {
                 ArchiveHashMode::Disabled => None,
-                ArchiveHashMode::WinnerOnly => match vfs.get_file(&key) {
-                    Some(current_winner) => match current_winner.parent_archive_path() {
-                        Some(parent) if archive_parent_matches(&parent, &src.path) => {
-                            Some(hash_reader(current_winner.open()?)?)
-                        }
-                        _ => None,
-                    },
-                    None => None,
-                },
-                ArchiveHashMode::AllProviders => vfs
-                    .provider_file_for_source_key(source_idx, &key)
+                ArchiveHashMode::WinnerOnly
+                    if vfs.winner_provider_index(&key) != Some(provider.provider_index) =>
+                {
+                    None
+                }
+                ArchiveHashMode::WinnerOnly | ArchiveHashMode::AllProviders => vfs
+                    .provider_file_for_key_index(&key, provider.provider_index)
                     .map(|file| file.open().and_then(hash_reader))
                     .transpose()?,
             },
@@ -86,22 +78,22 @@ impl LayerIndex {
     pub(super) fn read_provider_bytes(
         &self,
         vfs: &VFS,
-        source_idx: usize,
-        key: &(impl VfsKeyInput + ?Sized),
+        provider: &LayerProvider,
         cache: &mut ProviderIoCache,
+        archive_hash_mode: ArchiveHashMode,
     ) -> io::Result<Option<Vec<u8>>> {
-        let key = key.to_vfs_key();
-        let cache_key = (source_idx, key.clone());
+        let key = provider.key.to_vfs_key();
+        let cache_key = (provider.source_index, provider.provider_index, key.clone());
         if let Some(hit) = cache.bytes.get(&cache_key) {
             return Ok(hit.clone());
         }
 
-        let src = &self.sources[source_idx];
+        let src = &self.sources[provider.source_index];
         let mut out = Vec::new();
 
         let bytes = match src.kind {
             SourceKind::LooseDir => {
-                let path = self.provider_path(source_idx, &key);
+                let path = self.provider_path(provider);
                 if path.exists() {
                     let mut file = std::fs::File::open(path)?;
                     file.read_to_end(&mut out)?;
@@ -110,62 +102,36 @@ impl LayerIndex {
                     None
                 }
             }
-            SourceKind::Archive => {
-                if let Some(file) = vfs.provider_file_for_source_key(source_idx, &key) {
-                    let mut reader = file.open()?;
-                    reader.read_to_end(&mut out)?;
-                    Some(out)
-                } else {
-                    let Some(winner) = vfs.get_file(&key) else {
-                        cache.bytes.insert(cache_key, None);
-                        return Ok(None);
-                    };
-                    let Some(parent) = winner.parent_archive_path() else {
-                        cache.bytes.insert(cache_key, None);
-                        return Ok(None);
-                    };
-                    if !archive_parent_matches(&parent, &src.path) {
-                        cache.bytes.insert(cache_key, None);
-                        return Ok(None);
-                    }
-
-                    let mut reader = winner.open()?;
-                    reader.read_to_end(&mut out)?;
-                    Some(out)
+            SourceKind::Archive => match archive_hash_mode {
+                ArchiveHashMode::Disabled => None,
+                ArchiveHashMode::WinnerOnly
+                    if vfs.winner_provider_index(&key) != Some(provider.provider_index) =>
+                {
+                    None
                 }
-            }
+                ArchiveHashMode::WinnerOnly | ArchiveHashMode::AllProviders => {
+                    if let Some(file) =
+                        vfs.provider_file_for_key_index(&key, provider.provider_index)
+                    {
+                        let mut reader = file.open()?;
+                        reader.read_to_end(&mut out)?;
+                        Some(out)
+                    } else {
+                        None
+                    }
+                }
+            },
         };
 
         cache.bytes.insert(cache_key, bytes.clone());
         Ok(bytes)
     }
 
-    pub(super) fn provider_path(&self, source_idx: usize, key: &NormalizedPath) -> PathBuf {
-        let normalized = NormalizedKey::from(key.clone());
-        self.provider_paths
-            .get(&(source_idx, normalized))
-            .map_or_else(
-                || {
-                    self.sources[source_idx]
-                        .path
-                        .join(crate::paths::key_to_path_buf_lossy(key))
-                },
-                |rel| {
-                    rel.first().map_or_else(
-                        || {
-                            self.sources[source_idx]
-                                .path
-                                .join(crate::paths::key_to_path_buf_lossy(key))
-                        },
-                        |path| self.sources[source_idx].path.join(path),
-                    )
-                },
-            )
+    pub(super) fn provider_path(&self, provider: &LayerProvider) -> PathBuf {
+        self.sources[provider.source_index]
+            .path
+            .join(&provider.original_path)
     }
-}
-
-fn archive_parent_matches(parent: &str, source_path: &Path) -> bool {
-    normalize_host_path(Path::new(parent)).as_ref() == normalize_host_path(source_path).as_ref()
 }
 
 pub(super) fn fingerprint_bytes(bytes: &[u8]) -> ContentFingerprint {

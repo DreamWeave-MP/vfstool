@@ -59,7 +59,7 @@ fn provider_reports_preserve_priority_and_explain_winner() {
     );
     assert!(matches!(
         plan.actions.as_slice(),
-        [MaterializationAction::Copy { .. }]
+        [MaterializationAction::Hardlink { .. }]
     ));
 
     let _ = fs::remove_dir_all(root);
