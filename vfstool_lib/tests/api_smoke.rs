@@ -8,16 +8,16 @@ use std::{
 use vfstool_lib::{
     CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, NormalizedKey, NormalizedPath,
     SourceId, SourceKind, SourceMeta, VFS, VfsFile, VfsKeyInput, VfsProvider, changed_files,
-    experimental, normalize_path, normalize_path_in_place, path_glob_matches, semantic,
+    experimental, normalize_host_path, normalize_host_path_in_place, path_glob_matches, semantic,
 };
 
 #[test]
 fn root_reexports_remain_usable() {
     let mut normalized = PathBuf::from("Textures\\Foo.DDS");
-    normalize_path_in_place(&mut normalized);
+    normalize_host_path_in_place(&mut normalized);
 
     assert_eq!(
-        normalize_path("Textures\\Foo.DDS"),
+        normalize_host_path("Textures\\Foo.DDS"),
         PathBuf::from("textures/foo.dds")
     );
     assert_eq!(normalized, PathBuf::from("textures/foo.dds"));

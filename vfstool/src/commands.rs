@@ -5,7 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use vfstool_lib::{CollapseOptions, VFS, normalize_path, run_finalize_tracked, run_setup_tracked};
+use vfstool_lib::{
+    CollapseOptions, VFS, normalize_host_path, run_finalize_tracked, run_setup_tracked,
+};
 
 use crate::{
     cli::{Commands, OutputFormat},
@@ -59,7 +61,7 @@ fn handle_find(
     output: Option<PathBuf>,
     use_relative: bool,
 ) -> Result<()> {
-    let path_string = normalize_path(&path).to_string_lossy().to_string();
+    let path_string = normalize_host_path(&path).to_string_lossy().to_string();
     let tree = match vfs.find_by_regex(&path_string, use_relative) {
         Ok(t) => t,
         Err(e) => {
@@ -176,7 +178,7 @@ fn handle_archive_list(
 }
 
 fn normalized_path_text(path: &Path) -> String {
-    normalize_path(path).to_string_lossy().into_owned()
+    normalize_host_path(path).to_string_lossy().into_owned()
 }
 
 fn archive_selector_matches(selector: &Path, archive_path: &Path) -> bool {
@@ -189,7 +191,7 @@ fn archive_selector_matches(selector: &Path, archive_path: &Path) -> bool {
 
     archive_path
         .file_name()
-        .is_some_and(|name| normalize_path(Path::new(name)) == Path::new(&selector_text))
+        .is_some_and(|name| normalize_host_path(Path::new(name)) == Path::new(&selector_text))
         || archive_text
             .strip_suffix(&selector_text)
             .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with('/'))

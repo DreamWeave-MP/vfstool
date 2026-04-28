@@ -15,7 +15,7 @@ use crate::{
     SemanticProvider, SemanticRelation, ShadowedReport, ShadowedSource, Snapshot,
     SourceContribution, SourceContributionReport, SourceKind, SourceMeta, VFS, ValidationIssue,
     ValidationReport, VfsFile, VfsLock, VfsLockEntry, VfsProvider, VfsProviderRecord, analyze_pair,
-    changed_files, changed_files_metadata, normalize_path_in_place, path_glob_matches,
+    changed_files, changed_files_metadata, normalize_host_path_in_place, path_glob_matches,
     paths::key_to_path_buf_lossy, run_finalize, run_finalize_tracked, run_setup, run_setup_tracked,
     snapshot_directory, snapshot_directory_metadata, source_glob_matches,
 };
@@ -38,12 +38,12 @@ pub fn open(lua: &Lua) -> LuaResult<Table> {
     let module = lua.create_table()?;
 
     module.set(
-        "normalize_path",
-        lua.create_function(|lua, path| Ok(lua_normalize_path(lua, path)))?,
+        "normalize_host_path",
+        lua.create_function(|lua, path| Ok(lua_normalize_host_path(lua, path)))?,
     )?;
     module.set(
-        "normalize_path_in_place",
-        lua.create_function(|lua, path| Ok(lua_normalize_path(lua, path)))?,
+        "normalize_host_path_in_place",
+        lua.create_function(|lua, path| Ok(lua_normalize_host_path(lua, path)))?,
     )?;
     module.set(
         "path_glob_matches",
@@ -645,9 +645,9 @@ impl UserData for LuaSnapshot {}
 
 impl UserData for LuaMetadataSnapshot {}
 
-fn lua_normalize_path(_: &Lua, path: String) -> String {
+fn lua_normalize_host_path(_: &Lua, path: String) -> String {
     let mut path = PathBuf::from(path);
-    normalize_path_in_place(&mut path);
+    normalize_host_path_in_place(&mut path);
     path_to_string(path)
 }
 

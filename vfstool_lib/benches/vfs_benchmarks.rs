@@ -7,9 +7,9 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, VFS, changed_files, changed_files_metadata, normalize_path,
-    normalize_path_in_place, run_finalize_tracked, run_setup, run_setup_tracked,
-    snapshot_directory, snapshot_directory_metadata,
+    CollapseOptions, ConflictIndex, VFS, changed_files, changed_files_metadata,
+    normalize_host_path, normalize_host_path_in_place, run_finalize_tracked, run_setup,
+    run_setup_tracked, snapshot_directory, snapshot_directory_metadata,
 };
 
 use vfstool_lib::SemanticOpts;
@@ -91,31 +91,31 @@ fn make_fixture(name: &str, n: usize) -> TempDir {
 }
 
 // ---------------------------------------------------------------------------
-// normalize_path
+// normalize_host_path
 // ---------------------------------------------------------------------------
 
 fn bench_normalize(c: &mut Criterion) {
-    let mut g = c.benchmark_group("normalize_path");
+    let mut g = c.benchmark_group("normalize_host_path");
 
     g.bench_function("already_normalized", |b| {
-        b.iter(|| normalize_path(black_box("textures/landscape/foo.dds")));
+        b.iter(|| normalize_host_path(black_box("textures/landscape/foo.dds")));
     });
 
     g.bench_function("backslash_only", |b| {
-        b.iter(|| normalize_path(black_box("textures\\landscape\\foo.dds")));
+        b.iter(|| normalize_host_path(black_box("textures\\landscape\\foo.dds")));
     });
 
     g.bench_function("uppercase_only", |b| {
-        b.iter(|| normalize_path(black_box("Meshes/Actors/XBase_Anim.NIF")));
+        b.iter(|| normalize_host_path(black_box("Meshes/Actors/XBase_Anim.NIF")));
     });
 
     g.bench_function("combined_case_and_backslash", |b| {
-        b.iter(|| normalize_path(black_box("Meshes\\Actors\\XBase_Anim.NIF")));
+        b.iter(|| normalize_host_path(black_box("Meshes\\Actors\\XBase_Anim.NIF")));
     });
 
     g.bench_function("long_path_combined", |b| {
         b.iter(|| {
-            normalize_path(black_box(
+            normalize_host_path(black_box(
                 "Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS",
             ))
         });
@@ -125,11 +125,11 @@ fn bench_normalize(c: &mut Criterion) {
 }
 
 // ---------------------------------------------------------------------------
-// normalize_path_in_place
+// normalize_host_path_in_place
 // ---------------------------------------------------------------------------
 
 fn bench_normalize_in_place(c: &mut Criterion) {
-    let mut g = c.benchmark_group("normalize_path_in_place");
+    let mut g = c.benchmark_group("normalize_host_path_in_place");
 
     // Fast path: the function is a pure no-op on already-normalized input.
     // We can hold a single PathBuf across all iterations — it is never
@@ -137,7 +137,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
     // allocation overhead inflating the measurement.
     g.bench_function("already_normalized", |b| {
         let mut p = PathBuf::from("textures/landscape/foo.dds");
-        b.iter(|| normalize_path_in_place(black_box(&mut p)));
+        b.iter(|| normalize_host_path_in_place(black_box(&mut p)));
     });
 
     // Slow paths: the PathBuf is modified in place, so each iteration must
@@ -147,7 +147,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
         b.iter_batched(
             || PathBuf::from("Meshes\\Actors\\XBase_Anim.NIF"),
             |mut p| {
-                normalize_path_in_place(black_box(&mut p));
+                normalize_host_path_in_place(black_box(&mut p));
                 p
             },
             BatchSize::SmallInput,
@@ -158,7 +158,7 @@ fn bench_normalize_in_place(c: &mut Criterion) {
         b.iter_batched(
             || PathBuf::from("Data Files\\Textures\\Landscape\\TX_BC_rock_04.DDS"),
             |mut p| {
-                normalize_path_in_place(black_box(&mut p));
+                normalize_host_path_in_place(black_box(&mut p));
                 p
             },
             BatchSize::SmallInput,
@@ -175,8 +175,8 @@ fn bench_normalize_in_place(c: &mut Criterion) {
 // identical starting state — an already-heap-allocated PathBuf — and
 // measuring only what happens after that point.
 //
-// normalize_path(&p)          → scans, may allocate a new PathBuf
-// normalize_path_in_place(&mut p) → scans, may transform in place
+// normalize_host_path(&p)          → scans, may allocate a new PathBuf
+// normalize_host_path_in_place(&mut p) → scans, may transform in place
 //
 // Both use iter_batched so setup (PathBuf::from) is excluded.
 // ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ fn bench_normalize_comparison(c: &mut Criterion) {
         g.bench_function(format!("allocating/{name}"), |b| {
             b.iter_batched(
                 || PathBuf::from(input),
-                |p| normalize_path(black_box(p.as_path())).into_owned(),
+                |p| normalize_host_path(black_box(p.as_path())).into_owned(),
                 BatchSize::SmallInput,
             );
         });
@@ -212,7 +212,7 @@ fn bench_normalize_comparison(c: &mut Criterion) {
             b.iter_batched(
                 || PathBuf::from(input),
                 |mut p| {
-                    normalize_path_in_place(black_box(&mut p));
+                    normalize_host_path_in_place(black_box(&mut p));
                     p
                 },
                 BatchSize::SmallInput,
@@ -300,7 +300,7 @@ fn bench_lookup(c: &mut Criterion) {
         b.iter(|| vfs.get_file(black_box("textures/file_00000.dat")));
     });
 
-    // Key exists, needs case folding — exercises normalize_path before lookup
+    // Key exists, needs case folding — exercises VFS key normalization before lookup
     g.bench_function("hit_uppercase", |b| {
         b.iter(|| vfs.get_file(black_box("Textures/File_00000.dat")));
     });

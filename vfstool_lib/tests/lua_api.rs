@@ -162,7 +162,7 @@ fn lua_top_level_helpers_and_run_workflow() {
         .unwrap();
     lua.load(
         r##"
-        assert(vfstool.normalize_path("Textures\\Foo.DDS") == "textures/foo.dds")
+        assert(vfstool.normalize_host_path("Textures\\Foo.DDS") == "textures/foo.dds")
         assert(vfstool.path_glob_matches("config/**", "config/settings.ini"))
         assert(vfstool.source_glob_matches("**", data))
         local semantic = vfstool.analyze_pair("settings.ini", "[x]\na=1\n", "# comment\n[x]\na=1\n")

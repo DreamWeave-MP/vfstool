@@ -20,7 +20,8 @@
 //!   and semantic conflict workflows.
 //! - [`run_setup`], [`run_finalize`], [`snapshot_directory`], and [`changed_files`] for
 //!   dump-run-collect workflows.
-//! - [`normalize_path`] and [`normalize_path_in_place`] for matching the library's key semantics.
+//! - [`normalize_host_path`] and [`normalize_host_path_in_place`] for textual host/source path
+//!   comparisons. Use [`NormalizedPath`] and [`VfsKeyInput`] for actual VFS keys.
 //!
 //! [`experimental`] exposes policy helpers, solver code, and knowledge-base helpers that are
 //! intentionally unstable. Depending on them is possible, but it is buying the sharp end of the rake
@@ -172,7 +173,7 @@ pub(crate) use directory_node::DirectoryNode;
 pub use dream_path::NormalizedPath;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
 pub use matchers::{path_glob_matches, source_glob_matches};
-pub use paths::{VfsKeyInput, normalize_path, normalize_path_in_place};
+pub use paths::{VfsKeyInput, normalize_host_path, normalize_host_path_in_place};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,
     ShadowedSource,

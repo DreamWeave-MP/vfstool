@@ -2,7 +2,9 @@
 use super::{
     BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta, SourceKind,
 };
-use crate::{NormalizedPath, VFS, normalize_path, path_glob_matches, paths::key_to_path_buf_lossy};
+use crate::{
+    NormalizedPath, VFS, normalize_host_path, path_glob_matches, paths::key_to_path_buf_lossy,
+};
 use ahash::AHashSet;
 use std::{io, path::Path};
 
@@ -207,10 +209,10 @@ impl LayerIndex {
     ) -> Option<usize> {
         let winner = vfs.get_file(key)?;
         if winner.is_loose() {
-            let normalized_path = normalize_path(winner.path());
+            let normalized_path = normalize_host_path(winner.path());
             if let Some(idx) = providers.iter().copied().find(|idx| {
                 self.sources[*idx].kind == SourceKind::LooseDir
-                    && normalize_path(&self.provider_path(*idx, key)).as_ref()
+                    && normalize_host_path(&self.provider_path(*idx, key)).as_ref()
                         == normalized_path.as_ref()
             }) {
                 return Some(idx);
@@ -226,10 +228,10 @@ impl LayerIndex {
                 .max_by_key(|idx| self.sources[*idx].path.components().count())
         } else {
             let parent = winner.parent_archive_path()?;
-            let parent = normalize_path(Path::new(&parent));
+            let parent = normalize_host_path(Path::new(&parent));
             providers.iter().copied().find(|idx| {
                 self.sources[*idx].kind == SourceKind::Archive
-                    && normalize_path(&self.sources[*idx].path).as_ref() == parent.as_ref()
+                    && normalize_host_path(&self.sources[*idx].path).as_ref() == parent.as_ref()
             })
         }
     }

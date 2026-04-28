@@ -9,10 +9,10 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// Normalize a path by converting backslashes to forward slashes and lowercasing ASCII letters.
+/// Normalize a host/source path by converting backslashes to forward slashes and lowercasing ASCII letters.
 ///
 /// Returns a borrowed `Cow` when no transformation is needed, avoiding allocation on the fast path.
-pub fn normalize_path<P: AsRef<Path> + ?Sized>(path: &P) -> Cow<'_, Path> {
+pub fn normalize_host_path<P: AsRef<Path> + ?Sized>(path: &P) -> Cow<'_, Path> {
     let p = path.as_ref();
     let bytes = p.as_os_str().as_encoded_bytes();
     if !bytes.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
@@ -31,11 +31,11 @@ pub fn normalize_path<P: AsRef<Path> + ?Sized>(path: &P) -> Cow<'_, Path> {
     }))
 }
 
-/// Normalizes a [`PathBuf`] in-place, reusing its heap allocation.
+/// Normalizes a host/source [`PathBuf`] in-place, reusing its heap allocation.
 ///
 /// Converts backslashes to forward slashes and lowercases ASCII letters.
 /// No-op if the path requires no changes.
-pub fn normalize_path_in_place(path: &mut PathBuf) {
+pub fn normalize_host_path_in_place(path: &mut PathBuf) {
     if !path
         .as_os_str()
         .as_encoded_bytes()
@@ -58,7 +58,7 @@ pub fn normalize_path_in_place(path: &mut PathBuf) {
 }
 
 pub(crate) fn normalized_safe_key(path: &Path) -> Option<NormalizedPath> {
-    let normalized = normalize_path(path).into_owned();
+    let normalized = normalize_host_path(path).into_owned();
     let normalized_text = normalized.to_string_lossy();
     if normalized_text.as_bytes().get(1) == Some(&b':') {
         return None;

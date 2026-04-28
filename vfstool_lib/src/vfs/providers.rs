@@ -2,7 +2,7 @@
 use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
-    normalize_path, paths::key_to_path_buf_lossy,
+    normalize_host_path, paths::key_to_path_buf_lossy,
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -351,7 +351,7 @@ impl VFS {
     /// Return entries provided by a loaded archive path.
     #[must_use]
     pub fn archive_entries(&self, archive: impl AsRef<Path>) -> Vec<ArchiveEntry> {
-        let archive = normalize_path(archive.as_ref()).into_owned();
+        let archive = normalize_host_path(archive.as_ref()).into_owned();
         let mut entries = Vec::new();
         for key in self.providers.keys() {
             let providers = self.provider_records_for_key(key);
@@ -360,7 +360,7 @@ impl VFS {
             };
             for provider in providers.iter().filter(|p| {
                 p.source.kind == SourceKind::Archive
-                    && normalize_path(&p.source.path).as_ref() == archive.as_path()
+                    && normalize_host_path(&p.source.path).as_ref() == archive.as_path()
             }) {
                 entries.push(ArchiveEntry {
                     key: key_to_path_buf_lossy(key),

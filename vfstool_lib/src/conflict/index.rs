@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::{
-    LayerIndex, SourceKind, SourceMeta, normalize_path_in_place,
+    LayerIndex, SourceKind, SourceMeta, normalize_host_path_in_place,
     paths::{key_to_path_buf_lossy, normalized_safe_key},
 };
 use ahash::{AHashMap, AHashSet};
@@ -215,7 +215,7 @@ impl ConflictIndex {
     /// conflict) or not at all.
     pub fn sources_containing(&self, path: &Path) -> &[usize] {
         let mut normalized = path.to_path_buf();
-        normalize_path_in_place(&mut normalized);
+        normalize_host_path_in_place(&mut normalized);
         self.path_to_sources
             .get(&normalized)
             .map_or(&[], Vec::as_slice)

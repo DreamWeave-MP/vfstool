@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 mod read {
     use super::super::VfsFile;
-    use crate::normalize_path;
+    use crate::normalize_host_path;
     use std::{
         fs::{File, OpenOptions, create_dir, metadata, remove_dir_all, remove_file},
         io::{Read, Write},
@@ -73,7 +73,7 @@ END OF ACT IV, SCENE III";
 
         assert!(fd.is_ok(), "TEST FAILURE: COULD NOT OPEN VFS FILE!");
 
-        assert_ne!(normalize_path(&test_path), vfs_file.path());
+        assert_ne!(normalize_host_path(&test_path), vfs_file.path());
 
         let _ = remove_dir_all(test_dir);
     }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{MaybeFile, VFS, VFSTuple};
-use crate::{DisplayTree, VfsKeyInput, normalize_path, paths::key_to_string_lossy};
+use crate::{DisplayTree, VfsKeyInput, normalize_host_path, paths::key_to_string_lossy};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
@@ -52,11 +52,11 @@ impl VFS {
         all_dirs: &[PathBuf],
         relative: bool,
     ) -> DisplayTree {
-        let filter_normalized = normalize_path(filter_path).into_owned();
+        let filter_normalized = normalize_host_path(filter_path).into_owned();
 
         let filtered_dirs: Vec<&PathBuf> = all_dirs
             .iter()
-            .filter(|d| normalize_path(d.as_path()) == filter_normalized.as_path())
+            .filter(|d| normalize_host_path(d.as_path()) == filter_normalized.as_path())
             .collect();
 
         let filtered_vfs = VFS::from_directories(filtered_dirs, None);
@@ -64,9 +64,9 @@ impl VFS {
         self.tree_filtered(relative, |key, file| {
             if replacements_only {
                 filtered_vfs.contains(key)
-                    && !normalize_path(file.path()).starts_with(&filter_normalized)
+                    && !normalize_host_path(file.path()).starts_with(&filter_normalized)
             } else {
-                normalize_path(file.path()).starts_with(&filter_normalized)
+                normalize_host_path(file.path()).starts_with(&filter_normalized)
             }
         })
     }
@@ -124,7 +124,9 @@ impl VFS {
     }
 
     fn normalize_substring<S: AsRef<str>>(s: S) -> String {
-        normalize_path(s.as_ref()).to_string_lossy().into_owned()
+        normalize_host_path(s.as_ref())
+            .to_string_lossy()
+            .into_owned()
     }
 
     /// Returns `true` if the VFS contains a file at `key`.

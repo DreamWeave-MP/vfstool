@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use crate::normalize_path;
+use crate::normalize_host_path;
 use std::path::Path;
 
 /// A normalized path glob compiled to a regular expression.
@@ -9,13 +9,17 @@ pub(crate) struct CompiledGlob(regex::Regex);
 impl CompiledGlob {
     /// Compile a glob after normalizing case and separators.
     pub(crate) fn new(glob: &str) -> Result<Self, regex::Error> {
-        regex::Regex::new(&glob_regex_pattern(&normalize_path(glob).to_string_lossy())).map(Self)
+        regex::Regex::new(&glob_regex_pattern(
+            &normalize_host_path(glob).to_string_lossy(),
+        ))
+        .map(Self)
     }
 
     /// Match normalized path-like text.
     #[must_use]
     pub(crate) fn is_match(&self, path: &Path) -> bool {
-        self.0.is_match(&normalize_path(path).to_string_lossy())
+        self.0
+            .is_match(&normalize_host_path(path).to_string_lossy())
     }
 }
 

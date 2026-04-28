@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{LayerIndex, SourceKind};
 use crate::{
-    ContentDigest, NormalizedKey, NormalizedPath, VFS, VfsFile, VfsKeyInput, normalize_path,
+    ContentDigest, NormalizedKey, NormalizedPath, VFS, VfsFile, VfsKeyInput, normalize_host_path,
     semantic::ArchiveHashMode,
 };
 use ahash::AHashMap;
@@ -179,7 +179,7 @@ impl LayerIndex {
 }
 
 fn archive_parent_matches(parent: &str, source_path: &Path) -> bool {
-    normalize_path(Path::new(parent)).as_ref() == normalize_path(source_path).as_ref()
+    normalize_host_path(Path::new(parent)).as_ref() == normalize_host_path(source_path).as_ref()
 }
 
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
@@ -188,7 +188,7 @@ fn archive_provider_file(
     key: &NormalizedPath,
     cache: &mut ProviderIoCache,
 ) -> Option<VfsFile> {
-    let normalized_source = normalize_path(source_path).into_owned();
+    let normalized_source = normalize_host_path(source_path).into_owned();
     if let Some(hit) = cache
         .archive_files
         .lock()

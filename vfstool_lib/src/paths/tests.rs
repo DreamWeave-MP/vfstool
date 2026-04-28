@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use super::{normalize_path, normalize_path_in_place};
+use super::{normalize_host_path, normalize_host_path_in_place};
 use std::path::PathBuf;
 
 #[test]
 fn normalize_already_normalized_is_noop() {
     let p = "textures/landscape/foo.dds";
-    assert_eq!(normalize_path(p), PathBuf::from(p));
+    assert_eq!(normalize_host_path(p), PathBuf::from(p));
 }
 
 #[test]
 fn normalize_backslash_to_forward_slash() {
     assert_eq!(
-        normalize_path("textures\\landscape\\foo.dds"),
+        normalize_host_path("textures\\landscape\\foo.dds"),
         PathBuf::from("textures/landscape/foo.dds"),
     );
 }
@@ -19,7 +19,7 @@ fn normalize_backslash_to_forward_slash() {
 #[test]
 fn normalize_uppercase_to_lowercase() {
     assert_eq!(
-        normalize_path("Meshes/Actors/Foo.NIF"),
+        normalize_host_path("Meshes/Actors/Foo.NIF"),
         PathBuf::from("meshes/actors/foo.nif"),
     );
 }
@@ -27,28 +27,28 @@ fn normalize_uppercase_to_lowercase() {
 #[test]
 fn normalize_windows_path_combined() {
     assert_eq!(
-        normalize_path("Meshes\\Actors\\XBase_Anim.NIF"),
+        normalize_host_path("Meshes\\Actors\\XBase_Anim.NIF"),
         PathBuf::from("meshes/actors/xbase_anim.nif"),
     );
 }
 
 #[test]
-fn normalize_path_with_spaces_preserved() {
+fn normalize_host_path_with_spaces_preserved() {
     assert_eq!(
-        normalize_path("Data Files\\Morrowind.esm"),
+        normalize_host_path("Data Files\\Morrowind.esm"),
         PathBuf::from("data files/morrowind.esm"),
     );
 }
 
 #[test]
 fn normalize_empty_path() {
-    assert_eq!(normalize_path(""), PathBuf::from(""));
+    assert_eq!(normalize_host_path(""), PathBuf::from(""));
 }
 
 #[test]
 fn normalize_single_component_uppercase() {
     assert_eq!(
-        normalize_path("Morrowind.ESM"),
+        normalize_host_path("Morrowind.ESM"),
         PathBuf::from("morrowind.esm")
     );
 }
@@ -56,13 +56,13 @@ fn normalize_single_component_uppercase() {
 #[test]
 fn normalize_already_lowercase_forward_slash_fast_path() {
     let p = "data files/tribunal.esm";
-    assert_eq!(normalize_path(p), PathBuf::from(p));
+    assert_eq!(normalize_host_path(p), PathBuf::from(p));
 }
 
 #[test]
 fn normalize_non_ascii_passthrough() {
     let input = "Textures/Nordström.dds";
-    let result = normalize_path(input).to_string_lossy().into_owned();
+    let result = normalize_host_path(input).to_string_lossy().into_owned();
     assert!(
         result.starts_with("textures/"),
         "ASCII prefix should be lowercased"
@@ -77,28 +77,28 @@ fn normalize_non_ascii_passthrough() {
 fn normalize_in_place_noop_when_already_normalized() {
     let original = PathBuf::from("textures/landscape/foo.dds");
     let mut path = original.clone();
-    normalize_path_in_place(&mut path);
+    normalize_host_path_in_place(&mut path);
     assert_eq!(path, original);
 }
 
 #[test]
 fn normalize_in_place_backslash() {
     let mut path = PathBuf::from("textures\\landscape\\foo.dds");
-    normalize_path_in_place(&mut path);
+    normalize_host_path_in_place(&mut path);
     assert_eq!(path, PathBuf::from("textures/landscape/foo.dds"));
 }
 
 #[test]
 fn normalize_in_place_uppercase() {
     let mut path = PathBuf::from("Meshes/Actors/Foo.NIF");
-    normalize_path_in_place(&mut path);
+    normalize_host_path_in_place(&mut path);
     assert_eq!(path, PathBuf::from("meshes/actors/foo.nif"));
 }
 
 #[test]
 fn normalize_in_place_empty_path() {
     let mut path = PathBuf::from("");
-    normalize_path_in_place(&mut path);
+    normalize_host_path_in_place(&mut path);
     assert_eq!(path, PathBuf::from(""));
 }
 
@@ -116,10 +116,10 @@ fn normalize_in_place_matches_allocating_version() {
     ];
     for &case in cases {
         let mut in_place = PathBuf::from(case);
-        normalize_path_in_place(&mut in_place);
+        normalize_host_path_in_place(&mut in_place);
         assert_eq!(
             in_place,
-            normalize_path(case),
+            normalize_host_path(case),
             "in_place and allocating versions disagree for input {case:?}",
         );
     }

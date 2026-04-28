@@ -63,8 +63,8 @@ Reports are plain Lua tables. Long-lived mutable structures are userdata.
 ## Top-level functions
 
 ```lua
-vfstool.normalize_path(path) -> string
-vfstool.normalize_path_in_place(path) -> string
+vfstool.normalize_host_path(path) -> string
+vfstool.normalize_host_path_in_place(path) -> string
 vfstool.path_glob_matches(glob, path) -> boolean
 vfstool.source_glob_matches(glob, source_path) -> boolean
 

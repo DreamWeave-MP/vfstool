@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::VFS;
-use crate::{NormalizedPath, VfsFile, normalize_path_in_place};
+use crate::{NormalizedPath, VfsFile, normalize_host_path_in_place};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -64,7 +64,7 @@ impl VFS {
                     .path()
                     .strip_prefix(&dir)
                     .map_or_else(|_| entry.path().to_path_buf(), PathBuf::from);
-                normalize_path_in_place(&mut normalized);
+                normalize_host_path_in_place(&mut normalized);
                 (normalized, VfsFile::from(entry.path()))
             })
             .collect();
