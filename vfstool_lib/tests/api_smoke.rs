@@ -6,9 +6,10 @@ use std::{
 };
 
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, MutableVfs, NormalizedKey, SourceId,
-    SourceKind, SourceMeta, VFS, VfsFile, VfsProvider, changed_files, experimental, normalize_path,
-    normalize_path_in_place, path_glob_matches, semantic,
+    CollapseOptions, ConflictIndex, ContentDigest, LayerIndex, MutableVfs, NormalizedKey,
+    NormalizedPath, SourceId, SourceKind, SourceMeta, VFS, VfsFile, VfsKeyInput, VfsProvider,
+    changed_files, experimental, normalize_path, normalize_path_in_place, path_glob_matches,
+    semantic,
 };
 
 #[test]
@@ -106,6 +107,28 @@ fn public_and_experimental_modules_remain_reachable() {
         objective: experimental::solve::SolveObjective::MinMovesFromCurrent,
     };
     assert_eq!(request.constraints.len(), 1);
+}
+
+#[test]
+fn normalized_path_and_vfs_key_input_reexports_are_usable() {
+    let mut vfs = VFS::new();
+    let physical = PathBuf::from("/tmp/source/textures/foo.dds");
+    let key = NormalizedPath::new(b"Textures\\Foo.DDS");
+
+    assert!(vfs.insert_loose_file(&key, &physical).is_none());
+    assert_eq!(vfs.get_file(&key).unwrap().path(), physical);
+
+    assert_eq!(
+        "Textures\\Foo.DDS".to_vfs_key().as_bytes(),
+        b"textures/foo.dds"
+    );
+    assert_eq!(
+        "Textures\\Foo.DDS".to_safe_vfs_key().unwrap().as_bytes(),
+        b"textures/foo.dds"
+    );
+    assert!("../outside.dds".to_safe_vfs_key().is_none());
+    assert!("/absolute.dds".to_safe_vfs_key().is_none());
+    assert!("C:/absolute.dds".to_safe_vfs_key().is_none());
 }
 
 #[cfg(feature = "serialize")]

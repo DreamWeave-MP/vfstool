@@ -88,17 +88,15 @@ impl LayerIndex {
             }
             SourceKind::Archive => match archive_hash_mode {
                 ArchiveHashMode::Disabled => None,
-                ArchiveHashMode::WinnerOnly => {
-                    match vfs.get_file(crate::paths::key_to_path_buf_lossy(&key)) {
-                        Some(current_winner) => match current_winner.parent_archive_path() {
-                            Some(parent) if archive_parent_matches(&parent, &src.path) => {
-                                Some(hash_reader(current_winner.open()?)?)
-                            }
-                            _ => None,
-                        },
-                        None => None,
-                    }
-                }
+                ArchiveHashMode::WinnerOnly => match vfs.get_file(&key) {
+                    Some(current_winner) => match current_winner.parent_archive_path() {
+                        Some(parent) if archive_parent_matches(&parent, &src.path) => {
+                            Some(hash_reader(current_winner.open()?)?)
+                        }
+                        _ => None,
+                    },
+                    None => None,
+                },
                 ArchiveHashMode::AllProviders => archive_provider_file(&src.path, &key, cache)
                     .and_then(|file| file.open().ok().and_then(|reader| hash_reader(reader).ok())),
             },
@@ -141,8 +139,7 @@ impl LayerIndex {
                     reader.read_to_end(&mut out)?;
                     Some(out)
                 } else {
-                    let Some(winner) = vfs.get_file(crate::paths::key_to_path_buf_lossy(&key))
-                    else {
+                    let Some(winner) = vfs.get_file(&key) else {
                         cache.bytes.insert(cache_key, None);
                         return Ok(None);
                     };

@@ -69,6 +69,14 @@ impl Fixture {
             .output()
             .expect("vfstool command should spawn")
     }
+
+    fn run_with_openmw_config(config_file: &Path, args: &[&str]) -> Output {
+        Command::new(vfstool_bin())
+            .env("OPENMW_CONFIG", config_file)
+            .args(args)
+            .output()
+            .expect("vfstool command should spawn")
+    }
 }
 
 impl Drop for Fixture {
@@ -92,8 +100,40 @@ fn write_text(path: &Path, text: &str) {
     write_file(path, text.as_bytes());
 }
 
+fn quote_path(path: &Path) -> String {
+    format!("\"{}\"", path.display())
+}
+
 fn stdout_json(output: &Output) -> Value {
     serde_json::from_slice(&output.stdout).expect("stdout should be valid json")
+}
+
+#[test]
+fn openmw_config_env_path_supports_nonstandard_filename_and_quoted_paths() {
+    let fixture = Fixture::new("env_config");
+    let spaced = fixture.path("data dir with spaces");
+    fs::create_dir_all(&spaced).expect("spaced data dir should be creatable");
+    write_file(&spaced.join("textures/env.dds"), b"env");
+
+    let custom_config = fixture.path("custom-openmw.cfg");
+    let config = format!(
+        "data={}\ndata-local={}\n",
+        quote_path(&spaced),
+        quote_path(&fixture.data_local)
+    );
+    fs::write(&custom_config, config).expect("custom config should be writable");
+
+    let output = Fixture::run_with_openmw_config(
+        &custom_config,
+        &["find-file", "textures/env.dds", "--simple"],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert_eq!(
+        stdout.trim(),
+        spaced.join("textures/env.dds").display().to_string()
+    );
 }
 
 fn read_json(path: &Path) -> Value {

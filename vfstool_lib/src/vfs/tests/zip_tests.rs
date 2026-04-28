@@ -33,13 +33,21 @@ impl TempDir {
         target
     }
 
-    /// Create a ZIP file at `filename` (relative to this dir) with the given entries.
     fn create_zip(&self, filename: &str, entries: &[(&str, &[u8])]) -> PathBuf {
+        self.create_zip_with_method(filename, entries, zip::CompressionMethod::Stored)
+    }
+
+    /// Create a ZIP file at `filename` (relative to this dir) with the given entries.
+    fn create_zip_with_method(
+        &self,
+        filename: &str,
+        entries: &[(&str, &[u8])],
+        method: zip::CompressionMethod,
+    ) -> PathBuf {
         let path = self.0.join(filename);
         let file = fs::File::create(&path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Stored);
+        let options = zip::write::SimpleFileOptions::default().compression_method(method);
         for (name, data) in entries {
             zip.start_file(*name, options).unwrap();
             zip.write_all(data).unwrap();
@@ -121,6 +129,51 @@ fn zip_entry_content_readable() {
     let mut buf = Vec::new();
     std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
     assert_eq!(buf, b"return 42");
+}
+
+#[test]
+fn deflated_zip_entry_content_readable() {
+    let dir = TempDir::new("vfszip_deflated_content");
+    dir.create_zip_with_method(
+        "data.zip",
+        &[("scripts/deflated.lua", b"return 'deflated'")],
+        zip::CompressionMethod::Deflated,
+    );
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+    let file = vfs.get_file("scripts/deflated.lua").unwrap();
+
+    let mut buf = Vec::new();
+    std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
+    assert_eq!(buf, b"return 'deflated'");
+}
+
+#[test]
+fn lzma_zip_entry_content_readable() {
+    let dir = TempDir::new("vfszip_lzma_content");
+    // zip 8 can read LZMA with the `lzma` feature, but intentionally does not
+    // write it. Use a tiny fixture produced by Python's zipfile module instead
+    // of pretending the writer supports what it does not. It complained. It was right.
+    dir.write(
+        "data.zip",
+        &[
+            80, 75, 3, 4, 63, 0, 2, 0, 14, 0, 59, 85, 156, 92, 122, 195, 53, 52, 33, 0, 0, 0, 13,
+            0, 0, 0, 16, 0, 0, 0, 115, 99, 114, 105, 112, 116, 115, 47, 108, 122, 109, 97, 46, 108,
+            117, 97, 9, 4, 5, 0, 93, 0, 0, 128, 0, 0, 57, 25, 74, 240, 49, 180, 69, 174, 28, 147,
+            107, 213, 212, 128, 120, 103, 30, 151, 255, 233, 135, 128, 0, 80, 75, 1, 2, 63, 3, 63,
+            0, 2, 0, 14, 0, 59, 85, 156, 92, 122, 195, 53, 52, 33, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 1, 0, 0, 0, 0, 115, 99, 114, 105, 112, 116, 115, 47,
+            108, 122, 109, 97, 46, 108, 117, 97, 80, 75, 5, 6, 0, 0, 0, 0, 1, 0, 1, 0, 62, 0, 0, 0,
+            79, 0, 0, 0, 0, 0,
+        ],
+    );
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+    let file = vfs.get_file("scripts/lzma.lua").unwrap();
+
+    let mut buf = Vec::new();
+    std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
+    assert_eq!(buf, b"return 'lzma'");
 }
 
 #[test]

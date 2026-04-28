@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{MaybeFile, VFS, VFSTuple};
-use crate::{DisplayTree, NormalizedPath, VfsKeyInput, normalize_path, paths::key_to_string_lossy};
+use crate::{DisplayTree, VfsKeyInput, normalize_path, paths::key_to_string_lossy};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
 impl VFS {
-    /// Looks up a file in the VFS after normalizing the path.
+    /// Looks up a file in the VFS after normalizing the key.
     ///
-    /// Already-normalized paths skip the allocation — the fast path is a
-    /// direct `&Path` lookup with no heap activity.
-    pub fn get_file<P: AsRef<Path>>(&self, path: P) -> MaybeFile<'_> {
-        let key = NormalizedPath::new(path.as_ref().as_os_str().as_encoded_bytes());
+    /// Already-normalized keys skip path conversion and use their byte key
+    /// directly; host paths and strings are normalized before lookup.
+    pub fn get_file<P: VfsKeyInput + ?Sized>(&self, path: &P) -> MaybeFile<'_> {
+        let key = path.to_vfs_key();
         self.file_map.get(&key)
     }
 
@@ -98,8 +98,11 @@ impl VFS {
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
-    pub fn paths_with<P: AsRef<Path>>(&self, prefix: P) -> impl Iterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = NormalizedPath::new(prefix.as_ref().as_os_str().as_encoded_bytes());
+    pub fn paths_with<P: VfsKeyInput + ?Sized>(
+        &self,
+        prefix: &P,
+    ) -> impl Iterator<Item = VFSTuple<'_>> {
+        let normalized_prefix = prefix.to_vfs_key();
         self.file_map.iter().filter_map(move |(path, file)| {
             path.as_bytes()
                 .starts_with(normalized_prefix.as_bytes())
@@ -108,11 +111,11 @@ impl VFS {
     }
 
     /// Given a path prefix to a location in the VFS, return a parallel iterator to *all* of its contents.
-    pub fn par_paths_with<P: AsRef<Path>>(
+    pub fn par_paths_with<P: VfsKeyInput + ?Sized>(
         &self,
-        prefix: P,
+        prefix: &P,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = NormalizedPath::new(prefix.as_ref().as_os_str().as_encoded_bytes());
+        let normalized_prefix = prefix.to_vfs_key();
         self.file_map.par_iter().filter_map(move |(path, file)| {
             path.as_bytes()
                 .starts_with(normalized_prefix.as_bytes())

@@ -309,7 +309,7 @@ fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
         vfs_entries_to_table(lua, this.0.iter())
     });
     methods.add_method("get_file", |_, this, path: String| {
-        Ok(this.0.get_file(path).cloned().map(LuaVfsFile))
+        Ok(this.0.get_file(&path).cloned().map(LuaVfsFile))
     });
     methods.add_method("contains", |_, this, path: String| {
         Ok(this.0.contains(Path::new(&path)))
@@ -355,7 +355,7 @@ fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
         vfs_entries_to_table(lua, this.0.paths_matching(substring))
     });
     methods.add_method("paths_with", |lua, this, prefix: String| {
-        vfs_entries_to_table(lua, this.0.paths_with(prefix))
+        vfs_entries_to_table(lua, this.0.paths_with(&prefix))
     });
 }
 
@@ -363,7 +363,7 @@ fn add_vfs_mutation_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method_mut(
         "insert_loose_file",
         |_, this, (key, path): (String, String)| {
-            Ok(this.0.insert_loose_file(key, path).map(LuaVfsFile))
+            Ok(this.0.insert_loose_file(&key, path).map(LuaVfsFile))
         },
     );
     methods.add_method_mut(
@@ -374,10 +374,10 @@ fn add_vfs_mutation_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
         },
     );
     methods.add_method_mut("remove_file", |_, this, key: String| {
-        Ok(this.0.remove_file(key).map(LuaVfsFile))
+        Ok(this.0.remove_file(&key).map(LuaVfsFile))
     });
     methods.add_method_mut("remove_prefix", |lua, this, prefix: String| {
-        removed_vfs_files_to_table(lua, this.0.remove_prefix(prefix))
+        removed_vfs_files_to_table(lua, this.0.remove_prefix(&prefix))
     });
     methods.add_method_mut("remove_matching_glob", |lua, this, glob: String| {
         removed_vfs_files_to_table(lua, this.0.remove_matching_glob(&glob))

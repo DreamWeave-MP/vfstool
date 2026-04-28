@@ -24,12 +24,11 @@ impl VFS {
     }
 
     /// Insert or replace a loose file at `key` in the resolved winner map.
-    pub fn insert_loose_file<K: AsRef<Path>, P: AsRef<Path>>(
+    pub fn insert_loose_file<K: crate::VfsKeyInput + ?Sized, P: AsRef<Path>>(
         &mut self,
-        key: K,
+        key: &K,
         physical_path: P,
     ) -> Option<VfsFile> {
-        let key = key.as_ref();
         self.insert_file(key, VfsFile::from(physical_path))
     }
 
@@ -37,15 +36,18 @@ impl VFS {
     ///
     /// This does not reveal any lower-priority provider; it removes the key from the materialized
     /// map entirely.
-    pub fn remove_file<P: AsRef<Path>>(&mut self, key: P) -> Option<VfsFile> {
-        let normalized = NormalizedPath::new(key.as_ref().as_os_str().as_encoded_bytes());
+    pub fn remove_file<P: crate::VfsKeyInput + ?Sized>(&mut self, key: &P) -> Option<VfsFile> {
+        let normalized = key.to_vfs_key();
         self.layer_index.remove_key(&normalized);
         self.file_map.remove(&normalized)
     }
 
     /// Remove every current winner whose normalized key starts with `prefix`.
-    pub fn remove_prefix<P: AsRef<Path>>(&mut self, prefix: P) -> Vec<(NormalizedPath, VfsFile)> {
-        let normalized = NormalizedPath::new(prefix.as_ref().as_os_str().as_encoded_bytes());
+    pub fn remove_prefix<P: crate::VfsKeyInput + ?Sized>(
+        &mut self,
+        prefix: &P,
+    ) -> Vec<(NormalizedPath, VfsFile)> {
+        let normalized = prefix.to_vfs_key();
         self.remove_matching(|key, _| key.as_bytes().starts_with(normalized.as_bytes()))
     }
 

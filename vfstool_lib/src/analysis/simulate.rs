@@ -205,7 +205,7 @@ impl LayerIndex {
         key: &NormalizedPath,
         providers: &[usize],
     ) -> Option<usize> {
-        let winner = vfs.get_file(key_to_path_buf_lossy(key))?;
+        let winner = vfs.get_file(key)?;
         if winner.is_loose() {
             let normalized_path = normalize_path(winner.path());
             if let Some(idx) = providers.iter().copied().find(|idx| {
