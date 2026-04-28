@@ -180,7 +180,7 @@ fn lua_top_level_helpers_and_run_workflow() {
         f:close()
         assert(#vfstool.changed_files(merged, snapshot) == 1)
         local copied = vfstool.run_finalize(merged, output, snapshot)
-        assert(copied[1].relative_path == "config/settings.ini")
+        assert(vfstool.normalize_host_path(copied[1].relative_path) == "config/settings.ini")
 
         local _, tracked = vfstool.run_setup_tracked(vfs, merged, false)
         local f2 = io.open(merged .. "/new.txt", "w")
