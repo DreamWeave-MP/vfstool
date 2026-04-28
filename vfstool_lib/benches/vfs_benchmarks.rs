@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use criterion::{BatchSize, BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::{
     fs,
+    hint::black_box,
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
 };
