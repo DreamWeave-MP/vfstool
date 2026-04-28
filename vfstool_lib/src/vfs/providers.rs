@@ -448,26 +448,22 @@ impl VFS {
                 });
             }
         }
-        let keys: Vec<_> = self.file_map.keys().collect();
+        let mut keys: Vec<_> = self.file_map.keys().collect();
+        keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
         for key in &keys {
-            if let Some(child) = keys.iter().find(|candidate| {
-                *candidate != key && candidate.as_bytes().starts_with(key.as_bytes())
-            }) {
+            let mut child_prefix = key.as_bytes().to_vec();
+            child_prefix.push(b'/');
+            let child_index =
+                keys.partition_point(|candidate| candidate.as_bytes() < child_prefix.as_slice());
+            if let Some(child) = keys
+                .get(child_index)
+                .filter(|candidate| candidate.as_bytes().starts_with(&child_prefix))
+            {
                 issues.push(ValidationIssue::FileDirectoryConflict {
                     file_key: key_to_path_buf_lossy(key),
                     directory_key: key_to_path_buf_lossy(child),
                 });
             }
-        }
-        for collision in self.case_collisions().collisions {
-            issues.push(ValidationIssue::CaseCollision {
-                key: collision.key,
-                providers: collision
-                    .providers
-                    .into_iter()
-                    .map(|p| p.original_path)
-                    .collect(),
-            });
         }
         ValidationReport { issues }
     }

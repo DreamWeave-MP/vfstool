@@ -227,7 +227,8 @@ vfstool validate [OPTIONS]
 - `archive-list <ARCHIVE>`: List VFS entries supplied by one archive.
 - `case-collisions`: Report distinct original path spellings that normalize to the same VFS key.
 - `contributions`: Report per-source provider counts, wins, overridden files, unique files, and duplicates.
-- `validate`: Report missing loose winners, file/directory materialization conflicts, and case collisions.
+- `validate`: Report missing `data=`, `fallback-archive=`, `content=`, and `groundcover=` entries
+  from `openmw.cfg`, plus missing loose winners and file/directory materialization conflicts.
 
 **Options**:
 

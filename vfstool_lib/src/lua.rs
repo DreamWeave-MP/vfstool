@@ -23,7 +23,7 @@ use crate::{
 use crate::{SerializeType, serialize_value};
 use mlua::{
     AnyUserData, Error as LuaError, Lua, Result as LuaResult, Table, UserData, UserDataMethods,
-    Value,
+    Value, Variadic,
 };
 use std::path::{Path, PathBuf};
 
@@ -639,18 +639,14 @@ impl UserData for LuaConflictIndex {
         methods.add_method("conflicts_report", |lua, this, relative: Option<bool>| {
             conflicts_report_to_table(lua, &this.0.conflicts_report(relative.unwrap_or(true)))
         });
-        methods.add_method(
-            "shadowed_report",
-            |lua, this, (relative, list_files): (Option<bool>, Option<bool>)| {
-                shadowed_report_to_table(
-                    lua,
-                    &this.0.shadowed_report_with_files(
-                        relative.unwrap_or(true),
-                        list_files.unwrap_or(true),
-                    ),
-                )
-            },
-        );
+        methods.add_method("shadowed_report", |lua, this, args: Variadic<Value>| {
+            let relative = optional_bool_arg(args.first(), true)?;
+            let list_files = optional_bool_arg(args.get(1), true)?;
+            shadowed_report_to_table(
+                lua,
+                &this.0.shadowed_report_with_files(relative, list_files),
+            )
+        });
         methods.add_method("diff_report", |lua, this, (a, b): (String, String)| {
             diff_report_to_table(lua, &this.0.diff_report(Path::new(&a), Path::new(&b)))
         });
@@ -660,6 +656,17 @@ impl UserData for LuaConflictIndex {
 impl UserData for LuaSnapshot {}
 
 impl UserData for LuaMetadataSnapshot {}
+
+fn optional_bool_arg(value: Option<&Value>, default: bool) -> LuaResult<bool> {
+    match value {
+        Some(Value::Boolean(value)) => Ok(*value),
+        Some(Value::Nil) | None => Ok(default),
+        Some(value) => Err(LuaError::external(format!(
+            "expected boolean or nil, got {}",
+            value.type_name()
+        ))),
+    }
+}
 
 fn lua_normalize_host_path(_: &Lua, path: String) -> String {
     let mut path = PathBuf::from(path);

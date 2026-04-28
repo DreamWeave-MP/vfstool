@@ -76,7 +76,7 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
         assert(#vfs:duplicates("^textures/").entries == 1)
         assert(#vfs:duplicates("^meshes/").entries == 0)
         assert(#vfs:case_collisions().collisions == 1)
-        assert(#vfs:validate().issues == 1)
+        assert(#vfs:validate().issues == 0)
         assert(#vfs:materialization_plan(high, { allow_copying = true }).actions >= 1)
 
         local layer = vfs:layer_index()

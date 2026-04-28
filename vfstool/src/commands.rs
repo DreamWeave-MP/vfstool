@@ -6,7 +6,8 @@ use std::{
 };
 
 use vfstool_lib::{
-    CollapseOptions, VFS, normalize_host_path, run_finalize_tracked, run_setup_tracked,
+    CollapseOptions, VFS, ValidationIssue, normalize_host_path, run_finalize_tracked,
+    run_setup_tracked,
 };
 
 use crate::{
@@ -292,8 +293,113 @@ fn handle_contributions(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>
     write_serialized(output, format, &vfs.source_contributions())
 }
 
-fn handle_validate(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
-    write_serialized(output, format, &vfs.validate())
+#[derive(vfstool_lib::serde::Serialize)]
+#[serde(crate = "vfstool_lib::serde")]
+struct AppValidationReport {
+    issues: Vec<AppValidationIssue>,
+}
+
+#[derive(vfstool_lib::serde::Serialize)]
+#[serde(crate = "vfstool_lib::serde")]
+enum AppValidationIssue {
+    MissingDataDirectory {
+        path: PathBuf,
+    },
+    DataPathNotDirectory {
+        path: PathBuf,
+    },
+    MissingFallbackArchive {
+        name: String,
+    },
+    UnreadableFallbackArchive {
+        name: String,
+        path: PathBuf,
+    },
+    MissingContentFile {
+        name: String,
+    },
+    MissingGroundcoverFile {
+        name: String,
+    },
+    MissingLooseSource {
+        key: PathBuf,
+        source: PathBuf,
+    },
+    FileDirectoryConflict {
+        file_key: PathBuf,
+        directory_key: PathBuf,
+    },
+}
+
+fn handle_validate(
+    resolved_config_dir: PathBuf,
+    vfs: &VFS,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let cfg = load_openmw_config(resolved_config_dir);
+    let mut issues = Vec::new();
+
+    for dir in cfg.data_directories_iter() {
+        let path = dir.parsed();
+        if !path.exists() {
+            issues.push(AppValidationIssue::MissingDataDirectory {
+                path: path.to_path_buf(),
+            });
+        } else if !path.is_dir() {
+            issues.push(AppValidationIssue::DataPathNotDirectory {
+                path: path.to_path_buf(),
+            });
+        }
+    }
+
+    let loaded_archives = vfs.archives();
+    for archive in cfg.fallback_archives_iter() {
+        let name = archive.value();
+        let Some(file) = vfs.get_file(name.as_str()) else {
+            issues.push(AppValidationIssue::MissingFallbackArchive { name: name.clone() });
+            continue;
+        };
+        let path = file.path().to_path_buf();
+        if !loaded_archives.iter().any(|info| info.path == path) {
+            issues.push(AppValidationIssue::UnreadableFallbackArchive {
+                name: name.clone(),
+                path,
+            });
+        }
+    }
+
+    for content in cfg.content_files_iter() {
+        let name = content.value();
+        if vfs.get_file(name.as_str()).is_none() {
+            issues.push(AppValidationIssue::MissingContentFile { name: name.clone() });
+        }
+    }
+
+    for groundcover in cfg.groundcover_iter() {
+        let name = groundcover.value();
+        if vfs.get_file(name.as_str()).is_none() {
+            issues.push(AppValidationIssue::MissingGroundcoverFile { name: name.clone() });
+        }
+    }
+
+    for issue in vfs.validate().issues {
+        match issue {
+            ValidationIssue::MissingLooseSource { key, source } => {
+                issues.push(AppValidationIssue::MissingLooseSource { key, source });
+            }
+            ValidationIssue::FileDirectoryConflict {
+                file_key,
+                directory_key,
+            } => issues.push(AppValidationIssue::FileDirectoryConflict {
+                file_key,
+                directory_key,
+            }),
+            ValidationIssue::CaseCollision { .. } => {}
+        }
+    }
+
+    write_serialized(output, format, &AppValidationReport { issues })
 }
 
 fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Commands>> {
@@ -333,10 +439,6 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
         }
         Commands::Contributions { format, output } => {
             handle_contributions(vfs, format, output)?;
-            Ok(None)
-        }
-        Commands::Validate { format, output } => {
-            handle_validate(vfs, format, output)?;
             Ok(None)
         }
         other => Ok(Some(other)),
@@ -590,6 +692,10 @@ fn run_core_vfs_command(
                     working_dir: &working_dir,
                 },
             )?;
+            Ok(None)
+        }
+        Commands::Validate { format, output } => {
+            handle_validate(resolved_config_dir, vfs, format, output)?;
             Ok(None)
         }
         other => run_provider_vfs_command(other, vfs),

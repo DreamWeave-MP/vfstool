@@ -408,6 +408,54 @@ fn validate_reports_file_directory_conflict_json() {
 }
 
 #[test]
+fn validate_reports_missing_openmw_config_sources() {
+    let fixture = Fixture::new("validate_config_sources");
+    let missing_data = fixture.path("missing-data");
+    write_text(
+        &fixture.config_dir.join("openmw.cfg"),
+        &format!(
+            "data=\"{}\"\ndata=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Missing.bsa\ncontent=Missing.esm\ngroundcover=MissingGrass.esp\n",
+            fixture.low.display(),
+            missing_data.display(),
+            fixture.data_local.display()
+        ),
+    );
+
+    let output = fixture.run(&["validate", "--format", "json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    let issues = payload["issues"]
+        .as_array()
+        .expect("issues should be array");
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.get("MissingDataDirectory").is_some())
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.get("MissingFallbackArchive").is_some())
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.get("MissingContentFile").is_some())
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.get("MissingGroundcoverFile").is_some())
+    );
+    assert!(
+        !issues
+            .iter()
+            .any(|issue| issue.get("CaseCollision").is_some())
+    );
+}
+
+#[test]
 fn shadowed_omits_file_lists_unless_requested() {
     let fixture = Fixture::new("shadowed_summary");
 
