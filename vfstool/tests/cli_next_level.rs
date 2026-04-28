@@ -146,8 +146,8 @@ fn openmw_config_env_path_supports_nonstandard_filename_and_quoted_paths() {
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
     assert_eq!(
-        stdout.trim(),
-        spaced.join("textures/env.dds").display().to_string()
+        PathBuf::from(stdout.trim()),
+        spaced.join("textures").join("env.dds")
     );
 }
 
