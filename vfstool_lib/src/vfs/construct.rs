@@ -64,7 +64,7 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let loose_sources = collect_loose_sources(dirs);
+        let loose_sources = collect_loose_sources(dirs, true);
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
         let archive_sources = collect_archive_sources(&loose_sources, archive_list);
 
@@ -77,8 +77,6 @@ impl VFS {
         // Merge directories in order: later directories override earlier ones,
         // matching OpenMW's VFS semantics (last data= entry wins).
         vfs.append_sources(&loose_sources);
-
-        vfs.rebuild_layer_index();
 
         vfs
     }
@@ -106,7 +104,7 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let loose_sources = try_collect_loose_sources(dirs)?;
+        let loose_sources = try_collect_loose_sources(dirs, true)?;
         #[cfg(any(feature = "beth-archives", feature = "zip"))]
         let archive_sources = try_collect_archive_sources(&loose_sources, archive_list)?;
         #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
@@ -118,7 +116,6 @@ impl VFS {
             vfs.append_sources(&archive_sources);
         }
         vfs.append_sources(&loose_sources);
-        vfs.rebuild_layer_index();
         Ok(vfs)
     }
 
@@ -152,7 +149,7 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let loose_sources = collect_loose_sources(dirs);
+        let loose_sources = collect_loose_sources(dirs, true);
         let dir_sources = layer_sources_from(&loose_sources);
         let mut vfs = Self::new();
 
@@ -176,7 +173,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.layer_index = layer_index;
+        vfs.layer_index = Some(layer_index);
         (vfs, conflict_index)
     }
 
@@ -203,7 +200,7 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let loose_sources = try_collect_loose_sources(dirs)?;
+        let loose_sources = try_collect_loose_sources(dirs, true)?;
         let dir_sources = layer_sources_from(&loose_sources);
         let mut vfs = Self::new();
 
@@ -228,7 +225,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.layer_index = layer_index;
+        vfs.layer_index = Some(layer_index);
         Ok((vfs, conflict_index))
     }
 
@@ -253,7 +250,7 @@ impl VFS {
             .map(|d| d.as_ref().to_path_buf())
             .collect();
 
-        let loose_sources = collect_loose_sources(dirs);
+        let loose_sources = collect_loose_sources(dirs, true);
 
         let mut vfs = Self::new();
 
@@ -266,8 +263,8 @@ impl VFS {
 
         vfs.append_sources(&loose_sources);
 
-        vfs.rebuild_layer_index();
-        let layer_index = vfs.layer_index.clone();
+        let layer_index = vfs.build_layer_index();
+        vfs.layer_index = Some(layer_index.clone());
         (vfs, layer_index)
     }
 
@@ -289,9 +286,27 @@ impl VFS {
         )]
         archive_list: Option<Vec<&str>>,
     ) -> Result<(Self, LayerIndex), VfsBuildError> {
-        let mut vfs = Self::try_from_directories(search_dirs, archive_list)?;
-        vfs.rebuild_layer_index();
-        let layer_index = vfs.layer_index.clone();
+        let dirs: Vec<PathBuf> = search_dirs
+            .into_iter()
+            .map(|d| d.as_ref().to_path_buf())
+            .collect();
+
+        let loose_sources = try_collect_loose_sources(dirs, true)?;
+
+        let mut vfs = Self::new();
+
+        #[cfg(any(feature = "beth-archives", feature = "zip"))]
+        let archive_sources = try_collect_archive_sources(&loose_sources, archive_list)?;
+        #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
+        reject_archive_list_without_archive_features(archive_list.as_deref())?;
+        #[cfg(any(feature = "beth-archives", feature = "zip"))]
+        {
+            vfs.append_sources(&archive_sources);
+        }
+
+        vfs.append_sources(&loose_sources);
+        let layer_index = vfs.build_layer_index();
+        vfs.layer_index = Some(layer_index.clone());
         Ok((vfs, layer_index))
     }
 }

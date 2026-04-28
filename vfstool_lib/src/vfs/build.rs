@@ -92,16 +92,13 @@ fn archive_lookup(
         .collect()
 }
 
-pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {
+pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>, sort_entries: bool) -> Vec<SourceEntries> {
     dirs.into_iter()
         .map(|dir| {
             let mut entries: Vec<_> = directory_contents_to_file_map(&dir).collect();
-            entries.sort_by(|(left_key, left_file), (right_key, right_file)| {
-                left_key
-                    .as_bytes()
-                    .cmp(right_key.as_bytes())
-                    .then_with(|| left_file.path().cmp(right_file.path()))
-            });
+            if sort_entries {
+                sort_source_entries(&mut entries);
+            }
             SourceEntries {
                 entries,
                 source: SourceMeta {
@@ -115,16 +112,14 @@ pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {
 
 pub(super) fn try_collect_loose_sources(
     dirs: Vec<PathBuf>,
+    sort_entries: bool,
 ) -> Result<Vec<SourceEntries>, VfsBuildError> {
     dirs.into_iter()
         .map(|dir| {
             let mut entries = try_directory_contents_to_entries(&dir)?;
-            entries.sort_by(|(left_key, left_file), (right_key, right_file)| {
-                left_key
-                    .as_bytes()
-                    .cmp(right_key.as_bytes())
-                    .then_with(|| left_file.path().cmp(right_file.path()))
-            });
+            if sort_entries {
+                sort_source_entries(&mut entries);
+            }
             Ok(SourceEntries {
                 entries,
                 source: SourceMeta {
@@ -134,6 +129,15 @@ pub(super) fn try_collect_loose_sources(
             })
         })
         .collect()
+}
+
+fn sort_source_entries(entries: &mut [(NormalizedPath, VfsFile)]) {
+    entries.sort_by(|(left_key, left_file), (right_key, right_file)| {
+        left_key
+            .as_bytes()
+            .cmp(right_key.as_bytes())
+            .then_with(|| left_file.path().cmp(right_file.path()))
+    });
 }
 
 pub(super) fn layer_sources_from(sources: &[SourceEntries]) -> Vec<(SourceMeta, Vec<PathBuf>)> {

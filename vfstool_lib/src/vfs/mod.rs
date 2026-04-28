@@ -59,7 +59,7 @@ pub struct VFS {
     file_map: VFSFiles,
     pub(crate) providers: AHashMap<NormalizedPath, Vec<ProviderEntry>>,
     pub(crate) sources: Vec<SourceMeta>,
-    layer_index: LayerIndex,
+    layer_index: Option<LayerIndex>,
 }
 
 #[cfg(test)]

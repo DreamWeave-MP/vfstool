@@ -22,6 +22,19 @@ fn from_single_directory_all_files_present() {
     assert!(vfs.get_file("bar.txt").is_some());
     assert!(vfs.get_file("sub/baz.txt").is_some());
     assert_eq!(vfs.iter().count(), 3);
+    assert!(!vfs.has_layer_index());
+}
+
+#[test]
+fn layer_index_constructor_precomputes_provider_index() {
+    let dir = TempDir::new("vfsloose_layer_index_constructor");
+    dir.write("foo.txt", b"a");
+
+    let (vfs, index) = VFS::from_directories_with_layer_index([dir.path()], None);
+
+    assert!(vfs.has_layer_index());
+    assert_eq!(index.sources.len(), 1);
+    assert_eq!(vfs.layer_index().sources.len(), 1);
 }
 
 #[test]

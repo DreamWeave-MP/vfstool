@@ -20,7 +20,7 @@ impl VFS {
             file_map: AHashMap::new(),
             providers: AHashMap::new(),
             sources: Vec::new(),
-            layer_index: LayerIndex::from_file_lists([]),
+            layer_index: None,
         }
     }
 
@@ -31,8 +31,21 @@ impl VFS {
 
     /// Returns the canonical provider-chain index owned by this VFS.
     #[must_use]
-    pub fn layer_index(&self) -> &LayerIndex {
-        &self.layer_index
+    pub fn layer_index(&self) -> LayerIndex {
+        self.layer_index
+            .clone()
+            .unwrap_or_else(|| self.build_layer_index())
+    }
+
+    /// Returns whether this VFS owns a precomputed provider-occurrence [`LayerIndex`].
+    ///
+    /// Plain constructors intentionally leave this false so engine-style fast paths can keep only the
+    /// winner map, provider stacks, and source list. Analysis constructors set it when callers ask for
+    /// layer/provenance reports. A VFS constructor that always builds analysis state is not a VFS
+    /// constructor; it is a surprise tax with better branding.
+    #[must_use]
+    pub fn has_layer_index(&self) -> bool {
+        self.layer_index.is_some()
     }
 
     pub(crate) fn push_source(&mut self, source: SourceMeta) -> usize {
@@ -91,7 +104,7 @@ impl VFS {
         self.providers.get(key)?.len().checked_sub(1)
     }
 
-    pub(crate) fn rebuild_layer_index(&mut self) {
+    pub(crate) fn build_layer_index(&self) -> LayerIndex {
         let mut used = vec![false; self.sources.len()];
         for providers in self.providers.values() {
             for entry in providers {
@@ -108,14 +121,7 @@ impl VFS {
             }
         }
 
-        for providers in self.providers.values_mut() {
-            for entry in providers {
-                entry.source_index = remap[entry.source_index];
-            }
-        }
-
-        self.sources = compacted_sources;
-        let mut files_by_source = vec![Vec::<PathBuf>::new(); self.sources.len()];
+        let mut files_by_source = vec![Vec::<PathBuf>::new(); compacted_sources.len()];
         for (key, providers) in &self.providers {
             for entry in providers {
                 let source = &entry.provider.source;
@@ -124,17 +130,22 @@ impl VFS {
                 } else {
                     Self::provider_original_path(source, key, &entry.provider.file)
                 };
-                files_by_source[entry.source_index].push(path_for_layer);
+                files_by_source[remap[entry.source_index]].push(path_for_layer);
             }
         }
 
-        let rows = self
-            .sources
-            .iter()
-            .cloned()
+        let rows = compacted_sources
+            .into_iter()
             .zip(files_by_source)
             .collect::<Vec<_>>();
-        self.layer_index = LayerIndex::from_file_lists(rows);
+        LayerIndex::from_file_lists(rows)
+    }
+
+    pub(crate) fn rebuild_layer_index(&mut self) {
+        if self.layer_index.is_none() {
+            return;
+        }
+        self.layer_index = Some(self.build_layer_index());
     }
 
     /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.

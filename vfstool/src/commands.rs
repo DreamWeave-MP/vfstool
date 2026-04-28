@@ -401,7 +401,7 @@ fn handle_validate(
         }
     }
 
-    for issue in vfs.validate().issues {
+    for issue in vfs.validate_winners().issues {
         match issue {
             ValidationIssue::MissingLooseSource { key, source } => {
                 issues.push(AppValidationIssue::MissingLooseSource { key, source });

@@ -452,12 +452,32 @@ impl VFS {
     /// Return per-source contribution counts from the provider index.
     #[must_use]
     pub fn source_contributions(&self) -> SourceContributionReport {
-        self.layer_index.source_contributions()
+        self.layer_index().source_contributions()
     }
 
     /// Validate structural consistency of the resolved VFS and provider index.
     #[must_use]
     pub fn validate(&self) -> ValidationReport {
+        let mut report = self.validate_winners();
+        for collision in self.case_collisions().collisions {
+            report.issues.push(ValidationIssue::CaseCollision {
+                key: collision.key,
+                providers: collision
+                    .providers
+                    .into_iter()
+                    .map(|provider| provider.original_path)
+                    .collect(),
+            });
+        }
+        report
+    }
+
+    /// Validate winner-map checks without constructing provider-level collision reports.
+    ///
+    /// This covers missing loose winners and file/directory materialization conflicts. Use
+    /// [`Self::validate`] when case-collision reporting is needed too.
+    #[must_use]
+    pub fn validate_winners(&self) -> ValidationReport {
         let mut issues = Vec::new();
         for (key, file) in &self.file_map {
             if file.is_loose() && !file.path().exists() {
@@ -466,16 +486,6 @@ impl VFS {
                     source: file.path().to_path_buf(),
                 });
             }
-        }
-        for collision in self.case_collisions().collisions {
-            issues.push(ValidationIssue::CaseCollision {
-                key: collision.key,
-                providers: collision
-                    .providers
-                    .into_iter()
-                    .map(|provider| provider.original_path)
-                    .collect(),
-            });
         }
         let mut keys: Vec<_> = self.file_map.keys().collect();
         keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
