@@ -98,7 +98,8 @@ impl LayerIndex {
                     None => None,
                 },
                 ArchiveHashMode::AllProviders => archive_provider_file(&src.path, &key, cache)
-                    .and_then(|file| file.open().ok().and_then(|reader| hash_reader(reader).ok())),
+                    .map(|file| file.open().and_then(hash_reader))
+                    .transpose()?,
             },
         };
 

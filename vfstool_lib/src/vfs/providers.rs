@@ -3,7 +3,7 @@ use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
     normalize_host_path,
-    paths::{key_to_path_buf_lossy, key_to_string_lossy},
+    paths::{key_is_at_or_under_prefix, key_to_path_buf_lossy, key_to_string_lossy},
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -211,6 +211,10 @@ pub enum MaterializationIssue {
         dest: PathBuf,
     },
     /// Planned destination would escape the output root or hit an unsafe path.
+    ///
+    /// The current dry-run planner only receives a destination root and normalized VFS keys, so this
+    /// variant is reserved for destination-aware safety checks added without changing the report
+    /// shape. Execution paths still perform their own root/parent safety checks before writing.
     UnsafeDestination {
         /// Normalized VFS key with an unsafe destination.
         key: PathBuf,
@@ -230,17 +234,11 @@ pub struct MaterializationPlan {
 }
 
 impl VFS {
-    fn provider_record_for(
-        &self,
+    fn provider_record_from_entry(
         key: &NormalizedPath,
-        source_index: usize,
-    ) -> Option<VfsProviderRecord> {
+        entry: &super::ProviderEntry,
+    ) -> VfsProviderRecord {
         let key_path = key_to_path_buf_lossy(key);
-        let entry = self
-            .providers
-            .get(key)?
-            .iter()
-            .find(|entry| entry.source_index == source_index)?;
         let source = entry.provider.source.clone();
         let original_path = VFS::provider_original_path(&source, key, &entry.provider.file);
         let resolved_path = if source.kind == SourceKind::Archive {
@@ -248,20 +246,20 @@ impl VFS {
         } else {
             source.path.join(&original_path).display().to_string()
         };
-        Some(VfsProviderRecord {
-            source_index,
+        VfsProviderRecord {
+            source_index: entry.source_index,
             source,
             key: key_path,
             original_path,
             resolved_path,
-        })
+        }
     }
 
     fn provider_records_for_key(&self, key: &NormalizedPath) -> Vec<VfsProviderRecord> {
         self.providers.get(key).map_or_else(Vec::new, |entries| {
             entries
                 .iter()
-                .filter_map(|entry| self.provider_record_for(key, entry.source_index))
+                .map(|entry| Self::provider_record_from_entry(key, entry))
                 .collect()
         })
     }
@@ -478,13 +476,22 @@ impl VFS {
         let dest = dest.as_ref();
         let mut actions = Vec::new();
         let mut issues = Vec::new();
-        let keys: Vec<_> = self.file_map.keys().cloned().collect();
-        for (key, file) in &self.file_map {
-            let key_path = key_to_path_buf_lossy(key);
+        let mut keys: Vec<_> = self.file_map.keys().cloned().collect();
+        keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+        let conflicting_files: AHashSet<_> = keys
+            .windows(2)
+            .filter_map(|window| {
+                let [key, candidate] = window else {
+                    return None;
+                };
+                key_is_at_or_under_prefix(candidate, key).then_some(key.clone())
+            })
+            .collect();
+        for key in keys {
+            let file = &self.file_map[&key];
+            let key_path = key_to_path_buf_lossy(&key);
             let target = dest.join(&key_path);
-            if keys.iter().any(|candidate| {
-                candidate != key && candidate.as_bytes().starts_with(key.as_bytes())
-            }) {
+            if conflicting_files.contains(&key) {
                 issues.push(MaterializationIssue::FileDirectoryConflict {
                     key: key_path.clone(),
                     dest: target.clone(),

@@ -6,7 +6,7 @@ mod keys;
 mod open;
 mod types;
 
-pub use enumerate::{archive_paths, file_map};
+pub use enumerate::{archive_paths, file_entries, file_map};
 #[cfg(test)]
 pub(crate) use keys::normalized_archive_key;
 pub use open::from_set;

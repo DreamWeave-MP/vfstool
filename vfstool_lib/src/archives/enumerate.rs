@@ -30,9 +30,9 @@ pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
     }
 }
 
-/// Build a normalized-path -> [`VfsFile`] map from an [`ArchiveList`].
+/// Build normalized archive entries from an [`ArchiveList`], preserving duplicate normalized keys.
 #[must_use]
-pub fn file_map(archives: &ArchiveList) -> AHashMap<NormalizedPath, VfsFile> {
+pub fn file_entries(archives: &ArchiveList) -> Vec<(NormalizedPath, VfsFile)> {
     archives
         .iter()
         .flat_map(|stored_archive| {
@@ -75,4 +75,13 @@ pub fn file_map(archives: &ArchiveList) -> AHashMap<NormalizedPath, VfsFile> {
             iter
         })
         .collect()
+}
+
+/// Build a normalized-path -> [`VfsFile`] map from an [`ArchiveList`].
+///
+/// Duplicate normalized keys within one archive list are collapsed by map insertion. Use
+/// [`file_entries`] when provider/collision reporting needs to preserve every archive entry.
+#[must_use]
+pub fn file_map(archives: &ArchiveList) -> AHashMap<NormalizedPath, VfsFile> {
+    file_entries(archives).into_iter().collect()
 }

@@ -46,7 +46,7 @@ pub(super) fn collect_archive_sources(
                     path: stored.path().to_path_buf(),
                     kind: SourceKind::Archive,
                 },
-                entries: archives::file_map(&archive_list).into_iter().collect(),
+                entries: archives::file_entries(&archive_list),
             }
         })
         .collect()
@@ -54,12 +54,21 @@ pub(super) fn collect_archive_sources(
 
 pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>) -> Vec<SourceEntries> {
     dirs.into_iter()
-        .map(|dir| SourceEntries {
-            entries: directory_contents_to_file_map(&dir).collect(),
-            source: SourceMeta {
-                path: dir,
-                kind: SourceKind::LooseDir,
-            },
+        .map(|dir| {
+            let mut entries: Vec<_> = directory_contents_to_file_map(&dir).collect();
+            entries.sort_by(|(left_key, left_file), (right_key, right_file)| {
+                left_key
+                    .as_bytes()
+                    .cmp(right_key.as_bytes())
+                    .then_with(|| left_file.path().cmp(right_file.path()))
+            });
+            SourceEntries {
+                entries,
+                source: SourceMeta {
+                    path: dir,
+                    kind: SourceKind::LooseDir,
+                },
+            }
         })
         .collect()
 }

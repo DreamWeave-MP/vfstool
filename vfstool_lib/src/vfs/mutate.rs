@@ -4,7 +4,7 @@ use super::{ProviderEntry, VFS, VfsProvider};
 use crate::archives;
 use crate::{
     NormalizedPath, SourceKind, SourceMeta, VfsFile, VfsKeyInput, path_glob_matches,
-    paths::{key_to_path_buf_lossy, normalized_safe_key},
+    paths::{key_is_at_or_under_prefix, key_to_path_buf_lossy, normalized_safe_key},
 };
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -114,7 +114,7 @@ impl VFS {
             kind: SourceKind::Archive,
         };
         let source_index = self.push_source(source.clone());
-        for (key, file) in archives::file_map(&vec![archive]) {
+        for (key, file) in archives::file_entries(&vec![archive]) {
             self.providers
                 .entry(key.clone())
                 .or_default()
@@ -233,7 +233,7 @@ impl VFS {
         prefix: &K,
     ) -> Vec<(NormalizedPath, VfsProvider)> {
         let prefix = prefix.to_vfs_key();
-        self.remove_matching_provider(|key, _| key.as_bytes().starts_with(prefix.as_bytes()))
+        self.remove_matching_provider(|key, _| key_is_at_or_under_prefix(key, &prefix))
     }
 
     /// Remove resolved winners under `prefix`, discarding all lower-priority providers too.
@@ -245,7 +245,7 @@ impl VFS {
         let keys = self
             .providers
             .keys()
-            .filter(|key| key.as_bytes().starts_with(prefix.as_bytes()))
+            .filter(|key| key_is_at_or_under_prefix(key, &prefix))
             .cloned()
             .collect::<Vec<_>>();
         keys.into_iter()

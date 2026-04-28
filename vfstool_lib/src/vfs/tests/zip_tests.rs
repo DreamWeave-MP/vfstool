@@ -349,6 +349,35 @@ fn zip_entry_uppercase_name_normalized_to_lowercase_key() {
     assert_eq!(buf, b"nif_data");
 }
 
+#[test]
+fn zip_duplicate_normalized_entries_are_reported() {
+    let dir = TempDir::new("vfszip_duplicate_normalized_entries");
+    let archive = dir.create_zip(
+        "data.zip",
+        &[
+            ("Textures/Foo.DDS", b"upper"),
+            ("textures/foo.dds", b"lower"),
+        ],
+    );
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
+
+    let providers = vfs.provider_records_for("textures/foo.dds");
+    assert_eq!(providers.len(), 2);
+    let original_paths = providers
+        .iter()
+        .map(|provider| provider.original_path.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(original_paths.contains(Path::new("Textures/Foo.DDS")));
+    assert!(original_paths.contains(Path::new("textures/foo.dds")));
+
+    let entries = vfs.archive_entries(archive);
+    assert_eq!(entries.len(), 2);
+    let collisions = vfs.case_collisions();
+    assert_eq!(collisions.collisions.len(), 1);
+    assert_eq!(collisions.collisions[0].providers.len(), 2);
+}
+
 // ---- PK3 ----
 
 #[test]

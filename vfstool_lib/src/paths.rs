@@ -109,6 +109,16 @@ pub(crate) fn normalized_safe_normalized_bytes(bytes: &[u8]) -> bool {
 }
 
 #[must_use]
+pub(crate) fn key_is_at_or_under_prefix(key: &NormalizedPath, prefix: &NormalizedPath) -> bool {
+    let key = key.as_bytes();
+    let prefix = prefix.as_bytes();
+    key == prefix
+        || key
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| suffix.starts_with(b"/"))
+}
+
+#[must_use]
 pub(crate) fn key_to_path_buf_lossy(key: &NormalizedPath) -> PathBuf {
     PathBuf::from(String::from_utf8_lossy(key.as_bytes()).into_owned())
 }

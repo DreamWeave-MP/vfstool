@@ -101,6 +101,8 @@ let contributions = layer.source_contributions();
 
 ### Serialization
 
+Requires the `serialize` feature.
+
 ```rust
 use vfstool_lib::{SerializeType, VFS};
 
@@ -160,6 +162,10 @@ With the `beth-archives` or `zip` feature enabled, `VFS::from_directories` resol
 through the loose directory files and inserts archive providers below all loose providers, matching
 OpenMW's loose-over-archive rule. Manual `push_archive` is different: it pushes that archive as a new
 highest-priority provider source, because that is what "push" means.
+
+Archive entries that normalize to the same VFS key are preserved in provider reports and case
+collision reports. The resolved winner still follows provider order; reporting does not silently turn
+two in-archive spellings into one entry just because a map was convenient.
 
 ```rust,no_run
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
@@ -229,7 +235,7 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
 | `zip` | ZIP/PK3 archive support |
 | `serialize` | JSON/YAML/TOML output via serde |
 | `lua` | Embedded `mlua` bindings for the promoted stable API surface; see [`docs/lua.md`](docs/lua.md) |
-| `lua-vendored` | Alias for `lua`; embedded-only, not a `cdylib` Lua module |
+| `standalone-lua` | Enables `lua` with vendored LuaJIT for embedded standalone tools; not a `cdylib` Lua module |
 
 ---
 

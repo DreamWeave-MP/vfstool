@@ -108,6 +108,84 @@ fn remove_provider_prefix_removes_provider_stacks_under_prefix() {
 }
 
 #[test]
+fn remove_provider_prefix_uses_path_component_boundaries() {
+    let dir = TempDir::new("vfsloose_remove_prefix_boundaries");
+    let tex = dir.write("foo.dds", b"a");
+    let tex2 = dir.write("bar.dds", b"b");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("textures/foo.dds", &tex);
+    vfs.set_winner_loose_file("textures2/bar.dds", &tex2);
+
+    let removed = vfs.remove_provider_prefix("textures");
+
+    assert_eq!(removed.len(), 1);
+    assert!(!vfs.contains(Path::new("textures/foo.dds")));
+    assert!(vfs.contains(Path::new("textures2/bar.dds")));
+}
+
+#[test]
+fn remove_resolved_prefix_uses_path_component_boundaries() {
+    let dir = TempDir::new("vfsloose_remove_resolved_prefix_boundaries");
+    let tex = dir.write("foo.dds", b"a");
+    let tex2 = dir.write("bar.dds", b"b");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("textures/foo.dds", &tex);
+    vfs.set_winner_loose_file("textures2/bar.dds", &tex2);
+
+    let removed = vfs.remove_resolved_prefix("textures");
+
+    assert_eq!(removed.len(), 1);
+    assert!(!vfs.contains(Path::new("textures/foo.dds")));
+    assert!(vfs.contains(Path::new("textures2/bar.dds")));
+}
+
+#[test]
+fn materialization_plan_uses_path_component_conflicts() {
+    let dir = TempDir::new("vfsloose_materialization_plan_boundaries");
+    let foo = dir.write("foo", b"a");
+    let foobar = dir.write("foobar", b"b");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("foo", &foo);
+    vfs.set_winner_loose_file("foobar", &foobar);
+
+    let out = TempDir::new("vfsloose_materialization_plan_boundaries_out");
+    let plan = vfs.materialization_plan(
+        out.path(),
+        &crate::CollapseOptions {
+            allow_copying: false,
+            extract_archives: false,
+            use_symlinks: false,
+        },
+    );
+
+    assert!(plan.issues.is_empty());
+    assert_eq!(plan.actions.len(), 2);
+}
+
+#[test]
+fn materialization_plan_rejects_file_directory_conflict() {
+    let dir = TempDir::new("vfsloose_materialization_plan_conflict");
+    let foo = dir.write("foo", b"a");
+    let child = dir.write("child", b"b");
+    let mut vfs = VFS::new();
+    vfs.set_winner_loose_file("foo", &foo);
+    vfs.set_winner_loose_file("foo/bar", &child);
+
+    let out = TempDir::new("vfsloose_materialization_plan_conflict_out");
+    let plan = vfs.materialization_plan(
+        out.path(),
+        &crate::CollapseOptions {
+            allow_copying: false,
+            extract_archives: false,
+            use_symlinks: false,
+        },
+    );
+
+    assert_eq!(plan.issues.len(), 1);
+    assert_eq!(plan.actions.len(), 1);
+}
+
+#[test]
 fn remove_resolved_matching_glob_removes_matching_winners() {
     let dir = TempDir::new("vfsloose_remove_glob");
     let tex = dir.write("foo.dds", b"a");

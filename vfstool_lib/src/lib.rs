@@ -34,6 +34,14 @@
 //! [`VFS::remove_resolved_file`] replace or discard a whole provider stack. Stack-aware operations
 //! such as [`VFS::push_provider`] and [`VFS::remove_winner`] preserve lower-priority providers and
 //! reveal them when the current winner is removed.
+//! Prefix APIs such as [`VFS::paths_with`], [`VFS::remove_provider_prefix`], and
+//! [`VFS::remove_resolved_prefix`] match VFS path-component boundaries: `textures` includes
+//! `textures/foo.dds`, not `textures2/foo.dds`. Byte-prefix matching is not a filesystem model; it
+//! is a small bug generator.
+//!
+//! With archive features enabled, [`VFS::from_directories`] inserts configured archives below all
+//! loose directory providers. Manual archive mutation through `push_archive` is deliberately
+//! different: it pushes that archive as the newest highest-priority source.
 //!
 //! # Examples
 //!
@@ -121,6 +129,7 @@
 //!   how you get to debug nothing for an afternoon.
 //! - `lua`: embedded `mlua` bindings for the promoted stable API surface. This is not a `cdylib`
 //!   Lua module; hosts register `lua::open` or `lua::register` into their own Lua state.
+//! - `standalone-lua`: enables `lua` with vendored `LuaJIT` for standalone embedded hosts.
 //!
 //! # Runner warning
 //!

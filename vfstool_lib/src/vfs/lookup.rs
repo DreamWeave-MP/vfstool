@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{MaybeFile, VFS, VFSTuple};
-use crate::{DisplayTree, VfsKeyInput, normalize_host_path, paths::key_to_string_lossy};
+use crate::{
+    DisplayTree, VfsKeyInput, normalize_host_path,
+    paths::{key_is_at_or_under_prefix, key_to_string_lossy},
+};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
@@ -104,9 +107,7 @@ impl VFS {
     ) -> impl Iterator<Item = VFSTuple<'_>> {
         let normalized_prefix = prefix.to_vfs_key();
         self.file_map.iter().filter_map(move |(path, file)| {
-            path.as_bytes()
-                .starts_with(normalized_prefix.as_bytes())
-                .then_some((path, file))
+            key_is_at_or_under_prefix(path, &normalized_prefix).then_some((path, file))
         })
     }
 
@@ -117,9 +118,7 @@ impl VFS {
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
         let normalized_prefix = prefix.to_vfs_key();
         self.file_map.par_iter().filter_map(move |(path, file)| {
-            path.as_bytes()
-                .starts_with(normalized_prefix.as_bytes())
-                .then_some((path, file))
+            key_is_at_or_under_prefix(path, &normalized_prefix).then_some((path, file))
         })
     }
 

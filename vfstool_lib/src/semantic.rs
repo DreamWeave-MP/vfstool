@@ -108,8 +108,8 @@ pub enum ArchiveHashMode {
     WinnerOnly,
     /// Hash all archive providers when available.
     ///
-    /// Current implementation hashes winners and gracefully falls back to unknown for non-winning
-    /// archive providers.
+    /// Missing providers remain unknown; archive entries that can be located are opened and hashed.
+    /// Read/decompression failures are returned as I/O errors instead of being reported as unknown.
     AllProviders,
 }
 

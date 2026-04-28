@@ -134,6 +134,31 @@ fn collision_across_dirs_via_case_normalization() {
     assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), path2);
 }
 
+#[test]
+fn same_source_case_collision_reports_distinct_original_paths() {
+    let dir = TempDir::new("vfsprio_same_source_case_collision");
+    dir.write("Textures/Foo.DDS", b"upper");
+    let lower = dir.write("textures/foo.dds", b"lower");
+
+    let vfs = VFS::from_directories(vec![dir.path()], None);
+
+    assert_eq!(vfs.iter().count(), 1);
+    assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), lower);
+
+    let providers = vfs.provider_records_for("textures/foo.dds");
+    assert_eq!(providers.len(), 2);
+    let original_paths = providers
+        .iter()
+        .map(|provider| provider.original_path.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(original_paths.contains(Path::new("Textures/Foo.DDS")));
+    assert!(original_paths.contains(Path::new("textures/foo.dds")));
+
+    let collisions = vfs.case_collisions();
+    assert_eq!(collisions.collisions.len(), 1);
+    assert_eq!(collisions.collisions[0].providers.len(), 2);
+}
+
 /// Override must be per-key: files unique to an earlier dir must survive
 /// even when later dirs override other keys.
 #[test]
@@ -210,6 +235,21 @@ fn paths_with_finds_all_under_prefix() {
     assert_eq!(vfs.paths_with("textures").count(), 3);
     assert_eq!(vfs.paths_with("textures/landscape").count(), 2);
     assert_eq!(vfs.paths_with("meshes").count(), 1);
+}
+
+#[test]
+fn paths_with_uses_path_component_boundaries() {
+    let dir = TempDir::new("vfsloose_with_boundaries");
+    dir.write("textures/foo.dds", b"");
+    dir.write("textures2/bar.dds", b"");
+    let vfs = VFS::from_directories(vec![dir.path()], None);
+
+    let paths = vfs
+        .paths_with("textures")
+        .map(|(key, _)| crate::paths::key_to_string_lossy(key))
+        .collect::<Vec<_>>();
+
+    assert_eq!(paths, vec!["textures/foo.dds"]);
 }
 
 #[test]
