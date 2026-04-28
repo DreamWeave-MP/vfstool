@@ -173,7 +173,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.layer_index = Some(layer_index);
+        let _ = vfs.layer_index.set(layer_index);
         (vfs, conflict_index)
     }
 
@@ -225,7 +225,7 @@ impl VFS {
 
         let layer_index = LayerIndex::from_file_lists(all_sources);
         let conflict_index = ConflictIndex::from_layer_index(&layer_index);
-        vfs.layer_index = Some(layer_index);
+        let _ = vfs.layer_index.set(layer_index);
         Ok((vfs, conflict_index))
     }
 
@@ -264,7 +264,7 @@ impl VFS {
         vfs.append_sources(&loose_sources);
 
         let layer_index = vfs.build_layer_index();
-        vfs.layer_index = Some(layer_index.clone());
+        let _ = vfs.layer_index.set(layer_index.clone());
         (vfs, layer_index)
     }
 
@@ -306,7 +306,7 @@ impl VFS {
 
         vfs.append_sources(&loose_sources);
         let layer_index = vfs.build_layer_index();
-        vfs.layer_index = Some(layer_index.clone());
+        let _ = vfs.layer_index.set(layer_index.clone());
         Ok((vfs, layer_index))
     }
 }

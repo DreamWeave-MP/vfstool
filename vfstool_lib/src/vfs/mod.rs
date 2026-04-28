@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use ahash::AHashMap;
+use std::sync::OnceLock;
 
 mod build;
 mod construct;
@@ -59,7 +60,7 @@ pub struct VFS {
     file_map: VFSFiles,
     pub(crate) providers: AHashMap<NormalizedPath, Vec<ProviderEntry>>,
     pub(crate) sources: Vec<SourceMeta>,
-    layer_index: Option<LayerIndex>,
+    layer_index: OnceLock<LayerIndex>,
 }
 
 #[cfg(test)]

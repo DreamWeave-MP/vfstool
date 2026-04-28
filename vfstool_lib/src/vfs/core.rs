@@ -20,7 +20,7 @@ impl VFS {
             file_map: AHashMap::new(),
             providers: AHashMap::new(),
             sources: Vec::new(),
-            layer_index: None,
+            layer_index: std::sync::OnceLock::new(),
         }
     }
 
@@ -31,10 +31,8 @@ impl VFS {
 
     /// Returns the canonical provider-chain index owned by this VFS.
     #[must_use]
-    pub fn layer_index(&self) -> LayerIndex {
-        self.layer_index
-            .clone()
-            .unwrap_or_else(|| self.build_layer_index())
+    pub fn layer_index(&self) -> &LayerIndex {
+        self.layer_index.get_or_init(|| self.build_layer_index())
     }
 
     /// Returns whether this VFS owns a precomputed provider-occurrence [`LayerIndex`].
@@ -45,7 +43,7 @@ impl VFS {
     /// constructor; it is a surprise tax with better branding.
     #[must_use]
     pub fn has_layer_index(&self) -> bool {
-        self.layer_index.is_some()
+        self.layer_index.get().is_some()
     }
 
     pub(crate) fn push_source(&mut self, source: SourceMeta) -> usize {
@@ -142,10 +140,12 @@ impl VFS {
     }
 
     pub(crate) fn rebuild_layer_index(&mut self) {
-        if self.layer_index.is_none() {
+        if self.layer_index.get().is_none() {
             return;
         }
-        self.layer_index = Some(self.build_layer_index());
+        let layer_index = self.build_layer_index();
+        let _ = self.layer_index.take();
+        let _ = self.layer_index.set(layer_index);
     }
 
     /// Returns a parallel iterator over all `(normalized_key, file)` pairs in the VFS.
