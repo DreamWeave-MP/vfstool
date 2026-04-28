@@ -37,7 +37,7 @@ lua = ["dep:mlua", "mlua/serialize"]
 standalone-lua = ["lua", "mlua/luajit52", "mlua/vendored"]
 
 [package.metadata.docs.rs]
-features = ["standalone-lua"]
+features = ["beth-archives", "zip", "serialize", "standalone-lua"]
 
 [[bench]]
 name = "vfs_benchmarks"

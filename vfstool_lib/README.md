@@ -50,9 +50,10 @@ fn main() {
         PathBuf::from("path/to/base"),
         PathBuf::from("path/to/mod"),   // higher priority
     ];
-    let archive_list = Some(vec!["Morrowind.bsa"]);
 
-    let vfs = VFS::from_directories(search_dirs, archive_list);
+    // Default-feature construction scans loose files only. Pass an archive list only when
+    // `beth-archives` and/or `zip` is enabled.
+    let vfs = VFS::from_directories(search_dirs, None);
 
     for (key, file) in vfs.iter() {
         println!("{key:?} → {file:?}");
@@ -163,6 +164,12 @@ through the loose directory files and inserts archive providers below all loose 
 OpenMW's loose-over-archive rule. Manual `push_archive` is different: it pushes that archive as a new
 highest-priority provider source, because that is what "push" means.
 
+Strict construction is available through `try_from_directories*` APIs. The older
+`from_directories*` constructors remain best-effort for compatibility and may skip unreadable paths or
+broken configured archives. If your tool is about to make decisions from the resulting reports, use
+the strict constructors. A partial VFS with a complete-looking report is still partial; neat tables do
+not improve causality.
+
 Archive entries that normalize to the same VFS key are preserved in provider reports and case
 collision reports. The resolved winner still follows provider order; reporting does not silently turn
 two in-archive spellings into one entry just because a map was convenient.
@@ -183,6 +190,20 @@ let vfs = VFS::from_directories(
 
 `VFS` source removal uses lexical path equality. Use the same source path representation for
 removal that you used when inserting/building providers.
+
+### Semantic archive I/O
+
+Semantic conflict reports hash loose providers directly. Archive providers are controlled by
+`SemanticOpts::archive_hash_mode`:
+
+- `Disabled`: archive providers are left as unknown.
+- `WinnerOnly` (default): only archive entries that currently win are opened and hashed.
+- `AllProviders`: every archive provider present in the VFS provider stack is opened and hashed.
+
+Archive I/O uses the actual provider files already stored in `VFS`; it does not reopen an archive and
+guess an entry by path. If an archive provider cannot be read or decompressed, semantic analysis
+returns an I/O error instead of quietly pretending the content was unknown. "Unknown" means not read
+by policy or missing from the provider stack, not "we swallowed the error and hoped nobody looked."
 
 ### Runner hardlink behavior
 

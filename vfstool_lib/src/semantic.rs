@@ -99,6 +99,12 @@ pub struct SemanticConflictReport {
 }
 
 /// Archive hashing mode for semantic conflict analysis.
+///
+/// Loose providers are always hashable through their filesystem paths. Archive providers are gated by
+/// this mode because opening and decompressing every overridden archive entry can be expensive on
+/// large load orders. When archive hashing is enabled, the analysis opens the exact provider entries
+/// already stored in [`VFS`](crate::VFS); it does not reconstruct archive lookup from a lossy
+/// archive-path/key pair. Read or decompression failures are returned as I/O errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub enum ArchiveHashMode {
@@ -106,10 +112,10 @@ pub enum ArchiveHashMode {
     Disabled,
     /// Hash only archive providers that currently win in the VFS.
     WinnerOnly,
-    /// Hash all archive providers when available.
+    /// Hash all archive providers present in the VFS provider stack.
     ///
-    /// Missing providers remain unknown; archive entries that can be located are opened and hashed.
-    /// Read/decompression failures are returned as I/O errors instead of being reported as unknown.
+    /// Missing providers remain unknown. Archive entries that are present are opened and hashed;
+    /// read/decompression failures are returned as I/O errors instead of being reported as unknown.
     AllProviders,
 }
 
