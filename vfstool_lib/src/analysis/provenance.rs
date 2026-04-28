@@ -28,7 +28,7 @@ impl LayerIndex {
             return Ok(None);
         }
 
-        let Some(winner_idx) = self.current_winner_source_idx(vfs, &key, provider_indices) else {
+        let Some(winner_idx) = Self::current_winner_source_idx(vfs, &key, provider_indices) else {
             return Ok(None);
         };
         let winner = self.sources[winner_idx].clone();

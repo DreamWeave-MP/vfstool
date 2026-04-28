@@ -6,7 +6,7 @@ use crate::{
     NormalizedKey, NormalizedPath, SourceId, VfsKeyInput,
     paths::{key_to_path_buf_lossy, normalized_safe_key},
 };
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashMap;
 use std::path::{Path, PathBuf};
 
 impl LayerIndex {
@@ -17,22 +17,21 @@ impl LayerIndex {
     pub fn from_file_lists(sources: impl IntoIterator<Item = (SourceMeta, Vec<PathBuf>)>) -> Self {
         let mut source_paths = Vec::new();
         let mut path_to_sources: AHashMap<NormalizedKey, Vec<usize>> = AHashMap::new();
-        let mut provider_paths: AHashMap<(usize, NormalizedKey), PathBuf> = AHashMap::new();
+        let mut provider_paths: AHashMap<(usize, NormalizedKey), Vec<PathBuf>> = AHashMap::new();
 
         for (source_meta, files) in sources {
             let idx = source_paths.len();
             source_paths.push(source_meta);
-            let mut seen = AHashSet::new();
-
             for path in files {
                 let Some(normalized_path) = normalized_safe_key(&path) else {
                     continue;
                 };
                 let key = NormalizedKey::from(normalized_path);
-                if seen.insert(key.clone()) {
-                    provider_paths.insert((idx, key.clone()), path);
-                    path_to_sources.entry(key).or_default().push(idx);
-                }
+                provider_paths
+                    .entry((idx, key.clone()))
+                    .or_default()
+                    .push(path);
+                path_to_sources.entry(key).or_default().push(idx);
             }
         }
 
@@ -88,6 +87,7 @@ impl LayerIndex {
         let normalized = NormalizedKey::from(path.to_vfs_key());
         self.provider_paths
             .get(&(source_index, normalized))
+            .and_then(|paths| paths.first())
             .map(PathBuf::as_path)
     }
 
@@ -95,15 +95,22 @@ impl LayerIndex {
     #[must_use]
     pub fn provider_chain(&self, path: &Path) -> Vec<LayerProvider> {
         let key = NormalizedPath::new(path.as_os_str().as_encoded_bytes());
+        let mut occurrences_by_source: AHashMap<usize, usize> = AHashMap::new();
         self.sources_containing(&key)
             .iter()
-            .filter_map(|&source_index| {
+            .enumerate()
+            .filter_map(|(provider_index, &source_index)| {
                 let source = self.sources.get(source_index)?.clone();
+                let source_occurrence = occurrences_by_source.entry(source_index).or_default();
                 let original_path = self
-                    .provider_original_path(source_index, &key)
-                    .map_or_else(|| key_to_path_buf_lossy(&key), Path::to_path_buf);
+                    .provider_paths
+                    .get(&(source_index, NormalizedKey::from(key.clone())))
+                    .and_then(|paths| paths.get(*source_occurrence))
+                    .map_or_else(|| key_to_path_buf_lossy(&key), PathBuf::from);
+                *source_occurrence += 1;
                 Some(LayerProvider {
                     source_index,
+                    provider_index,
                     source,
                     key: key_to_path_buf_lossy(&key),
                     original_path,
@@ -160,10 +167,16 @@ impl LayerIndex {
                     }
                     if source_index == winner {
                         row.winning_files += 1;
-                    } else {
+                    } else if source_indices[position + 1..]
+                        .iter()
+                        .any(|later| *later != source_index)
+                    {
                         row.overridden_files += 1;
                     }
-                    if position > 0 {
+                    if source_indices[..position]
+                        .iter()
+                        .any(|earlier| *earlier != source_index)
+                    {
                         row.overriding_files += 1;
                     }
                 }
@@ -180,8 +193,16 @@ impl LayerIndex {
         let normalized = NormalizedKey::from(key.clone());
         if let Some(source_indices) = self.path_to_sources.remove(&normalized) {
             for source_index in source_indices {
-                self.provider_paths
-                    .remove(&(source_index, normalized.clone()));
+                if let Some(paths) = self
+                    .provider_paths
+                    .get_mut(&(source_index, normalized.clone()))
+                {
+                    paths.pop();
+                    if paths.is_empty() {
+                        self.provider_paths
+                            .remove(&(source_index, normalized.clone()));
+                    }
+                }
             }
         }
     }

@@ -1323,6 +1323,7 @@ fn layer_providers_to_table(lua: &Lua, providers: &[LayerProvider]) -> LuaResult
     for (index, provider) in providers.iter().enumerate() {
         let row = lua.create_table()?;
         row.set("source_index", provider.source_index)?;
+        row.set("provider_index", provider.provider_index)?;
         row.set("source", source_meta_to_table(lua, &provider.source)?)?;
         row.set("key", path_to_string(provider.key.clone()))?;
         row.set(

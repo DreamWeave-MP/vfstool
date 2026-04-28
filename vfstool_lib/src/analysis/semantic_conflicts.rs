@@ -117,7 +117,7 @@ impl LayerIndex {
         }
 
         let Some(winner_idx) =
-            self.current_winner_source_idx(vfs, &normalized_key, provider_indices)
+            Self::current_winner_source_idx(vfs, &normalized_key, provider_indices)
         else {
             return Ok(None);
         };

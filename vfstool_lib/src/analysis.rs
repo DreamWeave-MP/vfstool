@@ -34,15 +34,16 @@ pub struct SourceMeta {
     pub kind: SourceKind,
 }
 
-/// Canonical provider index for all normalized VFS keys.
+/// Canonical provider-occurrence index for all normalized VFS keys.
 ///
-/// `path_to_sources[key]` is ordered low -> high priority.
+/// `path_to_sources[key]` is ordered low -> high priority and preserves provider occurrences,
+/// including multiple entries from the same source that normalize to one VFS key.
 #[derive(Debug, Clone)]
 pub struct LayerIndex {
     /// Sources in load-order position.
     pub sources: Vec<SourceMeta>,
     path_to_sources: AHashMap<NormalizedKey, Vec<usize>>,
-    provider_paths: AHashMap<(usize, NormalizedKey), PathBuf>,
+    provider_paths: AHashMap<(usize, NormalizedKey), Vec<PathBuf>>,
 }
 
 /// One provider entry in a [`LayerIndex`] chain.
@@ -51,6 +52,8 @@ pub struct LayerIndex {
 pub struct LayerProvider {
     /// Source index in low-to-high priority order.
     pub source_index: usize,
+    /// Provider occurrence index within this key's low-to-high provider chain.
+    pub provider_index: usize,
     /// Source metadata.
     pub source: SourceMeta,
     /// Normalized VFS key.
@@ -70,8 +73,10 @@ pub struct SourceContribution {
     /// Number of provided keys where this source is the highest-priority provider.
     pub winning_files: usize,
     /// Number of provided keys where this source overrides at least one lower-priority provider.
+    /// Same-source duplicate occurrences are not counted as cross-source overrides.
     pub overriding_files: usize,
     /// Number of provided keys where this source is overridden by a higher-priority provider.
+    /// Same-source duplicate occurrences are not counted as cross-source overrides.
     pub overridden_files: usize,
     /// Number of provided keys that have no other providers.
     pub unique_files: usize,

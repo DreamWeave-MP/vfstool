@@ -102,11 +102,17 @@ impl ConflictIndex {
 
         for key in layer.keys() {
             let providers = layer.sources_containing(&key);
+            let mut unique_sources = Vec::new();
             for &source_idx in providers {
+                if unique_sources.last().copied() != Some(source_idx) {
+                    unique_sources.push(source_idx);
+                }
+            }
+            for &source_idx in &unique_sources {
                 source_file_counts[source_idx] += 1;
             }
-            if providers.len() > 1 {
-                path_to_sources.insert(key_to_path_buf_lossy(&key), providers.to_vec());
+            if unique_sources.len() > 1 {
+                path_to_sources.insert(key_to_path_buf_lossy(&key), unique_sources);
             }
         }
 

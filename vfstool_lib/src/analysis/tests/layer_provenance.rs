@@ -20,7 +20,7 @@ fn provenance_chain_respects_load_order() {
 }
 
 #[test]
-fn layer_index_deduplicates_keys_within_one_source() {
+fn layer_index_preserves_provider_occurrences_within_one_source() {
     let index = LayerIndex::from_file_lists(vec![(
         SourceMeta {
             path: PathBuf::from("/one"),
@@ -29,7 +29,13 @@ fn layer_index_deduplicates_keys_within_one_source() {
         vec![PathBuf::from("shared.txt"), PathBuf::from("SHARED.TXT")],
     )]);
 
-    assert_eq!(index.sources_containing(Path::new("shared.txt")), &[0]);
+    assert_eq!(index.sources_containing(Path::new("shared.txt")), &[0, 0]);
+    let chain = index.provider_chain(Path::new("shared.txt"));
+    assert_eq!(chain.len(), 2);
+    assert_eq!(chain[0].provider_index, 0);
+    assert_eq!(chain[0].original_path, PathBuf::from("shared.txt"));
+    assert_eq!(chain[1].provider_index, 1);
+    assert_eq!(chain[1].original_path, PathBuf::from("SHARED.TXT"));
 }
 
 #[test]
@@ -100,4 +106,38 @@ fn source_contributions_count_middle_sources_as_overriding_and_overridden() {
     assert_eq!(mid.overriding_files, 1);
     assert_eq!(high.winning_files, 1);
     assert_eq!(high.overriding_files, 1);
+}
+
+#[test]
+fn same_source_duplicate_occurrences_do_not_count_as_cross_source_overrides() {
+    let index = LayerIndex::from_file_lists(vec![(
+        SourceMeta {
+            path: PathBuf::from("/one"),
+            kind: SourceKind::LooseDir,
+        },
+        vec![PathBuf::from("shared.txt"), PathBuf::from("SHARED.TXT")],
+    )]);
+
+    let contributions = index.source_contributions();
+    let source = &contributions.sources[0];
+
+    assert_eq!(source.duplicate_files, 2);
+    assert_eq!(source.winning_files, 2);
+    assert_eq!(source.overriding_files, 0);
+    assert_eq!(source.overridden_files, 0);
+}
+
+#[test]
+fn vfs_layer_index_preserves_same_source_case_collisions() {
+    let data = TempDir::new("analysis_layer_same_source_case_collision");
+    data.write("Textures/Foo.DDS", b"upper");
+    data.write("textures/foo.dds", b"lower");
+
+    let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+
+    assert_eq!(vfs.provider_records_for("textures/foo.dds").len(), 2);
+    let chain = index.provider_chain(Path::new("textures/foo.dds"));
+    assert_eq!(chain.len(), 2);
+    assert_eq!(chain[0].source_index, 0);
+    assert_eq!(chain[1].source_index, 0);
 }

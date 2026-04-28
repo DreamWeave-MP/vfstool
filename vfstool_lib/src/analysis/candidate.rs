@@ -43,10 +43,10 @@ impl LayerIndex {
         for (key, (incoming, existing)) in conflicts_by_key {
             let normalized_key = NormalizedPath::new(key.as_os_str().as_encoded_bytes());
             let providers = self.sources_containing(&normalized_key);
-            let current_winner_source = self
-                .current_winner_source_idx(vfs, &normalized_key, providers)
-                .map(|idx| self.sources[idx].path.clone())
-                .unwrap_or_default();
+            let current_winner_source =
+                Self::current_winner_source_idx(vfs, &normalized_key, providers)
+                    .map(|idx| self.sources[idx].path.clone())
+                    .unwrap_or_default();
 
             let semantic_differs = if opts.include_semantic {
                 let incoming_fp = hash_reader(std::fs::File::open(incoming.path())?)?;

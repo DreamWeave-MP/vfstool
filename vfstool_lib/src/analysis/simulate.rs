@@ -2,11 +2,9 @@
 use super::{
     BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta, SourceKind,
 };
-use crate::{
-    NormalizedPath, VFS, normalize_host_path, path_glob_matches, paths::key_to_path_buf_lossy,
-};
+use crate::{NormalizedPath, VFS, path_glob_matches, paths::key_to_path_buf_lossy};
 use ahash::AHashSet;
-use std::{io, path::Path};
+use std::io;
 
 impl LayerIndex {
     /// Simulate a simple load-order edit and report winner deltas.
@@ -43,7 +41,7 @@ impl LayerIndex {
                 continue;
             }
 
-            let before_idx = self.current_winner_source_idx(vfs, &key, providers);
+            let before_idx = Self::current_winner_source_idx(vfs, &key, providers);
             let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
@@ -202,38 +200,12 @@ impl LayerIndex {
     }
 
     pub(super) fn current_winner_source_idx(
-        &self,
         vfs: &VFS,
         key: &NormalizedPath,
         providers: &[usize],
     ) -> Option<usize> {
-        let winner = vfs.get_file(key)?;
-        if winner.is_loose() {
-            let normalized_path = normalize_host_path(winner.path());
-            if let Some(idx) = providers.iter().copied().find(|idx| {
-                self.sources[*idx].kind == SourceKind::LooseDir
-                    && normalize_host_path(&self.provider_path(*idx, key)).as_ref()
-                        == normalized_path.as_ref()
-            }) {
-                return Some(idx);
-            }
-
-            providers
-                .iter()
-                .copied()
-                .filter(|idx| {
-                    self.sources[*idx].kind == SourceKind::LooseDir
-                        && winner.path().starts_with(&self.sources[*idx].path)
-                })
-                .max_by_key(|idx| self.sources[*idx].path.components().count())
-        } else {
-            let parent = winner.parent_archive_path()?;
-            let parent = normalize_host_path(Path::new(&parent));
-            providers.iter().copied().find(|idx| {
-                self.sources[*idx].kind == SourceKind::Archive
-                    && normalize_host_path(&self.sources[*idx].path).as_ref() == parent.as_ref()
-            })
-        }
+        let winner = vfs.winner_source_index(key)?;
+        providers.iter().copied().find(|idx| *idx == winner)
     }
 
     pub(super) fn winner_after_reorder(

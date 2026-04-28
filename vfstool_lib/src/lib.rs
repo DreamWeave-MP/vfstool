@@ -13,9 +13,9 @@
 //!
 //! - [`VFS`] for provider stacks, the resolved winner map, and materialization helpers.
 //! - [`VfsProvider`] when manually pushing provider-stack entries.
-//! - [`LayerIndex`] as the canonical provider-chain index and [`ConflictIndex`] as its derived
-//!   conflict projection, plus reports such as [`ConflictsReport`], [`ShadowedReport`], and
-//!   [`DiffReport`] for load-order diagnostics.
+//! - [`LayerIndex`] as the canonical provider-occurrence index and [`ConflictIndex`] as its derived
+//!   source-level conflict projection, plus reports such as [`ConflictsReport`],
+//!   [`ShadowedReport`], and [`DiffReport`] for load-order diagnostics.
 //! - [`LayerIndex`], [`VfsLock`], [`DriftReport`], and related types for provenance, lock, drift,
 //!   and semantic conflict workflows.
 //! - [`run_setup`], [`run_finalize`], [`snapshot_directory`], and [`changed_files`] for
@@ -42,6 +42,9 @@
 //! With archive features enabled, [`VFS::from_directories`] inserts configured archives below all
 //! loose directory providers. Manual archive mutation through `push_archive` is deliberately
 //! different: it pushes that archive as the newest highest-priority source.
+//! [`LayerIndex`] preserves same-source provider occurrences for provenance; [`ConflictIndex`]
+//! intentionally remains a source-vs-source projection rather than reporting a mod as conflicting
+//! with itself.
 //!
 //! # Examples
 //!

@@ -68,6 +68,13 @@ impl VFS {
         }
     }
 
+    pub(crate) fn winner_source_index(&self, key: &NormalizedPath) -> Option<usize> {
+        self.providers
+            .get(key)
+            .and_then(|providers| providers.last())
+            .map(|entry| entry.source_index)
+    }
+
     pub(crate) fn rebuild_layer_index(&mut self) {
         let mut used = vec![false; self.sources.len()];
         for providers in self.providers.values() {

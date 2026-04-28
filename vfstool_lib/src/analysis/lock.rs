@@ -39,7 +39,7 @@ impl LayerIndex {
             return Ok(None);
         }
 
-        let Some(winner_idx) = self.current_winner_source_idx(vfs, key, providers) else {
+        let Some(winner_idx) = Self::current_winner_source_idx(vfs, key, providers) else {
             return Ok(None);
         };
         let winner_source = &self.sources[winner_idx];

@@ -174,7 +174,16 @@ impl LayerIndex {
                         .path
                         .join(crate::paths::key_to_path_buf_lossy(key))
                 },
-                |rel| self.sources[source_idx].path.join(rel),
+                |rel| {
+                    rel.first().map_or_else(
+                        || {
+                            self.sources[source_idx]
+                                .path
+                                .join(crate::paths::key_to_path_buf_lossy(key))
+                        },
+                        |path| self.sources[source_idx].path.join(path),
+                    )
+                },
             )
     }
 }
