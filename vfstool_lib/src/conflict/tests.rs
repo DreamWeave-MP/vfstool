@@ -499,15 +499,15 @@ fn diff_report_shared_and_unique() {
     let report = index.diff_report(d1.path(), d2.path());
 
     assert!(
-        report.shared.contains(&PathBuf::from("shared.txt")),
+        report.shared.iter().any(|key| key == "shared.txt"),
         "shared.txt should be in shared"
     );
     assert!(
-        report.only_in_a.contains(&PathBuf::from("only_a.txt")),
+        report.only_in_a.iter().any(|key| key == "only_a.txt"),
         "only_a.txt should be only in a"
     );
     assert!(
-        report.only_in_b.contains(&PathBuf::from("only_b.txt")),
+        report.only_in_b.iter().any(|key| key == "only_b.txt"),
         "only_b.txt should be only in b"
     );
 }

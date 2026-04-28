@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::ConflictIndex;
-use crate::{VFS, paths::key_to_path_buf_lossy, reports::DiffReport};
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use crate::{VFS, paths::key_to_string_lossy, reports::DiffReport};
+use std::{collections::HashSet, path::Path};
 
 impl ConflictIndex {
     /// Compare two data directories: which files are shared, unique to each,
@@ -14,18 +11,12 @@ impl ConflictIndex {
         let vfs_a = VFS::from_directories([source_a], None);
         let vfs_b = VFS::from_directories([source_b], None);
 
-        let keys_a: HashSet<PathBuf> = vfs_a
-            .iter()
-            .map(|(k, _)| key_to_path_buf_lossy(k))
-            .collect();
-        let keys_b: HashSet<PathBuf> = vfs_b
-            .iter()
-            .map(|(k, _)| key_to_path_buf_lossy(k))
-            .collect();
+        let keys_a: HashSet<String> = vfs_a.iter().map(|(k, _)| key_to_string_lossy(k)).collect();
+        let keys_b: HashSet<String> = vfs_b.iter().map(|(k, _)| key_to_string_lossy(k)).collect();
 
-        let mut shared: Vec<PathBuf> = keys_a.intersection(&keys_b).cloned().collect();
-        let mut only_in_a: Vec<PathBuf> = keys_a.difference(&keys_b).cloned().collect();
-        let mut only_in_b: Vec<PathBuf> = keys_b.difference(&keys_a).cloned().collect();
+        let mut shared: Vec<String> = keys_a.intersection(&keys_b).cloned().collect();
+        let mut only_in_a: Vec<String> = keys_a.difference(&keys_b).cloned().collect();
+        let mut only_in_b: Vec<String> = keys_b.difference(&keys_a).cloned().collect();
         shared.sort();
         only_in_a.sort();
         only_in_b.sort();

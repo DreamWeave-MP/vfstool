@@ -857,6 +857,17 @@ fn paths_to_table<'a>(lua: &Lua, paths: impl IntoIterator<Item = &'a PathBuf>) -
     Ok(table)
 }
 
+fn strings_to_table<'a>(
+    lua: &Lua,
+    values: impl IntoIterator<Item = &'a String>,
+) -> LuaResult<Table> {
+    let table = lua.create_table()?;
+    for (index, value) in values.into_iter().enumerate() {
+        table.set(index + 1, value.as_str())?;
+    }
+    Ok(table)
+}
+
 fn normalized_paths_to_table<'a>(
     lua: &Lua,
     paths: impl IntoIterator<Item = &'a NormalizedPath>,
@@ -1405,9 +1416,9 @@ fn diff_report_to_table(lua: &Lua, report: &DiffReport) -> LuaResult<Table> {
         "higher_priority",
         path_to_string(report.higher_priority.clone()),
     )?;
-    table.set("shared", paths_to_table(lua, report.shared.iter())?)?;
-    table.set("only_in_a", paths_to_table(lua, report.only_in_a.iter())?)?;
-    table.set("only_in_b", paths_to_table(lua, report.only_in_b.iter())?)?;
+    table.set("shared", strings_to_table(lua, report.shared.iter())?)?;
+    table.set("only_in_a", strings_to_table(lua, report.only_in_a.iter())?)?;
+    table.set("only_in_b", strings_to_table(lua, report.only_in_b.iter())?)?;
     Ok(table)
 }
 

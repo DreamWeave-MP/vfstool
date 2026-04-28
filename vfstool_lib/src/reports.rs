@@ -67,10 +67,10 @@ pub struct DiffReport {
     pub source_b: PathBuf,
     /// Whichever of `source_a` or `source_b` has higher load-order priority.
     pub higher_priority: PathBuf,
-    /// VFS paths present in both sources.
-    pub shared: Vec<PathBuf>,
-    /// VFS paths present only in `source_a`.
-    pub only_in_a: Vec<PathBuf>,
-    /// VFS paths present only in `source_b`.
-    pub only_in_b: Vec<PathBuf>,
+    /// Slash-separated VFS keys present in both sources.
+    pub shared: Vec<String>,
+    /// Slash-separated VFS keys present only in `source_a`.
+    pub only_in_a: Vec<String>,
+    /// Slash-separated VFS keys present only in `source_b`.
+    pub only_in_b: Vec<String>,
 }
