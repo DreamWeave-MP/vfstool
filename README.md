@@ -189,7 +189,8 @@ vfstool conflicts [OPTIONS]
 
 #### `shadowed`
 
-Report sources whose files are all overridden by higher-priority sources.
+Report sources whose files are all overridden by higher-priority sources. By default this is a
+summary; use `-l, --list-files` to include every overridden file.
 
 ```bash
 vfstool shadowed [OPTIONS]
@@ -199,6 +200,7 @@ vfstool shadowed [OPTIONS]
 
 - `-f, --format <FORMAT>`: Output format (`json`, `yaml`, or `toml`). Default: `yaml`.
 - `-o, --output <OUTPUT>`: Path to save the report. If omitted, results are printed to stdout.
+- `-l, --list-files`: Include per-source overridden file lists.
 
 ---
 

@@ -225,7 +225,7 @@ conflicts = vfstool.ConflictIndex.from_layer_index(layer)
 conflicts:sources() -> { string }
 conflicts:sources_containing(path) -> { integer }
 conflicts:conflicts_report(relative?) -> table
-conflicts:shadowed_report(relative?) -> table
+conflicts:shadowed_report(relative?, list_files?) -> table
 conflicts:diff_report(source_a, source_b) -> table
 ```
 

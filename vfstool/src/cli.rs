@@ -135,6 +135,9 @@ pub enum Commands {
     },
     /// Show sources whose files are entirely overridden by higher-priority sources
     Shadowed {
+        /// Include the full list of overridden files for each shadowed source
+        #[arg(short = 'l', long)]
+        list_files: bool,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]

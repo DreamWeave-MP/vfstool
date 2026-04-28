@@ -44,6 +44,20 @@ impl ConflictIndex {
     /// higher-priority source.
     #[must_use]
     pub fn shadowed_report(&self, use_relative: bool) -> ShadowedReport {
+        self.shadowed_report_with_files(use_relative, true)
+    }
+
+    /// Build a [`ShadowedReport`] with optional per-file listings.
+    ///
+    /// A source is still considered shadowed using the full provider index. When `list_files` is
+    /// false, each returned [`ShadowedSource`] has an empty `shadowed_files` list so summary reports
+    /// do not serialize every overridden key.
+    #[must_use]
+    pub fn shadowed_report_with_files(
+        &self,
+        use_relative: bool,
+        list_files: bool,
+    ) -> ShadowedReport {
         let sources = self
             .source_meta
             .iter()
@@ -54,13 +68,18 @@ impl ConflictIndex {
                 {
                     return None;
                 }
-                let resolve = |p: &PathBuf| -> PathBuf { report_path(source, p, use_relative) };
-                let mut shadowed_files: Vec<PathBuf> = self.conflicts[i]
-                    .overridden_by
-                    .iter()
-                    .map(resolve)
-                    .collect();
-                shadowed_files.sort();
+                let shadowed_files = if list_files {
+                    let resolve = |p: &PathBuf| -> PathBuf { report_path(source, p, use_relative) };
+                    let mut shadowed_files: Vec<PathBuf> = self.conflicts[i]
+                        .overridden_by
+                        .iter()
+                        .map(resolve)
+                        .collect();
+                    shadowed_files.sort();
+                    shadowed_files
+                } else {
+                    Vec::new()
+                };
                 Some(ShadowedSource {
                     path: source.path.clone(),
                     shadowed_files,

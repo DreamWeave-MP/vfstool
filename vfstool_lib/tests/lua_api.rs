@@ -96,6 +96,7 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
         assert(#conflict:sources_containing("textures/foo.dds") == 2)
         assert(#conflict:conflicts_report(true).sources == 2)
         assert(#conflict:shadowed_report(true).sources == 1)
+        assert(#conflict:shadowed_report(true, false).sources[1].shadowed_files == 0)
         assert(#conflict:diff_report(low, high).shared == 1)
     "#,
     )

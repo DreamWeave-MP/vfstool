@@ -639,9 +639,18 @@ impl UserData for LuaConflictIndex {
         methods.add_method("conflicts_report", |lua, this, relative: Option<bool>| {
             conflicts_report_to_table(lua, &this.0.conflicts_report(relative.unwrap_or(true)))
         });
-        methods.add_method("shadowed_report", |lua, this, relative: Option<bool>| {
-            shadowed_report_to_table(lua, &this.0.shadowed_report(relative.unwrap_or(true)))
-        });
+        methods.add_method(
+            "shadowed_report",
+            |lua, this, (relative, list_files): (Option<bool>, Option<bool>)| {
+                shadowed_report_to_table(
+                    lua,
+                    &this.0.shadowed_report_with_files(
+                        relative.unwrap_or(true),
+                        list_files.unwrap_or(true),
+                    ),
+                )
+            },
+        );
         methods.add_method("diff_report", |lua, this, (a, b): (String, String)| {
             diff_report_to_table(lua, &this.0.diff_report(Path::new(&a), Path::new(&b)))
         });

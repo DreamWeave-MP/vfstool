@@ -50,6 +50,8 @@ pub struct ShadowedSource {
     /// Absolute path to the source directory or archive.
     pub path: PathBuf,
     /// VFS paths of all files in this source, each overridden by a later source.
+    ///
+    /// This is empty for summary reports built without file listings.
     pub shadowed_files: Vec<PathBuf>,
 }
 

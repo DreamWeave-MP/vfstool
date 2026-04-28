@@ -448,11 +448,12 @@ fn handle_conflicts(
 fn handle_shadowed(
     resolved_config_dir: PathBuf,
     use_relative: bool,
+    list_files: bool,
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> Result<()> {
     let (_, ci) = build_conflict_index(resolved_config_dir);
-    let report = ci.shadowed_report(use_relative);
+    let report = ci.shadowed_report_with_files(use_relative, list_files);
     eprintln!("{} sources are fully shadowed", report.sources.len());
     write_serialized(output, format, &report)
 }
@@ -605,8 +606,18 @@ fn run_analysis_primary(
             handle_conflicts(resolved_config_dir, use_relative, format, output)?;
             Ok(None)
         }
-        Commands::Shadowed { format, output } => {
-            handle_shadowed(resolved_config_dir, use_relative, format, output)?;
+        Commands::Shadowed {
+            list_files,
+            format,
+            output,
+        } => {
+            handle_shadowed(
+                resolved_config_dir,
+                use_relative,
+                list_files,
+                format,
+                output,
+            )?;
             Ok(None)
         }
         Commands::Diff {

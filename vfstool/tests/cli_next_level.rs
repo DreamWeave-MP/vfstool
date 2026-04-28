@@ -408,6 +408,39 @@ fn validate_reports_file_directory_conflict_json() {
 }
 
 #[test]
+fn shadowed_omits_file_lists_unless_requested() {
+    let fixture = Fixture::new("shadowed_summary");
+
+    let summary = fixture.run(&["shadowed", "--format", "json"]);
+    assert_eq!(summary.status.code(), Some(0));
+    let summary_payload = stdout_json(&summary);
+    let sources = summary_payload["sources"]
+        .as_array()
+        .expect("sources should be an array");
+    let low = sources
+        .iter()
+        .find(|source| source["path"] == fixture.low.display().to_string())
+        .expect("low source should be fully shadowed");
+    assert_eq!(low["shadowed_files"].as_array().map(Vec::len), Some(0));
+
+    let detailed = fixture.run(&["shadowed", "--list-files", "--format", "json"]);
+    assert_eq!(detailed.status.code(), Some(0));
+    let detailed_payload = stdout_json(&detailed);
+    let detailed_sources = detailed_payload["sources"]
+        .as_array()
+        .expect("sources should be an array");
+    let low_detailed = detailed_sources
+        .iter()
+        .find(|source| source["path"] == fixture.low.display().to_string())
+        .expect("low source should be fully shadowed");
+    assert!(
+        low_detailed["shadowed_files"]
+            .as_array()
+            .is_some_and(|files| !files.is_empty())
+    );
+}
+
+#[test]
 fn diff_between_sources_reports_shared_and_unique_keys() {
     let fixture = Fixture::new("diff");
     write_file(&fixture.low.join("only-low.txt"), b"low");
