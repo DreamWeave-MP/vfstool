@@ -7,9 +7,10 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, VFS, changed_files, changed_files_metadata,
-    normalize_host_path, normalize_host_path_in_place, run_finalize_tracked, run_setup,
-    run_setup_tracked, snapshot_directory, snapshot_directory_metadata,
+    CollapseOptions, ConflictIndex, NormalizedPath, SourceKind, SourceMeta, VFS, VfsFile,
+    changed_files, changed_files_metadata, normalize_host_path, normalize_host_path_in_place,
+    run_finalize_tracked, run_setup, run_setup_tracked, snapshot_directory,
+    snapshot_directory_metadata,
 };
 
 use vfstool_lib::SemanticOpts;
@@ -282,6 +283,34 @@ fn bench_construction_reuse(c: &mut Criterion) {
         });
     });
 
+    g.finish();
+}
+
+fn bench_batch_mutation(c: &mut Criterion) {
+    let fixture = make_fixture("vfsbench_batch_mutation", 2_000);
+    let mut entries = Vec::new();
+    for i in 0..2_000 {
+        let rel = format!("textures/file_{i:05}.dat");
+        entries.push((
+            NormalizedPath::new(rel.as_bytes()),
+            VfsFile::from(fixture.path().join(&rel)),
+        ));
+    }
+
+    let source = SourceMeta {
+        path: fixture.path().to_path_buf(),
+        kind: SourceKind::LooseDir,
+    };
+
+    let mut g = c.benchmark_group("vfs_batch_mutation");
+    g.sample_size(10);
+    g.bench_function("push_provider_batch_2000", |b| {
+        b.iter_batched(
+            VFS::new,
+            |mut vfs| vfs.push_provider_batch(black_box(&source), black_box(entries.clone())),
+            BatchSize::SmallInput,
+        );
+    });
     g.finish();
 }
 
@@ -633,6 +662,15 @@ fn bench_zip(c: &mut Criterion) {
         g.bench_function("lookup_miss", |b| {
             b.iter(|| vfs.get_file(black_box("textures/no_such_file.dds")));
         });
+
+        g.bench_function("archive_report_counts", |b| {
+            b.iter(|| vfs.archives());
+        });
+
+        let archive = dir.path().join("data.zip");
+        g.bench_function("archive_entries_report", |b| {
+            b.iter(|| vfs.archive_entries(black_box(&archive)));
+        });
     }
 
     // --- open() from a ZIP entry (mutex lock + by_name + io::copy) ---
@@ -901,6 +939,7 @@ criterion_group!(
     bench_normalize_comparison,
     bench_construction,
     bench_construction_reuse,
+    bench_batch_mutation,
     bench_lookup,
     bench_search,
     bench_tree,
@@ -922,6 +961,7 @@ criterion_group!(
     bench_normalize_comparison,
     bench_construction,
     bench_construction_reuse,
+    bench_batch_mutation,
     bench_lookup,
     bench_search,
     bench_tree,
@@ -941,6 +981,7 @@ criterion_group!(
     bench_normalize_comparison,
     bench_construction,
     bench_construction_reuse,
+    bench_batch_mutation,
     bench_lookup,
     bench_search,
     bench_tree,
@@ -961,6 +1002,7 @@ criterion_group!(
     bench_normalize_comparison,
     bench_construction,
     bench_construction_reuse,
+    bench_batch_mutation,
     bench_lookup,
     bench_search,
     bench_tree,

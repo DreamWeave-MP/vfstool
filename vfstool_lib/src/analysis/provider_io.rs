@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use super::{LayerIndex, SourceKind};
 use crate::{
-    ContentDigest, NormalizedKey, NormalizedPath, VFS, VfsFile, VfsKeyInput, normalize_host_path,
+    ContentDigest, NormalizedKey, NormalizedPath, VFS, VfsKeyInput, normalize_host_path,
     semantic::ArchiveHashMode,
 };
 use ahash::AHashMap;
@@ -9,9 +9,6 @@ use std::{
     io::{self, Read},
     path::{Path, PathBuf},
 };
-
-#[cfg(any(feature = "beth-archives", feature = "zip"))]
-use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub(super) struct ContentFingerprint {
@@ -28,36 +25,14 @@ impl ContentFingerprint {
 pub(super) struct ProviderIoCache {
     fingerprints: AHashMap<(usize, NormalizedPath), Option<ContentFingerprint>>,
     bytes: AHashMap<(usize, NormalizedPath), Option<Vec<u8>>>,
-    #[cfg(any(feature = "beth-archives", feature = "zip"))]
-    archive_files: SharedArchiveFileCache,
 }
-
-#[cfg(any(feature = "beth-archives", feature = "zip"))]
-pub(super) type SharedArchiveFileCache =
-    Arc<Mutex<AHashMap<PathBuf, Option<AHashMap<NormalizedPath, VfsFile>>>>>;
 
 impl ProviderIoCache {
     pub(super) fn new() -> Self {
         Self {
             fingerprints: AHashMap::new(),
             bytes: AHashMap::new(),
-            #[cfg(any(feature = "beth-archives", feature = "zip"))]
-            archive_files: Self::new_shared_archive_file_cache(),
         }
-    }
-
-    #[cfg(any(feature = "beth-archives", feature = "zip"))]
-    pub(super) fn with_shared_archive_file_cache(archive_files: SharedArchiveFileCache) -> Self {
-        Self {
-            fingerprints: AHashMap::new(),
-            bytes: AHashMap::new(),
-            archive_files,
-        }
-    }
-
-    #[cfg(any(feature = "beth-archives", feature = "zip"))]
-    pub(super) fn new_shared_archive_file_cache() -> SharedArchiveFileCache {
-        Arc::new(Mutex::new(AHashMap::new()))
     }
 }
 
@@ -97,7 +72,8 @@ impl LayerIndex {
                     },
                     None => None,
                 },
-                ArchiveHashMode::AllProviders => archive_provider_file(&src.path, &key, cache)
+                ArchiveHashMode::AllProviders => vfs
+                    .provider_file_for_source_key(source_idx, &key)
                     .map(|file| file.open().and_then(hash_reader))
                     .transpose()?,
             },
@@ -135,7 +111,7 @@ impl LayerIndex {
                 }
             }
             SourceKind::Archive => {
-                if let Some(file) = archive_provider_file(&src.path, &key, cache) {
+                if let Some(file) = vfs.provider_file_for_source_key(source_idx, &key) {
                     let mut reader = file.open()?;
                     reader.read_to_end(&mut out)?;
                     Some(out)
@@ -190,54 +166,6 @@ impl LayerIndex {
 
 fn archive_parent_matches(parent: &str, source_path: &Path) -> bool {
     normalize_host_path(Path::new(parent)).as_ref() == normalize_host_path(source_path).as_ref()
-}
-
-#[cfg(any(feature = "beth-archives", feature = "zip"))]
-fn archive_provider_file(
-    source_path: &Path,
-    key: &NormalizedPath,
-    cache: &mut ProviderIoCache,
-) -> Option<VfsFile> {
-    let normalized_source = normalize_host_path(source_path).into_owned();
-    if let Some(hit) = cache
-        .archive_files
-        .lock()
-        .ok()?
-        .get(&normalized_source)
-        .cloned()
-    {
-        return hit.as_ref()?.get(key).cloned();
-    }
-
-    {
-        let files = crate::archives::open_archive(source_path).map(|archive| {
-            let archive_list = vec![archive];
-            crate::archives::file_map(&archive_list)
-        });
-        cache
-            .archive_files
-            .lock()
-            .ok()?
-            .insert(normalized_source.clone(), files);
-    }
-    cache
-        .archive_files
-        .lock()
-        .ok()?
-        .get(&normalized_source)?
-        .clone()
-        .as_ref()?
-        .get(key)
-        .cloned()
-}
-
-#[cfg(not(any(feature = "beth-archives", feature = "zip")))]
-fn archive_provider_file(
-    _source_path: &Path,
-    _key: &NormalizedPath,
-    _cache: &mut ProviderIoCache,
-) -> Option<VfsFile> {
-    None
 }
 
 pub(super) fn fingerprint_bytes(bytes: &[u8]) -> ContentFingerprint {

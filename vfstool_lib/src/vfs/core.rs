@@ -75,6 +75,18 @@ impl VFS {
             .map(|entry| entry.source_index)
     }
 
+    pub(crate) fn provider_file_for_source_key(
+        &self,
+        source_index: usize,
+        key: &NormalizedPath,
+    ) -> Option<&VfsFile> {
+        self.providers
+            .get(key)?
+            .iter()
+            .find(|entry| entry.source_index == source_index)
+            .map(|entry| &entry.provider.file)
+    }
+
     pub(crate) fn rebuild_layer_index(&mut self) {
         let mut used = vec![false; self.sources.len()];
         for providers in self.providers.values() {

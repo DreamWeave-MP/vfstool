@@ -93,6 +93,31 @@ fn set_winner_loose_file_rejects_unsafe_keys() {
 }
 
 #[test]
+fn push_provider_batch_groups_entries_under_one_source() {
+    let dir = TempDir::new("vfsloose_batch_provider");
+    let first = dir.write("first.txt", b"a");
+    let second = dir.write("second.txt", b"b");
+    let mut vfs = VFS::new();
+    let source = SourceMeta {
+        path: dir.path().to_path_buf(),
+        kind: crate::SourceKind::LooseDir,
+    };
+
+    let inserted = vfs.push_provider_batch(
+        &source,
+        [
+            (NormalizedPath::new(b"first.txt"), VfsFile::from(&first)),
+            (NormalizedPath::new(b"second.txt"), VfsFile::from(&second)),
+        ],
+    );
+
+    assert_eq!(inserted, 2);
+    assert_eq!(vfs.get_file("first.txt").unwrap().path(), first);
+    assert_eq!(vfs.get_file("second.txt").unwrap().path(), second);
+    assert_eq!(vfs.layer_index().sources.len(), 1);
+}
+
+#[test]
 #[cfg(unix)]
 fn from_directories_skips_filenames_that_normalize_to_unsafe_keys() {
     let dir = TempDir::new("vfsloose_scan_unsafe_keys");

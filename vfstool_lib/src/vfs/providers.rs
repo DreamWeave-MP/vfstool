@@ -378,16 +378,26 @@ impl VFS {
     #[must_use]
     pub fn archive_entries(&self, archive: impl AsRef<Path>) -> Vec<ArchiveEntry> {
         let archive = normalize_host_path(archive.as_ref()).into_owned();
+        let matching_sources: AHashSet<_> = self
+            .sources
+            .iter()
+            .enumerate()
+            .filter_map(|(source_index, source)| {
+                (source.kind == SourceKind::Archive
+                    && normalize_host_path(&source.path).as_ref() == archive.as_path())
+                .then_some(source_index)
+            })
+            .collect();
         let mut entries = Vec::new();
         for (key, providers) in &self.providers {
             let Some(winner_index) = providers.len().checked_sub(1) else {
                 continue;
             };
-            for (provider_index, entry) in providers.iter().enumerate().filter(|(_, entry)| {
-                entry.provider.source.kind == SourceKind::Archive
-                    && normalize_host_path(&entry.provider.source.path).as_ref()
-                        == archive.as_path()
-            }) {
+            for (provider_index, entry) in providers
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| matching_sources.contains(&entry.source_index))
+            {
                 let original_path =
                     VFS::provider_original_path(&entry.provider.source, key, &entry.provider.file);
                 entries.push(ArchiveEntry {

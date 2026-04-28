@@ -14,8 +14,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(any(feature = "beth-archives", feature = "zip"))]
-use super::provider_io::SharedArchiveFileCache;
 use super::provider_io::{ProviderIoCache, fingerprint_bytes};
 
 impl LayerIndex {
@@ -51,26 +49,9 @@ impl LayerIndex {
             .collect();
         keys.sort();
 
-        #[cfg(any(feature = "beth-archives", feature = "zip"))]
-        let archive_cache = ProviderIoCache::new_shared_archive_file_cache();
-
         let mut entries: Vec<SemanticConflict> = keys
             .par_iter()
-            .map(|key| {
-                #[cfg(any(feature = "beth-archives", feature = "zip"))]
-                {
-                    self.semantic_conflict_for_key_with_archive_cache(
-                        vfs,
-                        key,
-                        opts,
-                        archive_cache.clone(),
-                    )
-                }
-                #[cfg(not(any(feature = "beth-archives", feature = "zip")))]
-                {
-                    self.semantic_conflict_for_key_no_cache(vfs, key, opts)
-                }
-            })
+            .map(|key| self.semantic_conflict_for_key_no_cache(vfs, key, opts))
             .collect::<io::Result<Vec<_>>>()?
             .into_iter()
             .flatten()
@@ -80,7 +61,6 @@ impl LayerIndex {
         Ok(SemanticConflictReport { entries })
     }
 
-    #[cfg(any(test, not(any(feature = "beth-archives", feature = "zip"))))]
     pub(super) fn semantic_conflict_for_key_no_cache(
         &self,
         vfs: &VFS,
@@ -88,18 +68,6 @@ impl LayerIndex {
         opts: SemanticOpts,
     ) -> io::Result<Option<SemanticConflict>> {
         let mut hash_cache = ProviderIoCache::new();
-        self.semantic_conflict_for_key(vfs, key, opts, &mut hash_cache)
-    }
-
-    #[cfg(any(feature = "beth-archives", feature = "zip"))]
-    fn semantic_conflict_for_key_with_archive_cache(
-        &self,
-        vfs: &VFS,
-        key: &Path,
-        opts: SemanticOpts,
-        archive_cache: SharedArchiveFileCache,
-    ) -> io::Result<Option<SemanticConflict>> {
-        let mut hash_cache = ProviderIoCache::with_shared_archive_file_cache(archive_cache);
         self.semantic_conflict_for_key(vfs, key, opts, &mut hash_cache)
     }
 
