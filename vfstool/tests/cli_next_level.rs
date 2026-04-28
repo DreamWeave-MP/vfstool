@@ -421,7 +421,7 @@ fn shadowed_omits_file_lists_unless_requested() {
         .iter()
         .find(|source| source["path"] == fixture.low.display().to_string())
         .expect("low source should be fully shadowed");
-    assert_eq!(low["shadowed_files"].as_array().map(Vec::len), Some(0));
+    assert!(low.get("shadowed_files").is_none());
 
     let detailed = fixture.run(&["shadowed", "--list-files", "--format", "json"]);
     assert_eq!(detailed.status.code(), Some(0));

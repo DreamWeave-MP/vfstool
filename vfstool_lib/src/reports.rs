@@ -52,6 +52,7 @@ pub struct ShadowedSource {
     /// VFS paths of all files in this source, each overridden by a later source.
     ///
     /// This is empty for summary reports built without file listings.
+    #[cfg_attr(feature = "serialize", serde(skip_serializing_if = "Vec::is_empty"))]
     pub shadowed_files: Vec<PathBuf>,
 }
 
