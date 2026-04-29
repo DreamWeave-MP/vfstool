@@ -122,11 +122,20 @@ fn diff_dir_skips_filenames_that_normalize_to_unsafe_keys() {
 #[cfg(unix)]
 fn diff_dir_uses_byte_keys_for_non_utf8_filenames() {
     use std::ffi::OsString;
+    use std::io;
     use std::os::unix::ffi::OsStringExt;
 
     let file_name = OsString::from_vec(vec![b'f', 0xff, b'o', b'.', b'd', b'd', b's']);
     let vfs_dir = TempDir::new("vfsdiff_non_utf8_base");
-    fs::write(vfs_dir.path().join(&file_name), b"base").unwrap();
+    let base_file = vfs_dir.path().join(&file_name);
+    let write_result = fs::write(&base_file, b"base");
+    if let Err(err) = &write_result {
+        if err.raw_os_error() == Some(92) || err.kind() == io::ErrorKind::InvalidInput {
+            eprintln!("skipping non-UTF8 diff test: filesystem rejected byte filename: {err}");
+            return;
+        }
+    }
+    write_result.unwrap();
     let vfs = VFS::from_directories(vec![vfs_dir.path()], None);
 
     let mod_dir = TempDir::new("vfsdiff_non_utf8_mod");

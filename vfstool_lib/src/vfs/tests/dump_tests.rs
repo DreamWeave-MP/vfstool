@@ -79,7 +79,17 @@ fn materialization_preserves_non_utf8_key_bytes() {
 
     let file_name = OsString::from_vec(vec![b'f', 0xff, b'o', b'.', b'd', b'd', b's']);
     let src = TempDir::new("dump_non_utf8_src");
-    fs::write(src.path().join(&file_name), b"bytes").unwrap();
+    let source_file = src.path().join(&file_name);
+    let write_result = fs::write(&source_file, b"bytes");
+    if let Err(err) = &write_result {
+        if err.raw_os_error() == Some(92) || err.kind() == io::ErrorKind::InvalidInput {
+            eprintln!(
+                "skipping non-UTF8 materialization test: filesystem rejected byte filename: {err}"
+            );
+            return;
+        }
+    }
+    write_result.unwrap();
     let vfs = VFS::from_directories(vec![src.path()], None);
 
     let dump_dest = TempDir::new("dump_non_utf8_dest");

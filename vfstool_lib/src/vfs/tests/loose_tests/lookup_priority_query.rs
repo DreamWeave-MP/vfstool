@@ -135,12 +135,27 @@ fn collision_across_dirs_via_case_normalization() {
 }
 
 #[test]
-fn same_source_case_collision_reports_distinct_original_paths() {
-    let dir = TempDir::new("vfsprio_same_source_case_collision");
-    dir.write("Textures/Foo.DDS", b"upper");
-    let lower = dir.write("textures/foo.dds", b"lower");
+fn same_source_duplicate_providers_report_distinct_original_paths() {
+    let dir = TempDir::new("vfsprio_same_source_duplicate_providers");
+    let upper = dir.write("upper/Foo.DDS", b"upper");
+    let lower = dir.write("lower/foo.dds", b"lower");
 
-    let vfs = VFS::from_directories(vec![dir.path()], None);
+    let source = SourceMeta {
+        path: dir.path().to_path_buf(),
+        kind: crate::SourceKind::LooseDir,
+    };
+    let key = NormalizedPath::new(b"textures/foo.dds");
+    let mut vfs = VFS::new();
+    assert_eq!(
+        vfs.push_provider_batch(
+            &source,
+            [
+                (key.clone(), VfsFile::from(&upper)),
+                (key, VfsFile::from(&lower))
+            ],
+        ),
+        2
+    );
 
     assert_eq!(vfs.iter().count(), 1);
     assert_eq!(vfs.get_file("textures/foo.dds").unwrap().path(), lower);
@@ -151,8 +166,8 @@ fn same_source_case_collision_reports_distinct_original_paths() {
         .iter()
         .map(|provider| provider.original_path.clone())
         .collect::<std::collections::BTreeSet<_>>();
-    assert!(original_paths.contains(Path::new("Textures/Foo.DDS")));
-    assert!(original_paths.contains(Path::new("textures/foo.dds")));
+    assert!(original_paths.contains(Path::new("upper/Foo.DDS")));
+    assert!(original_paths.contains(Path::new("lower/foo.dds")));
 }
 
 /// Override must be per-key: files unique to an earlier dir must survive

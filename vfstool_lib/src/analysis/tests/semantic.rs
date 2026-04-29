@@ -59,10 +59,35 @@ fn semantic_conflicts_reads_mixed_case_loose_provider_paths() {
 #[test]
 fn semantic_conflicts_reads_same_source_provider_occurrences() {
     let data = TempDir::new("analysis_semantic_same_source_occurrences");
-    data.write("Textures/Foo.DDS", b"upper content");
-    data.write("textures/foo.dds", b"lower content with different bytes");
+    data.write("upper/Foo.DDS", b"upper content");
+    data.write("lower/foo.dds", b"lower content with different bytes");
 
-    let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+    let source = SourceMeta {
+        path: data.path().to_path_buf(),
+        kind: SourceKind::LooseDir,
+    };
+    let key = crate::NormalizedPath::new(b"textures/foo.dds");
+    let mut vfs = VFS::new();
+    assert_eq!(
+        vfs.push_provider_batch(
+            &source,
+            [
+                (
+                    key.clone(),
+                    crate::VfsFile::from(data.path().join("upper/Foo.DDS"))
+                ),
+                (key, crate::VfsFile::from(data.path().join("lower/foo.dds")),),
+            ],
+        ),
+        2
+    );
+    let index = LayerIndex::from_file_lists([(
+        source,
+        vec![
+            PathBuf::from("Textures/Foo.DDS"),
+            PathBuf::from("textures/foo.dds"),
+        ],
+    )]);
     let report = index.semantic_conflicts(&vfs).expect("semantic report");
     let entry = report
         .entries

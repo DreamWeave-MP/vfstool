@@ -3,12 +3,39 @@ mod read {
     use super::super::VfsFile;
     use crate::normalize_host_path;
     use std::{
-        fs::{File, OpenOptions, create_dir, metadata, remove_dir_all, remove_file},
+        fs::{File, OpenOptions, create_dir_all, remove_dir_all, remove_file},
         io::{Read, Write},
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::Arc,
         thread,
     };
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "{name}_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock should be after unix epoch")
+                    .as_nanos()
+            ));
+            create_dir_all(&dir).expect("failed to create temp dir");
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = remove_dir_all(&self.0);
+        }
+    }
 
     const TEST_DATA: &str = "Act IV, Scene III, continued
 
@@ -52,20 +79,8 @@ END OF ACT IV, SCENE III";
     /// but instead refers to the literal path on the user's system
     #[test]
     fn path_must_not_be_normalized() {
-        let test_dir = PathBuf::from("SpOnGeBoBcAsEfIlE");
-        let test_path = test_dir.join("wHoOpSyDoOpSy.EsM");
-
-        if metadata(&test_dir).is_err() {
-            let path = create_dir(test_dir.clone());
-            assert!(
-                path.is_ok(),
-                "{}",
-                format!(
-                    "CRITICAL TEST FAILURE: COULD NOT CREATE TEST DIRECTORY: {}!",
-                    path.unwrap_err()
-                ),
-            );
-        }
+        let test_dir = TempDir::new("vfs_file_mixed_case");
+        let test_path = test_dir.path().join("wHoOpSyDoOpSy.EsM");
 
         let _ = File::create(&test_path);
         let vfs_file = VfsFile::from(&test_path);
@@ -74,8 +89,6 @@ END OF ACT IV, SCENE III";
         assert!(fd.is_ok(), "TEST FAILURE: COULD NOT OPEN VFS FILE!");
 
         assert_ne!(normalize_host_path(&test_path), vfs_file.path());
-
-        let _ = remove_dir_all(test_dir);
     }
 
     #[test]
@@ -88,20 +101,21 @@ END OF ACT IV, SCENE III";
 
     #[test]
     fn open_existing_file() {
-        let test_path = "test_file.txt";
-        let _ = File::create(test_path);
+        let test_dir = TempDir::new("vfs_file_open_existing");
+        let test_path = test_dir.path().join("test_file.txt");
+        let _ = File::create(&test_path);
 
-        let vfs_file = VfsFile::from(test_path);
+        let vfs_file = VfsFile::from(&test_path);
 
         let fd = vfs_file.open();
         assert!(fd.is_ok(), "Opening an existing file should succeed");
-        let _ = remove_file(vfs_file.path());
     }
 
     #[test]
     fn open_non_existing_file() {
-        let bad_path = "non_existent_file";
-        let file = VfsFile::from(bad_path);
+        let test_dir = TempDir::new("vfs_file_open_missing");
+        let bad_path = test_dir.path().join("non_existent_file");
+        let file = VfsFile::from(&bad_path);
 
         let fd = file.open();
         assert!(fd.is_err(), "Opening a non-existent file should fail");
@@ -114,12 +128,14 @@ END OF ACT IV, SCENE III";
             "##$$&&&%%&^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&^^^^!!!___++_==_----.txt";
         #[cfg(not(windows))]
         let test_path = "##$$&&&%%&***^^^^!!!!!0)))(((()()[[[}}}}}}}{{{{[[[[]]]]}]]]))@@&****(&^^^!!!___++_==_----.txt";
+        let test_dir = TempDir::new("vfs_file_weird_chars");
+        let test_path = test_dir.path().join(test_path);
 
-        let mut fd = File::create(test_path)?;
+        let mut fd = File::create(&test_path)?;
 
         write!(fd, "{TEST_DATA}")?;
 
-        let vfs_file = VfsFile::from(test_path);
+        let vfs_file = VfsFile::from(&test_path);
 
         let mut reader = vfs_file.open()?;
 
@@ -135,11 +151,12 @@ END OF ACT IV, SCENE III";
 
     #[test]
     fn test_concurrent_reading() {
-        let path_str = "test.txt";
-        let mut test_file_content = File::create(path_str).unwrap();
+        let test_dir = TempDir::new("vfs_file_concurrent_reading");
+        let path = test_dir.path().join("test.txt");
+        let mut test_file_content = File::create(&path).unwrap();
         let _ = write!(test_file_content, "{TEST_DATA}");
 
-        let vfs_file = Arc::new(VfsFile::from(path_str));
+        let vfs_file = Arc::new(VfsFile::from(&path));
 
         vfs_file.open().expect("File should open");
 
@@ -161,19 +178,18 @@ END OF ACT IV, SCENE III";
         for handle in handles {
             handle.join().unwrap();
         }
-
-        let _ = remove_file(PathBuf::from(path_str));
     }
 
     /// The OS generally handles concurrent writes, so not much special needs done here
     /// But do note that later iterations of this design won't implement writes this way
     #[test]
     fn test_concurrent_writing() {
-        let path_str = "test_write.txt";
+        let test_dir = TempDir::new("vfs_file_concurrent_writing");
+        let path = test_dir.path().join("test_write.txt");
 
-        let _ = File::create(path_str).unwrap();
+        let _ = File::create(&path).unwrap();
 
-        let vfs_file = Arc::new(VfsFile::from(path_str));
+        let vfs_file = Arc::new(VfsFile::from(&path));
 
         vfs_file.open().expect("File should open");
 
@@ -200,19 +216,18 @@ END OF ACT IV, SCENE III";
         for handle in handles {
             handle.join().unwrap();
         }
-
-        let _ = remove_file(PathBuf::from(path_str));
     }
 
     /// This usage isn't really necessary, as the OS will handle sequencing of read and write ops
     /// However, if explicit sequencing is required, this is the way to do it
     #[test]
     fn test_concurrent_writing_with_rwlock() {
-        let path_str = "test_write_safe.txt";
+        let test_dir = TempDir::new("vfs_file_concurrent_writing_rwlock");
+        let path = test_dir.path().join("test_write_safe.txt");
 
-        let _ = File::create(path_str).expect("Failed to create test file"); // Ensure the file exists
+        let _ = File::create(&path).expect("Failed to create test file"); // Ensure the file exists
 
-        let vfs_file = Arc::new(VfsFile::from(path_str));
+        let vfs_file = Arc::new(VfsFile::from(&path));
         let file_lock = Arc::new(std::sync::RwLock::new(())); // Lock for write access
 
         let handles: Vec<_> = (0..10)
@@ -248,7 +263,5 @@ END OF ACT IV, SCENE III";
         for handle in handles {
             handle.join().unwrap();
         }
-
-        let _ = remove_file(PathBuf::from(path_str));
     }
 }

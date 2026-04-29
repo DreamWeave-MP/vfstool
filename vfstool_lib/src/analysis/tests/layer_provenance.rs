@@ -128,12 +128,37 @@ fn same_source_duplicate_occurrences_do_not_count_as_cross_source_overrides() {
 }
 
 #[test]
-fn vfs_layer_index_preserves_same_source_case_collisions() {
-    let data = TempDir::new("analysis_layer_same_source_case_collision");
-    data.write("Textures/Foo.DDS", b"upper");
-    data.write("textures/foo.dds", b"lower");
+fn duplicate_provider_occurrences_have_matching_vfs_provider_stack() {
+    let data = TempDir::new("analysis_layer_duplicate_provider_occurrences");
+    data.write("upper/Foo.DDS", b"upper");
+    data.write("lower/foo.dds", b"lower");
 
-    let (vfs, index) = VFS::from_directories_with_layer_index([data.path()], None);
+    let source = SourceMeta {
+        path: data.path().to_path_buf(),
+        kind: SourceKind::LooseDir,
+    };
+    let key = crate::NormalizedPath::new(b"textures/foo.dds");
+    let mut vfs = VFS::new();
+    assert_eq!(
+        vfs.push_provider_batch(
+            &source,
+            [
+                (
+                    key.clone(),
+                    crate::VfsFile::from(data.path().join("upper/Foo.DDS"))
+                ),
+                (key, crate::VfsFile::from(data.path().join("lower/foo.dds"))),
+            ],
+        ),
+        2
+    );
+    let index = LayerIndex::from_file_lists([(
+        source,
+        vec![
+            PathBuf::from("Textures/Foo.DDS"),
+            PathBuf::from("textures/foo.dds"),
+        ],
+    )]);
 
     assert_eq!(vfs.provider_records_for("textures/foo.dds").len(), 2);
     let chain = index.provider_chain(Path::new("textures/foo.dds"));

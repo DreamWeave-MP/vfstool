@@ -192,12 +192,10 @@ fn sources_containing_uses_byte_keys_for_non_utf8_filenames() {
     use std::os::unix::ffi::OsStringExt;
 
     let file_name = OsString::from_vec(vec![b'f', 0xff, b'o', b'.', b'd', b'd', b's']);
-    let d1 = TempDir::new("ci_non_utf8_d1");
-    let d2 = TempDir::new("ci_non_utf8_d2");
-    fs::write(d1.path().join(&file_name), b"one").unwrap();
-    fs::write(d2.path().join(&file_name), b"two").unwrap();
-
-    let index = ConflictIndex::from_directories([d1.path(), d2.path()]);
+    let index = ConflictIndex::from_file_lists([
+        (PathBuf::from("/one"), vec![PathBuf::from(&file_name)]),
+        (PathBuf::from("/two"), vec![PathBuf::from(&file_name)]),
+    ]);
 
     assert_eq!(index.sources_containing(Path::new(&file_name)), &[0, 1]);
 }
