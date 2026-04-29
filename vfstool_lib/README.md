@@ -164,11 +164,11 @@ through the loose directory files and inserts archive providers below all loose 
 OpenMW's loose-over-archive rule. Manual `push_archive` is different: it pushes that archive as a new
 highest-priority provider source, because that is what "push" means.
 
-Strict construction is available through `try_from_directories*` APIs. The older
-`from_directories*` constructors remain best-effort for compatibility and may skip unreadable paths or
-broken configured archives. If your tool is about to make decisions from the resulting reports, use
-the strict constructors. A partial VFS with a complete-looking report is still partial; neat tables do
-not improve causality.
+The `from_directories*` constructors are best-effort input collectors but always return a valid,
+materializable VFS. Unreadable paths, broken configured archives, unsafe keys, and entries that would
+create file/directory materialization conflicts are skipped instead of making every caller validate the
+same invariant after construction. If you want diagnostics for skipped input, build a diagnostic report;
+do not make the core VFS type carry invalid state around wearing a nice hat.
 
 Archive entries that normalize to the same VFS key are preserved in provider reports and case
 collision reports. The resolved winner still follows provider order; reporting does not silently turn

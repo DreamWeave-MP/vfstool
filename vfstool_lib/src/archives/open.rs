@@ -29,30 +29,6 @@ pub fn from_set(
         .collect()
 }
 
-pub(crate) fn try_from_set(
-    file_map: &AHashMap<NormalizedPath, VfsFile>,
-    archive_list: &[&str],
-) -> Result<ArchiveList, crate::VfsBuildError> {
-    archive_list
-        .iter()
-        .copied()
-        .map(|archive| {
-            let archive_path = NormalizedPath::new(archive.as_bytes());
-            let Some(valid_archive) = file_map.get(&archive_path) else {
-                return Err(crate::VfsBuildError::ArchiveNotFound {
-                    archive: archive.to_owned(),
-                });
-            };
-            try_open_archive(valid_archive.path()).map_err(|message| {
-                crate::VfsBuildError::ArchiveLoad {
-                    archive: valid_archive.path().to_path_buf(),
-                    message,
-                }
-            })
-        })
-        .collect()
-}
-
 /// Try to open a single archive file, detecting its format by extension and content.
 ///
 /// ZIP/PK3 files are identified by extension; BSA/BA2 files are identified by

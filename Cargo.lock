@@ -1134,6 +1134,7 @@ name = "vfstool"
 version = "1.0.0"
 dependencies = [
  "clap",
+ "criterion",
  "dream_archive",
  "openmw-config",
  "vfstool_lib",

@@ -27,7 +27,7 @@ pub fn build_conflict_index(config_path: PathBuf) -> (VFS, ConflictIndex) {
     VFS::from_directories_with_conflict_index(data_paths, Some(archives))
 }
 
-pub fn build_layer_index_strict(config_path: PathBuf) -> (VFS, LayerIndex) {
+pub fn build_layer_index(config_path: PathBuf) -> (VFS, LayerIndex) {
     let cfg = load_openmw_config(config_path);
     let data_paths = cfg
         .data_directories_iter()
@@ -36,13 +36,7 @@ pub fn build_layer_index_strict(config_path: PathBuf) -> (VFS, LayerIndex) {
         .fallback_archives_iter()
         .map(|a| a.value().as_str())
         .collect();
-    match VFS::try_from_directories_with_layer_index(data_paths, Some(archives)) {
-        Ok(result) => result,
-        Err(err) => {
-            eprintln!("Failed to build complete VFS: {err}");
-            std::process::exit(VFSToolExitCode::RuntimeFailure.into());
-        }
-    }
+    VFS::from_directories_with_layer_index(data_paths, Some(archives))
 }
 
 fn validate_config_dir(dir: &PathBuf) -> io::Result<PathBuf> {
@@ -114,30 +108,4 @@ pub fn construct_vfs(config_path: PathBuf) -> VFS {
         .collect();
 
     VFS::from_directories(data_paths, Some(archives))
-}
-
-pub fn construct_vfs_strict(config_path: PathBuf) -> VFS {
-    let config = match openmw_config::OpenMWConfiguration::new(Some(config_path)) {
-        Err(config_err) => {
-            eprintln!("Failed to load configuration file: {config_err}");
-            std::process::exit(VFSToolExitCode::FailedToLoadOpenMWConfig.into());
-        }
-        Ok(config) => config,
-    };
-
-    let data_paths = config
-        .data_directories_iter()
-        .map(openmw_config::DirectorySetting::parsed);
-    let archives = config
-        .fallback_archives_iter()
-        .map(|archive| archive.value().as_str())
-        .collect();
-
-    match VFS::try_from_directories(data_paths, Some(archives)) {
-        Ok(vfs) => vfs,
-        Err(err) => {
-            eprintln!("Failed to build complete VFS: {err}");
-            std::process::exit(VFSToolExitCode::RuntimeFailure.into());
-        }
-    }
 }

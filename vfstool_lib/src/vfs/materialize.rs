@@ -6,7 +6,6 @@ use crate::{
 };
 use rayon::prelude::*;
 use std::{
-    collections::BTreeSet,
     io,
     path::{Path, PathBuf},
 };
@@ -343,8 +342,7 @@ impl VFS {
     }
 
     fn validate_materialization_paths(&self) -> io::Result<()> {
-        let keys = self.file_map.keys().cloned().collect::<BTreeSet<_>>();
-        for key in &keys {
+        for key in self.file_map.keys() {
             if !normalized_safe_normalized_bytes(key.as_bytes()) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -353,28 +351,6 @@ impl VFS {
                         key_to_string_lossy(key)
                     ),
                 ));
-            }
-
-            let mut prefix = Vec::new();
-            for component in key.as_bytes().split(|&byte| byte == b'/') {
-                if !prefix.is_empty() {
-                    prefix.push(b'/');
-                }
-                prefix.extend_from_slice(component);
-                if prefix.as_slice() == key.as_bytes() {
-                    break;
-                }
-                let prefix_key = NormalizedPath::from_normalized_bytes_unchecked(prefix.clone());
-                if keys.contains(&prefix_key) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        format!(
-                            "VFS keys '{}' and '{}' cannot both be materialized as filesystem paths",
-                            String::from_utf8_lossy(&prefix),
-                            key_to_string_lossy(key)
-                        ),
-                    ));
-                }
             }
         }
         Ok(())

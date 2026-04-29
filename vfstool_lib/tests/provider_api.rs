@@ -90,7 +90,7 @@ fn duplicates_matching_regex_filters_normalized_vfs_keys() {
 }
 
 #[test]
-fn validate_reports_cross_source_file_directory_conflicts() {
+fn construction_skips_cross_source_file_directory_conflicts() {
     let root = temp_root("validate");
     let file_source = root.join("file_source");
     let child_source = root.join("child_source");
@@ -100,7 +100,9 @@ fn validate_reports_cross_source_file_directory_conflicts() {
     fs::write(child_source.join("foo/bar.txt"), b"child").unwrap();
 
     let vfs = VFS::from_directories([&file_source, &child_source], None);
-    assert_eq!(vfs.validate().issues.len(), 1);
+    assert_eq!(vfs.validate().issues.len(), 0);
+    assert!(vfs.get_file("foo").is_some());
+    assert!(vfs.get_file("foo/bar.txt").is_none());
     assert_eq!(
         vfs.materialization_plan(
             root.join("out"),
@@ -112,7 +114,7 @@ fn validate_reports_cross_source_file_directory_conflicts() {
         )
         .issues
         .len(),
-        1
+        0
     );
 
     let _ = fs::remove_dir_all(root);

@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use std::{
+    ffi::OsStr,
     fs,
     io::{self, Result},
     path::{Path, PathBuf},
 };
 
 use vfstool_lib::{
-    CollapseOptions, VFS, ValidationIssue, normalize_host_path, run_finalize_tracked,
-    run_setup_tracked,
+    CollapseOptions, VFS, VfsKeyInput, normalize_host_path, run_finalize_tracked, run_setup_tracked,
 };
 
 use crate::{
     cli::{Commands, OutputFormat},
-    config::{build_conflict_index, build_layer_index_strict, construct_vfs, load_openmw_config},
+    config::{build_conflict_index, build_layer_index, construct_vfs, load_openmw_config},
     exit::VFSToolExitCode,
     output::{parse_lock_file, write_serialized, write_serialized_vfs},
     print,
@@ -73,29 +73,135 @@ fn handle_find(
     write_serialized_vfs(output, format, &tree)
 }
 
-fn handle_find_file(vfs: &VFS, path: &PathBuf, simple: bool, only_physical: bool) {
-    let Some(file) = vfs.get_file(path) else {
-        if !simple {
+fn print_find_file_success(path: &Path, path_display: &str, simple: bool) {
+    if simple {
+        println!("{path_display}");
+    } else {
+        println!(
+            "{}Successfully found VFS File {} at path {}",
+            print::success_prefix(),
+            print::blue(path.display()),
+            print::green(path_display),
+        );
+    }
+}
+
+fn print_find_file_missing(path: &Path, simple: bool, only_physical: bool) {
+    if !simple {
+        if only_physical {
+            eprintln!(
+                "{}Failed to locate {} in loose files of the provided VFS.",
+                print::err_prefix(),
+                print::blue(path.display()),
+            );
+        } else {
             eprintln!(
                 "{}Failed to locate {} in the provided VFS.",
                 print::err_prefix(),
                 print::blue(path.display()),
             );
         }
+    }
+}
+
+fn handle_find_file_fast(resolved_config_dir: PathBuf, path: &Path, simple: bool) -> bool {
+    let config = load_openmw_config(resolved_config_dir);
+    let data_dirs: Vec<PathBuf> = config
+        .data_directories_iter()
+        .map(|dir| dir.parsed().to_owned())
+        .collect();
+
+    let Some(found) = find_loose_file_fast(data_dirs.iter().rev().map(PathBuf::as_path), path)
+    else {
+        return false;
+    };
+
+    print_find_file_success(path, &found.to_string_lossy(), simple);
+    true
+}
+
+fn find_loose_file_fast<'a>(
+    mut data_dirs: impl Iterator<Item = &'a Path>,
+    path: &Path,
+) -> Option<PathBuf> {
+    let key = path.to_safe_vfs_key()?;
+    let components: Vec<&[u8]> = key
+        .as_bytes()
+        .split(|byte| *byte == b'/')
+        .filter(|component| !component.is_empty())
+        .collect();
+
+    if components.is_empty() {
+        return None;
+    }
+
+    data_dirs.find_map(|data_dir| resolve_case_insensitive_file(data_dir, &components))
+}
+
+fn resolve_case_insensitive_file(data_dir: &Path, components: &[&[u8]]) -> Option<PathBuf> {
+    let mut candidates = vec![data_dir.to_path_buf()];
+
+    for (index, component) in components.iter().enumerate() {
+        let is_last = index == components.len() - 1;
+        let mut matches = Vec::new();
+
+        for candidate in &candidates {
+            let Ok(entries) = fs::read_dir(candidate) else {
+                continue;
+            };
+
+            for entry in entries.flatten() {
+                if normalized_os_component(&entry.file_name()) != *component {
+                    continue;
+                }
+
+                let path = entry.path();
+                if is_last {
+                    if path.is_file() {
+                        matches.push(path);
+                    }
+                } else if path.is_dir() {
+                    matches.push(path);
+                }
+            }
+        }
+
+        if matches.is_empty() {
+            return None;
+        }
+
+        candidates = matches;
+    }
+
+    candidates.into_iter().max()
+}
+
+fn normalized_os_component(component: &OsStr) -> Vec<u8> {
+    component
+        .as_encoded_bytes()
+        .iter()
+        .map(|byte| {
+            if *byte == b'\\' {
+                b'/'
+            } else {
+                byte.to_ascii_lowercase()
+            }
+        })
+        .collect()
+}
+
+fn handle_find_file(vfs: &VFS, path: &PathBuf, simple: bool, only_physical: bool) {
+    let Some(file) = vfs.get_file(path) else {
+        print_find_file_missing(path, simple, false);
         std::process::exit(VFSToolExitCode::FindFailed.into());
     };
 
+    if file.is_archive() && only_physical {
+        print_find_file_missing(path, simple, true);
+        std::process::exit(VFSToolExitCode::FileNotInLooseDirectories.into());
+    }
+
     let path_display = if file.is_archive() {
-        if only_physical {
-            if !simple {
-                eprintln!(
-                    "{}Failed to locate {} in loose files of the provided VFS.",
-                    print::err_prefix(),
-                    print::blue(path.display()),
-                );
-            }
-            std::process::exit(VFSToolExitCode::FileNotInLooseDirectories.into());
-        }
         PathBuf::from(file.parent_archive_path().unwrap_or_default())
             .join(path)
             .to_string_lossy()
@@ -104,16 +210,7 @@ fn handle_find_file(vfs: &VFS, path: &PathBuf, simple: bool, only_physical: bool
         file.path().to_string_lossy().to_string()
     };
 
-    if simple {
-        println!("{path_display}");
-    } else {
-        println!(
-            "{}Successfully found VFS File {} at path {}",
-            print::success_prefix(),
-            print::blue(path.display()),
-            print::green(&path_display),
-        );
-    }
+    print_find_file_success(path, &path_display, simple);
 }
 
 fn handle_remaining(
@@ -320,36 +417,74 @@ struct AppValidationReport {
 #[derive(vfstool_lib::serde::Serialize)]
 #[serde(crate = "vfstool_lib::serde")]
 enum AppValidationIssue {
-    MissingDataDirectory {
-        path: PathBuf,
-    },
-    DataPathNotDirectory {
-        path: PathBuf,
-    },
-    MissingFallbackArchive {
-        name: String,
-    },
-    UnreadableFallbackArchive {
-        name: String,
-        path: PathBuf,
-    },
-    MissingContentFile {
-        name: String,
-    },
-    MissingGroundcoverFile {
-        name: String,
-    },
-    MissingLooseSource {
-        key: PathBuf,
-        source: PathBuf,
-    },
-    FileDirectoryConflict {
-        file_key: PathBuf,
-        directory_key: PathBuf,
-    },
+    MissingDataDirectory { path: PathBuf },
+    DataPathNotDirectory { path: PathBuf },
+    MissingFallbackArchive { name: String },
+    UnreadableFallbackArchive { name: String, path: PathBuf },
+    MissingContentFile { name: String },
+    MissingGroundcoverFile { name: String },
 }
 
-fn handle_validate(
+fn handle_validate_fast(
+    resolved_config_dir: PathBuf,
+    format: OutputFormat,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let cfg = load_openmw_config(resolved_config_dir);
+    let data_dirs: Vec<PathBuf> = cfg
+        .data_directories_iter()
+        .map(|dir| dir.parsed().to_owned())
+        .collect();
+    let mut issues = Vec::new();
+
+    for path in &data_dirs {
+        if !path.exists() {
+            issues.push(AppValidationIssue::MissingDataDirectory { path: path.clone() });
+        } else if !path.is_dir() {
+            issues.push(AppValidationIssue::DataPathNotDirectory { path: path.clone() });
+        }
+    }
+
+    for archive in cfg.fallback_archives_iter() {
+        let name = archive.value();
+        if find_loose_file_fast(
+            data_dirs.iter().rev().map(PathBuf::as_path),
+            Path::new(name),
+        )
+        .is_none()
+        {
+            issues.push(AppValidationIssue::MissingFallbackArchive { name: name.clone() });
+        }
+    }
+
+    for content in cfg.content_files_iter() {
+        let name = content.value();
+        if find_loose_file_fast(
+            data_dirs.iter().rev().map(PathBuf::as_path),
+            Path::new(name),
+        )
+        .is_none()
+        {
+            issues.push(AppValidationIssue::MissingContentFile { name: name.clone() });
+        }
+    }
+
+    for groundcover in cfg.groundcover_iter() {
+        let name = groundcover.value();
+        if find_loose_file_fast(
+            data_dirs.iter().rev().map(PathBuf::as_path),
+            Path::new(name),
+        )
+        .is_none()
+        {
+            issues.push(AppValidationIssue::MissingGroundcoverFile { name: name.clone() });
+        }
+    }
+
+    write_serialized(output, format, &AppValidationReport { issues })
+}
+
+fn handle_validate_full(
     resolved_config_dir: PathBuf,
     vfs: &VFS,
     format: OutputFormat,
@@ -398,22 +533,6 @@ fn handle_validate(
         let name = groundcover.value();
         if vfs.get_file(name.as_str()).is_none() {
             issues.push(AppValidationIssue::MissingGroundcoverFile { name: name.clone() });
-        }
-    }
-
-    for issue in vfs.validate_winners().issues {
-        match issue {
-            ValidationIssue::MissingLooseSource { key, source } => {
-                issues.push(AppValidationIssue::MissingLooseSource { key, source });
-            }
-            ValidationIssue::FileDirectoryConflict {
-                file_key,
-                directory_key,
-            } => issues.push(AppValidationIssue::FileDirectoryConflict {
-                file_key,
-                directory_key,
-            }),
-            ValidationIssue::CaseCollision { .. } => {}
         }
     }
 
@@ -624,7 +743,7 @@ fn handle_lock(
     format: OutputFormat,
     output: Option<PathBuf>,
 ) -> Result<()> {
-    let (vfs, layer) = build_layer_index_strict(resolved_config_dir);
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
     let lock = layer.lock_manifest(&vfs)?;
     write_serialized(output, format, &lock)
 }
@@ -637,7 +756,7 @@ fn handle_drift(
     output: Option<PathBuf>,
 ) -> Result<()> {
     let lock = parse_lock_file(lock_file)?;
-    let (vfs, layer) = build_layer_index_strict(resolved_config_dir);
+    let (vfs, layer) = build_layer_index(resolved_config_dir);
     let report = layer.diff_against_lock(&vfs, &lock)?;
     let has_drift = !report.entries.is_empty();
     write_serialized(output, format, &report)?;
@@ -741,10 +860,15 @@ fn run_core_vfs_command(
             )?;
             Ok(None)
         }
-        Commands::Validate { format, output } => {
-            handle_validate(resolved_config_dir, vfs, format, output)?;
+        Commands::Validate {
+            full: true,
+            format,
+            output,
+        } => {
+            handle_validate_full(resolved_config_dir, vfs, format, output)?;
             Ok(None)
         }
+        Commands::Validate { full: false, .. } => Ok(Some(command)),
         other => run_provider_vfs_command(other, vfs),
     }
 }
@@ -822,6 +946,21 @@ pub fn run_command(
     use_relative: bool,
     resolved_config_dir: PathBuf,
 ) -> Result<()> {
+    if let Commands::FindFile { path, simple, .. } = &command {
+        if handle_find_file_fast(resolved_config_dir.clone(), path, *simple) {
+            return Ok(());
+        }
+    }
+
+    if let Commands::Validate {
+        full: false,
+        format,
+        output,
+    } = command
+    {
+        return handle_validate_fast(resolved_config_dir, format, output);
+    }
+
     let needs_plain_vfs = matches!(
         command,
         Commands::Collapse { .. }
@@ -836,18 +975,14 @@ pub fn run_command(
             | Commands::ArchiveList { .. }
             | Commands::CaseCollisions { .. }
             | Commands::Contributions { .. }
-            | Commands::Validate { .. }
+            | Commands::Validate { full: true, .. }
     );
 
     if !needs_plain_vfs {
         return run_analysis_command(command, use_relative, resolved_config_dir);
     }
 
-    let vfs = if matches!(command, Commands::Run { .. }) {
-        crate::config::construct_vfs_strict(resolved_config_dir.clone())
-    } else {
-        construct_vfs(resolved_config_dir.clone())
-    };
+    let vfs = construct_vfs(resolved_config_dir.clone());
     let Some(command) =
         run_core_vfs_command(command, &vfs, use_relative, resolved_config_dir.clone())?
     else {

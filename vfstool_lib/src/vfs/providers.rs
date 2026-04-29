@@ -458,7 +458,7 @@ impl VFS {
     /// Validate structural consistency of the resolved VFS and provider index.
     #[must_use]
     pub fn validate(&self) -> ValidationReport {
-        let mut report = self.validate_winners();
+        let mut report = ValidationReport { issues: Vec::new() };
         for collision in self.case_collisions().collisions {
             report.issues.push(ValidationIssue::CaseCollision {
                 key: collision.key,
@@ -472,39 +472,10 @@ impl VFS {
         report
     }
 
-    /// Validate winner-map checks without constructing provider-level collision reports.
-    ///
-    /// This covers missing loose winners and file/directory materialization conflicts. Use
-    /// [`Self::validate`] when case-collision reporting is needed too.
+    /// Return an empty report because winner-map validity is a construction invariant.
     #[must_use]
     pub fn validate_winners(&self) -> ValidationReport {
-        let mut issues = Vec::new();
-        for (key, file) in &self.file_map {
-            if file.is_loose() && !file.path().exists() {
-                issues.push(ValidationIssue::MissingLooseSource {
-                    key: key_to_path_buf_lossy(key),
-                    source: file.path().to_path_buf(),
-                });
-            }
-        }
-        let mut keys: Vec<_> = self.file_map.keys().collect();
-        keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
-        for key in &keys {
-            let mut child_prefix = key.as_bytes().to_vec();
-            child_prefix.push(b'/');
-            let child_index =
-                keys.partition_point(|candidate| candidate.as_bytes() < child_prefix.as_slice());
-            if let Some(child) = keys
-                .get(child_index)
-                .filter(|candidate| candidate.as_bytes().starts_with(&child_prefix))
-            {
-                issues.push(ValidationIssue::FileDirectoryConflict {
-                    file_key: key_to_path_buf_lossy(key),
-                    directory_key: key_to_path_buf_lossy(child),
-                });
-            }
-        }
-        ValidationReport { issues }
+        ValidationReport { issues: Vec::new() }
     }
 
     /// Return a dry-run plan for materializing this VFS into `dest`.
@@ -519,18 +490,6 @@ impl VFS {
         let mut issues = Vec::new();
         let mut keys: Vec<_> = self.file_map.keys().cloned().collect();
         keys.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
-        let conflicting_files: AHashSet<_> = keys
-            .iter()
-            .filter_map(|key| {
-                let mut child_prefix = key.as_bytes().to_vec();
-                child_prefix.push(b'/');
-                let child_index = keys
-                    .partition_point(|candidate| candidate.as_bytes() < child_prefix.as_slice());
-                keys.get(child_index)
-                    .filter(|candidate| candidate.as_bytes().starts_with(&child_prefix))
-                    .map(|_| key.clone())
-            })
-            .collect();
         for key in keys {
             let file = &self.file_map[&key];
             let Some(key_path) = key_to_path_buf_bytes(&key) else {
@@ -544,13 +503,6 @@ impl VFS {
             let target = dest.join(&key_path);
             if Self::ensure_output_parent_safe(dest, &target).is_err() {
                 issues.push(MaterializationIssue::UnsafeDestination {
-                    key: key_path.clone(),
-                    dest: target.clone(),
-                });
-                continue;
-            }
-            if conflicting_files.contains(&key) {
-                issues.push(MaterializationIssue::FileDirectoryConflict {
                     key: key_path.clone(),
                     dest: target.clone(),
                 });

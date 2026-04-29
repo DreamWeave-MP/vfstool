@@ -23,6 +23,11 @@ impl VFS {
         file: VfsFile,
     ) -> Option<VfsFile> {
         let normalized = key.to_safe_vfs_key()?;
+        if !self.file_map.contains_key(&normalized)
+            && self.key_has_materialization_conflict(&normalized)
+        {
+            return None;
+        }
         let previous = self.file_map.get(&normalized).cloned();
         let source = provider_source(&file);
         let source_index = self.push_source(source.clone());
@@ -63,6 +68,9 @@ impl VFS {
         let Some(key) = key.to_safe_vfs_key() else {
             return false;
         };
+        if !self.file_map.contains_key(&key) && self.key_has_materialization_conflict(&key) {
+            return false;
+        }
         let source_index = self.push_source(provider.source.clone());
         self.providers
             .entry(key.clone())
@@ -99,6 +107,9 @@ impl VFS {
         let mut touched = Vec::new();
         let mut inserted = 0;
         for (key, file) in entries {
+            if !self.file_map.contains_key(&key) && self.key_has_materialization_conflict(&key) {
+                continue;
+            }
             self.providers
                 .entry(key.clone())
                 .or_default()
@@ -117,6 +128,8 @@ impl VFS {
         }
         if inserted > 0 {
             self.rebuild_layer_index();
+        } else {
+            self.sources.pop();
         }
         inserted
     }

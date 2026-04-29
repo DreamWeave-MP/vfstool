@@ -38,34 +38,17 @@ fn layer_index_constructor_precomputes_provider_index() {
 }
 
 #[test]
-fn try_from_directories_reports_missing_directory() {
+fn from_directories_skips_missing_directory() {
     let dir = TempDir::new("vfsloose_missing_strict");
     let missing = dir.path().join("missing");
 
-    let Err(err) = VFS::try_from_directories([missing.as_path()], None) else {
-        panic!("strict construction should reject a missing directory");
-    };
-
-    assert!(matches!(err, VfsBuildError::Traversal { .. }));
-    assert!(err.to_string().contains("failed to traverse"));
-}
-
-#[test]
-#[cfg(not(any(feature = "beth-archives", feature = "zip")))]
-fn try_from_directories_rejects_archives_without_archive_features() {
-    let dir = TempDir::new("vfsloose_archives_without_features");
-
-    let Err(err) = VFS::try_from_directories([dir.path()], Some(vec!["missing.zip"])) else {
-        panic!("strict construction should reject requested archives when archive support is off");
-    };
-
-    assert!(matches!(err, VfsBuildError::ArchiveLoad { .. }));
-    assert!(err.to_string().contains("archive support is not enabled"));
+    let vfs = VFS::from_directories([missing.as_path()], None);
+    assert_eq!(vfs.iter().count(), 0);
 }
 
 #[test]
 #[cfg(unix)]
-fn try_from_directories_reports_unreadable_traversal_entries() {
+fn from_directories_skips_unreadable_traversal_entries() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = TempDir::new("vfsloose_unreadable_strict");
@@ -75,12 +58,10 @@ fn try_from_directories_reports_unreadable_traversal_entries() {
     let original_permissions = fs::metadata(&unreadable).unwrap().permissions();
     fs::set_permissions(&unreadable, fs::Permissions::from_mode(0o000)).unwrap();
 
-    let Err(err) = VFS::try_from_directories([dir.path()], None) else {
-        panic!("strict construction should reject unreadable traversal entries");
-    };
+    let vfs = VFS::from_directories([dir.path()], None);
 
     fs::set_permissions(&unreadable, original_permissions).unwrap();
-    assert!(matches!(err, VfsBuildError::Traversal { path, .. } if path == unreadable));
+    assert!(vfs.get_file("visible.txt").is_some());
 }
 
 #[test]
@@ -347,7 +328,7 @@ fn remove_resolved_file_compacts_layer_sources() {
 }
 
 #[test]
-fn materialization_plan_rejects_file_directory_conflict() {
+fn set_winner_loose_file_rejects_descendant_under_existing_file() {
     let dir = TempDir::new("vfsloose_materialization_plan_conflict");
     let foo = dir.write("foo", b"a");
     let child = dir.write("child", b"b");
@@ -355,22 +336,12 @@ fn materialization_plan_rejects_file_directory_conflict() {
     vfs.set_winner_loose_file("foo", &foo);
     vfs.set_winner_loose_file("foo/bar", &child);
 
-    let out = TempDir::new("vfsloose_materialization_plan_conflict_out");
-    let plan = vfs.materialization_plan(
-        out.path(),
-        &crate::CollapseOptions {
-            allow_copying: false,
-            extract_archives: false,
-            use_symlinks: false,
-        },
-    );
-
-    assert_eq!(plan.issues.len(), 1);
-    assert_eq!(plan.actions.len(), 1);
+    assert!(vfs.get_file("foo").is_some());
+    assert!(vfs.get_file("foo/bar").is_none());
 }
 
 #[test]
-fn materialization_plan_finds_non_adjacent_file_directory_conflict() {
+fn set_winner_loose_file_rejects_child_when_ancestor_exists() {
     let dir = TempDir::new("vfsloose_materialization_plan_non_adjacent_conflict");
     let file = dir.write("file_source", b"a");
     let sibling = dir.write("sibling_source", b"b");
@@ -380,18 +351,9 @@ fn materialization_plan_finds_non_adjacent_file_directory_conflict() {
     vfs.set_winner_loose_file("a.b", &sibling);
     vfs.set_winner_loose_file("a/c", &child);
 
-    let out = TempDir::new("vfsloose_materialization_plan_non_adjacent_conflict_out");
-    let plan = vfs.materialization_plan(
-        out.path(),
-        &crate::CollapseOptions {
-            allow_copying: false,
-            extract_archives: false,
-            use_symlinks: false,
-        },
-    );
-
-    assert_eq!(plan.issues.len(), 1);
-    assert_eq!(plan.actions.len(), 2);
+    assert!(vfs.get_file("a").is_some());
+    assert!(vfs.get_file("a.b").is_some());
+    assert!(vfs.get_file("a/c").is_none());
 }
 
 #[test]

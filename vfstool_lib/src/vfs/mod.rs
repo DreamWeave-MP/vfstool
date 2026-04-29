@@ -5,7 +5,6 @@ use std::sync::OnceLock;
 mod build;
 mod construct;
 mod core;
-mod diagnostics;
 mod diff;
 mod lookup;
 mod materialize;
@@ -13,7 +12,6 @@ mod mutate;
 mod providers;
 mod tree;
 
-pub use self::diagnostics::VfsBuildError;
 pub use self::diff::DirectoryDiff;
 pub use self::providers::{
     ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DuplicateEntry, DuplicateReport,
@@ -58,6 +56,7 @@ pub(crate) struct ProviderEntry {
 /// files have higher priority, matching `OpenMW`'s `data=` semantics.
 pub struct VFS {
     file_map: VFSFiles,
+    dir_prefix_counts: AHashMap<NormalizedPath, usize>,
     pub(crate) providers: AHashMap<NormalizedPath, Vec<ProviderEntry>>,
     pub(crate) sources: Vec<SourceMeta>,
     layer_index: OnceLock<LayerIndex>,

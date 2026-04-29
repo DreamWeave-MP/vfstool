@@ -101,31 +101,21 @@ fn zip_entries_appear_in_vfs() {
 }
 
 #[test]
-fn try_from_directories_reports_missing_configured_zip() {
+fn from_directories_skips_missing_configured_zip() {
     let dir = TempDir::new("vfszip_missing_strict");
 
-    let Err(err) = VFS::try_from_directories([dir.path()], Some(vec!["missing.zip"])) else {
-        panic!("strict construction should reject a missing configured archive");
-    };
-
-    assert!(matches!(
-        err,
-        VfsBuildError::ArchiveNotFound { archive } if archive == "missing.zip"
-    ));
+    let vfs = VFS::from_directories([dir.path()], Some(vec!["missing.zip"]));
+    assert_eq!(vfs.iter().count(), 0);
 }
 
 #[test]
-fn try_from_directories_reports_broken_configured_zip() {
+fn from_directories_skips_broken_configured_zip() {
     let dir = TempDir::new("vfszip_broken_strict");
     dir.write("data.zip", b"not actually a zip file");
 
-    let Err(err) = VFS::try_from_directories([dir.path()], Some(vec!["data.zip"])) else {
-        panic!("strict construction should reject a broken configured archive");
-    };
-
-    assert!(
-        matches!(err, VfsBuildError::ArchiveLoad { archive, .. } if archive.ends_with("data.zip"))
-    );
+    let vfs = VFS::from_directories([dir.path()], Some(vec!["data.zip"]));
+    assert!(vfs.get_file("data.zip").is_some());
+    assert_eq!(vfs.archives().len(), 0);
 }
 
 #[test]

@@ -127,7 +127,7 @@ fn dump_count_accurate() {
 }
 
 #[test]
-fn dump_rejects_file_directory_key_conflicts() {
+fn dump_uses_materializable_vfs_after_conflicting_key_is_rejected() {
     let src = TempDir::new("dump_path_conflict_src");
     let file = src.write("file_source", b"file");
     let nested = src.write("nested_source", b"nested");
@@ -136,15 +136,13 @@ fn dump_rejects_file_directory_key_conflicts() {
     vfs.set_winner_loose_file("foo/bar.txt", &nested);
 
     let dest = TempDir::new("dump_path_conflict_dest");
-    let err = vfs
-        .dump_to_directory(dest.path(), false)
-        .expect_err("path conflict should be rejected");
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert!(err.to_string().contains("cannot both be materialized"));
+    vfs.dump_to_directory(dest.path(), false).unwrap();
+    assert!(dest.path().join("foo").is_file());
+    assert!(!dest.path().join("foo/bar.txt").exists());
 }
 
 #[test]
-fn collapse_rejects_file_directory_key_conflicts() {
+fn collapse_uses_materializable_vfs_after_conflicting_key_is_rejected() {
     let src = TempDir::new("collapse_path_conflict_src");
     let file = src.write("file_source", b"file");
     let nested = src.write("nested_source", b"nested");
@@ -153,18 +151,17 @@ fn collapse_rejects_file_directory_key_conflicts() {
     vfs.set_winner_loose_file("foo/bar.txt", &nested);
 
     let dest = TempDir::new("collapse_path_conflict_dest");
-    let err = vfs
-        .collapse_into(
-            dest.path(),
-            &CollapseOptions {
-                allow_copying: true,
-                extract_archives: true,
-                use_symlinks: false,
-            },
-        )
-        .expect_err("path conflict should be rejected");
-    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
-    assert!(err.to_string().contains("cannot both be materialized"));
+    vfs.collapse_into(
+        dest.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+    assert!(dest.path().join("foo").is_file());
+    assert!(!dest.path().join("foo/bar.txt").exists());
 }
 
 #[test]

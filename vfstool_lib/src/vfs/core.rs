@@ -18,6 +18,7 @@ impl VFS {
     pub fn new() -> Self {
         Self {
             file_map: AHashMap::new(),
+            dir_prefix_counts: AHashMap::new(),
             providers: AHashMap::new(),
             sources: Vec::new(),
             layer_index: std::sync::OnceLock::new(),
@@ -67,16 +68,66 @@ impl VFS {
     }
 
     pub(crate) fn refresh_winner(&mut self, key: &NormalizedPath) {
-        if let Some(entry) = self
+        if let Some(file) = self
             .providers
             .get(key)
             .and_then(|providers| providers.last())
+            .map(|entry| entry.provider.file.clone())
         {
-            self.file_map
-                .insert(key.clone(), entry.provider.file.clone());
+            if !self.file_map.contains_key(key) {
+                self.add_dir_prefixes(key);
+            }
+            self.file_map.insert(key.clone(), file);
         } else {
-            self.file_map.remove(key);
+            if self.file_map.remove(key).is_some() {
+                self.remove_dir_prefixes(key);
+            }
             self.providers.remove(key);
+        }
+    }
+
+    pub(crate) fn key_has_materialization_conflict(&self, key: &NormalizedPath) -> bool {
+        if self.dir_prefix_counts.contains_key(key) {
+            return true;
+        }
+
+        key.as_bytes()
+            .iter()
+            .enumerate()
+            .filter(|(_, byte)| **byte == b'/')
+            .any(|(index, _)| {
+                let prefix = NormalizedPath::new(&key.as_bytes()[..index]);
+                self.file_map.contains_key(&prefix)
+            })
+    }
+
+    fn add_dir_prefixes(&mut self, key: &NormalizedPath) {
+        for (index, _) in key
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .filter(|(_, byte)| **byte == b'/')
+        {
+            let prefix = NormalizedPath::new(&key.as_bytes()[..index]);
+            *self.dir_prefix_counts.entry(prefix).or_default() += 1;
+        }
+    }
+
+    fn remove_dir_prefixes(&mut self, key: &NormalizedPath) {
+        for (index, _) in key
+            .as_bytes()
+            .iter()
+            .enumerate()
+            .filter(|(_, byte)| **byte == b'/')
+        {
+            let prefix = NormalizedPath::new(&key.as_bytes()[..index]);
+            let Some(count) = self.dir_prefix_counts.get_mut(&prefix) else {
+                continue;
+            };
+            *count -= 1;
+            if *count == 0 {
+                self.dir_prefix_counts.remove(&prefix);
+            }
         }
     }
 

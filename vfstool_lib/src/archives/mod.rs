@@ -11,5 +11,4 @@ pub use enumerate::{archive_paths, file_entries, file_map};
 pub(crate) use keys::normalized_archive_key;
 pub use open::from_set;
 pub(crate) use open::open_archive;
-pub(crate) use open::try_from_set;
 pub use types::{ArchiveList, StoredArchive, TypedArchive};

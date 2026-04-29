@@ -195,8 +195,14 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Validate the resolved VFS and provider index
+    /// Validate configured paths and referenced files
     Validate {
+        /// Also perform full structural VFS validation.
+        ///
+        /// This builds the complete VFS and checks global winner/file-directory consistency. Omit it
+        /// for the fast config/reference validation path.
+        #[arg(long)]
+        full: bool,
         #[arg(short, long, value_enum, default_value = "yaml")]
         format: OutputFormat,
         #[arg(short, long)]

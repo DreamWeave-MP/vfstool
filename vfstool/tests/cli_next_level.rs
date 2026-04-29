@@ -234,7 +234,7 @@ fn drift_rejects_unsupported_lock_schema_version() {
 }
 
 #[test]
-fn lock_rejects_incomplete_vfs() {
+fn lock_skips_missing_archive() {
     let fixture = Fixture::new("lock_rejects_missing_archive");
     fs::write(
         fixture.config_dir.join("openmw.cfg"),
@@ -248,7 +248,7 @@ fn lock_rejects_incomplete_vfs() {
 
     let output = fixture.run(&["lock"]);
 
-    assert_eq!(output.status.code(), Some(9));
+    assert_eq!(output.status.code(), Some(0));
 }
 
 #[test]
@@ -267,6 +267,22 @@ fn find_file_missing_exits_one() {
     let output = fixture.run(&["find-file", "meshes/missing.nif", "--simple"]);
 
     assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn find_file_simple_resolves_high_priority_loose_file_case_insensitively() {
+    let fixture = Fixture::new("find_case_insensitive_loose");
+    write_file(&fixture.low.join("Meshes/XBase_Anim.NIF"), b"low");
+    write_file(&fixture.high.join("Meshes/XBase_Anim.NIF"), b"high");
+
+    let output = fixture.run(&["find-file", "meshes/xbase_anim.nif", "--simple"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert_eq!(
+        PathBuf::from(stdout.trim()),
+        fixture.high.join("Meshes/XBase_Anim.NIF")
+    );
 }
 
 #[test]
@@ -475,12 +491,12 @@ fn output_flag_writes_json_file_without_stdout_payload() {
 }
 
 #[test]
-fn validate_reports_file_directory_conflict_json() {
+fn validate_full_accepts_materializable_vfs_after_conflicting_key_is_skipped() {
     let fixture = Fixture::new("validate_conflict");
     write_file(&fixture.low.join("blocked"), b"file");
     write_file(&fixture.high.join("blocked/child.txt"), b"child");
 
-    let output = fixture.run(&["validate", "--format", "json"]);
+    let output = fixture.run(&["validate", "--full", "--format", "json"]);
 
     assert_eq!(output.status.code(), Some(0));
     assert!(
@@ -492,11 +508,7 @@ fn validate_reports_file_directory_conflict_json() {
     let issues = payload["issues"]
         .as_array()
         .expect("issues should be array");
-    assert!(
-        issues
-            .iter()
-            .any(|issue| issue.get("FileDirectoryConflict").is_some())
-    );
+    assert!(issues.is_empty());
 }
 
 #[test]
@@ -677,7 +689,7 @@ fn run_captures_new_file_to_data_local_and_removes_merged_dir() {
 
 #[test]
 #[cfg(unix)]
-fn run_rejects_incomplete_vfs_before_spawning_child() {
+fn run_skips_missing_archive_and_spawns_child() {
     let fixture = Fixture::new("run_rejects_missing_archive");
     let marker = fixture.path("child-ran");
     fs::write(
@@ -705,8 +717,11 @@ fn run_rejects_incomplete_vfs_before_spawning_child() {
         marker.to_str().expect("path should be utf-8"),
     ]);
 
-    assert_eq!(output.status.code(), Some(9));
-    assert!(!marker.exists(), "child command must not execute");
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        marker.exists(),
+        "child command should execute with skipped archive"
+    );
 }
 
 #[test]
