@@ -181,13 +181,6 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Report paths whose original spellings collide after VFS normalization
-    CaseCollisions {
-        #[arg(short, long, value_enum, default_value = "yaml")]
-        format: OutputFormat,
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
     /// Report per-source provider contribution counts
     Contributions {
         #[arg(short, long, value_enum, default_value = "yaml")]
@@ -197,10 +190,10 @@ pub enum Commands {
     },
     /// Validate configured paths and referenced files
     Validate {
-        /// Also perform full structural VFS validation.
+        /// Also build the VFS before checking configured file references.
         ///
-        /// This builds the complete VFS and checks global winner/file-directory consistency. Omit it
-        /// for the fast config/reference validation path.
+        /// This lets validation account for configured archives. Omit it for the fast loose-file
+        /// reference validation path.
         #[arg(long)]
         full: bool,
         #[arg(short, long, value_enum, default_value = "yaml")]

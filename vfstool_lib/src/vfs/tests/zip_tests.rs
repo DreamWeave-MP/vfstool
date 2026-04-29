@@ -419,9 +419,6 @@ fn zip_duplicate_normalized_entries_are_reported() {
     assert_eq!(archive_info.len(), 1);
     assert_eq!(archive_info[0].entry_count, 2);
     assert_eq!(archive_info[0].winning_entry_count, 1);
-    let collisions = vfs.case_collisions();
-    assert_eq!(collisions.collisions.len(), 1);
-    assert_eq!(collisions.collisions[0].providers.len(), 2);
 }
 
 #[test]

@@ -4,6 +4,7 @@ use super::keys::is_zip_or_pk3;
 use super::{ArchiveList, StoredArchive, TypedArchive};
 use crate::{NormalizedPath, VfsFile};
 use ahash::AHashMap;
+use rayon::prelude::*;
 #[cfg(feature = "zip")]
 use std::fs::File;
 use std::{path::Path, sync::Arc};
@@ -18,14 +19,16 @@ pub fn from_set(
     archive_list: &[&str],
 ) -> ArchiveList {
     archive_list
-        .iter()
-        .copied()
-        .filter_map(|archive| {
+        .par_iter()
+        .map(|archive| {
             let archive_path = NormalizedPath::new(archive.as_bytes());
             file_map
                 .get(&archive_path)
                 .and_then(|valid_archive| open_archive(valid_archive.path()))
         })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .flatten()
         .collect()
 }
 

@@ -152,9 +152,7 @@ vfs:duplicates(pattern?) -> table
 vfs:archives() -> { ArchiveInfo }
 vfs:archive_entries(archive) -> { ArchiveEntry }
 vfs:files_from_archive(archive) -> { string }
-vfs:case_collisions() -> table
 vfs:source_contributions() -> table
-vfs:validate() -> table
 vfs:materialization_plan(dest, opts) -> table
 vfs:layer_index() -> LayerIndex
 ```

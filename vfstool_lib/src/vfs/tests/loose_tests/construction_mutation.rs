@@ -300,22 +300,6 @@ fn materialization_plan_reports_hardlink_when_copy_is_only_fallback() {
 }
 
 #[test]
-fn validate_reports_case_collisions() {
-    let dir = TempDir::new("vfsloose_validate_case_collision");
-    dir.write("Textures/Foo.DDS", b"upper");
-    dir.write("textures/foo.dds", b"lower");
-
-    let vfs = VFS::from_directories([dir.path()], None);
-    let report = vfs.validate();
-
-    assert!(report.issues.iter().any(|issue| matches!(
-        issue,
-        crate::ValidationIssue::CaseCollision { key, providers }
-            if key == Path::new("textures/foo.dds") && providers.len() == 2
-    )));
-}
-
-#[test]
 fn remove_resolved_file_compacts_layer_sources() {
     let dir = TempDir::new("vfsloose_remove_resolved_compacts_sources");
     dir.write("only.txt", b"only");

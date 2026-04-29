@@ -207,9 +207,9 @@ pub use semantic::{
     SemanticOpts, SemanticProvider, SemanticRelation, analyze_pair,
 };
 pub use vfs::{
-    ArchiveEntry, ArchiveInfo, CaseCollision, CaseCollisionReport, DirectoryDiff, DuplicateEntry,
-    DuplicateReport, ExplainReport, MaterializationAction, MaterializationIssue,
-    MaterializationPlan, VFS, ValidationIssue, ValidationReport, VfsProvider, VfsProviderRecord,
+    ArchiveEntry, ArchiveInfo, DirectoryDiff, DuplicateEntry, DuplicateReport, ExplainReport,
+    MaterializationAction, MaterializationIssue, MaterializationPlan, VFS, VfsProvider,
+    VfsProviderRecord,
 };
 pub use vfs_file::VfsFile;
 

@@ -213,7 +213,6 @@ vfstool explain [OPTIONS] <PATH>
 vfstool duplicates [OPTIONS] [PATTERN]
 vfstool archives [OPTIONS]
 vfstool archive-list [OPTIONS] <ARCHIVE>
-vfstool case-collisions [OPTIONS]
 vfstool contributions [OPTIONS]
 vfstool validate [OPTIONS]
 ```
@@ -225,10 +224,9 @@ vfstool validate [OPTIONS]
   is a case-insensitive regex over normalized VFS keys, e.g. `^meshes/` or `textures/.*\\.dds$`.
 - `archives`: List loaded archives and how many entries currently win.
 - `archive-list <ARCHIVE>`: List VFS entries supplied by one archive.
-- `case-collisions`: Report distinct original path spellings that normalize to the same VFS key.
 - `contributions`: Report per-source provider counts, wins, overridden files, unique files, and duplicates.
 - `validate`: Report missing `data=`, `fallback-archive=`, `content=`, and `groundcover=` entries
-  from `openmw.cfg`, plus missing loose winners and file/directory materialization conflicts.
+  from `openmw.cfg`.
 
 **Options**:
 

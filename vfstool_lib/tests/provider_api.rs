@@ -40,10 +40,6 @@ fn provider_reports_preserve_priority_and_explain_winner() {
     assert_eq!(duplicates.entries.len(), 1);
     assert_eq!(duplicates.entries[0].winner_index, 1);
 
-    let collisions = vfs.case_collisions();
-    assert_eq!(collisions.collisions.len(), 1);
-    assert_eq!(collisions.collisions[0].providers.len(), 2);
-
     let contributions = vfs.source_contributions();
     assert_eq!(contributions.sources.len(), 2);
     assert_eq!(contributions.sources[0].overridden_files, 1);
@@ -100,7 +96,6 @@ fn construction_skips_cross_source_file_directory_conflicts() {
     fs::write(child_source.join("foo/bar.txt"), b"child").unwrap();
 
     let vfs = VFS::from_directories([&file_source, &child_source], None);
-    assert_eq!(vfs.validate().issues.len(), 0);
     assert!(vfs.get_file("foo").is_some());
     assert!(vfs.get_file("foo/bar.txt").is_none());
     assert_eq!(

@@ -90,60 +90,6 @@ pub struct ArchiveEntry {
     pub wins: bool,
 }
 
-/// Providers whose distinct original paths normalize to one key.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct CaseCollision {
-    /// Normalized VFS key.
-    pub key: PathBuf,
-    /// Providers participating in the collision.
-    pub providers: Vec<VfsProviderRecord>,
-}
-
-/// Report of case/path-normalization collisions.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct CaseCollisionReport {
-    /// Collisions sorted by key.
-    pub collisions: Vec<CaseCollision>,
-}
-
-/// Structural validation issue for a VFS.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
-pub enum ValidationIssue {
-    /// Loose winner no longer exists on disk.
-    MissingLooseSource {
-        /// Normalized VFS key whose loose source is missing.
-        key: PathBuf,
-        /// Missing loose source path.
-        source: PathBuf,
-    },
-    /// A file key would block materializing another key as a child path.
-    FileDirectoryConflict {
-        /// Key that would need to be materialized as a file.
-        file_key: PathBuf,
-        /// Key that would need the file key to be a directory prefix.
-        directory_key: PathBuf,
-    },
-    /// Distinct original paths normalize to the same VFS key.
-    CaseCollision {
-        /// Normalized key shared by colliding providers.
-        key: PathBuf,
-        /// Original provider paths that normalize to `key`.
-        providers: Vec<PathBuf>,
-    },
-}
-
-/// Structural validation report for a VFS.
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
-pub struct ValidationReport {
-    /// Validation issues discovered.
-    pub issues: Vec<ValidationIssue>,
-}
-
 /// Action that materialization would perform.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -430,52 +376,10 @@ impl VFS {
             .collect()
     }
 
-    /// Return distinct original paths that normalize to the same VFS key.
-    #[must_use]
-    pub fn case_collisions(&self) -> CaseCollisionReport {
-        let mut collisions = Vec::new();
-        for key in self.providers.keys() {
-            let providers = self.provider_records_for_key(key);
-            let spellings: AHashSet<_> =
-                providers.iter().map(|p| p.original_path.clone()).collect();
-            if spellings.len() > 1 {
-                collisions.push(CaseCollision {
-                    key: key_to_path_buf_lossy(key),
-                    providers: providers.clone(),
-                });
-            }
-        }
-        collisions.sort_by(|a, b| a.key.cmp(&b.key));
-        CaseCollisionReport { collisions }
-    }
-
     /// Return per-source contribution counts from the provider index.
     #[must_use]
     pub fn source_contributions(&self) -> SourceContributionReport {
         self.layer_index().source_contributions()
-    }
-
-    /// Validate structural consistency of the resolved VFS and provider index.
-    #[must_use]
-    pub fn validate(&self) -> ValidationReport {
-        let mut report = ValidationReport { issues: Vec::new() };
-        for collision in self.case_collisions().collisions {
-            report.issues.push(ValidationIssue::CaseCollision {
-                key: collision.key,
-                providers: collision
-                    .providers
-                    .into_iter()
-                    .map(|provider| provider.original_path)
-                    .collect(),
-            });
-        }
-        report
-    }
-
-    /// Return an empty report because winner-map validity is a construction invariant.
-    #[must_use]
-    pub fn validate_winners(&self) -> ValidationReport {
-        ValidationReport { issues: Vec::new() }
     }
 
     /// Return a dry-run plan for materializing this VFS into `dest`.

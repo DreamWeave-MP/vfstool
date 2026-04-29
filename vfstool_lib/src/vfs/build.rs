@@ -27,7 +27,7 @@ pub(super) fn collect_archive_sources(
 
     let loose_lookup = archive_lookup(loose_sources, &list);
     archives::from_set(&loose_lookup, &list)
-        .iter()
+        .par_iter()
         .map(|stored| {
             let archive_list = vec![Arc::clone(stored)];
             SourceEntries {
@@ -63,7 +63,7 @@ fn archive_lookup(
 }
 
 pub(super) fn collect_loose_sources(dirs: Vec<PathBuf>, sort_entries: bool) -> Vec<SourceEntries> {
-    dirs.into_iter()
+    dirs.into_par_iter()
         .map(|dir| {
             let mut entries: Vec<_> = directory_contents_to_file_map(&dir).collect();
             if sort_entries {

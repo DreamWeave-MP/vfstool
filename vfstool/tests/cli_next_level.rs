@@ -557,11 +557,6 @@ fn validate_reports_missing_openmw_config_sources() {
             .iter()
             .any(|issue| issue.get("MissingGroundcoverFile").is_some())
     );
-    assert!(
-        !issues
-            .iter()
-            .any(|issue| issue.get("CaseCollision").is_some())
-    );
 }
 
 #[test]

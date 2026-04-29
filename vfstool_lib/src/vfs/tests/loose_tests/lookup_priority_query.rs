@@ -153,10 +153,6 @@ fn same_source_case_collision_reports_distinct_original_paths() {
         .collect::<std::collections::BTreeSet<_>>();
     assert!(original_paths.contains(Path::new("Textures/Foo.DDS")));
     assert!(original_paths.contains(Path::new("textures/foo.dds")));
-
-    let collisions = vfs.case_collisions();
-    assert_eq!(collisions.collisions.len(), 1);
-    assert_eq!(collisions.collisions[0].providers.len(), 2);
 }
 
 /// Override must be per-key: files unique to an earlier dir must survive

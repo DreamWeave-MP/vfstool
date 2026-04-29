@@ -231,10 +231,8 @@ fn print_single_run_profile() -> io::Result<()> {
     });
     let (_, loose_elapsed) =
         time_phase("construct_loose_only_vfs", || build_loose_only_vfs(&inputs));
-    let (full_vfs, full_elapsed) = time_phase("construct_full_vfs", || build_full_vfs(&inputs));
+    let (_, full_elapsed) = time_phase("construct_full_vfs", || build_full_vfs(&inputs));
     print_duration_delta("construct_full_minus_loose", full_elapsed, loose_elapsed);
-    let (_, _) = time_phase("validate_winners", || full_vfs.validate_winners());
-    let (_, _) = time_phase("validate_full", || full_vfs.validate());
 
     Ok(())
 }
@@ -303,16 +301,6 @@ fn bench_real_validate_chain(c: &mut Criterion) {
 
     group.bench_function("construct_full_vfs_with_archives", |bench| {
         bench.iter(|| build_full_vfs(&inputs));
-    });
-
-    let full_vfs_for_winner_validation = build_full_vfs(&inputs);
-    group.bench_function("validate_winners_after_full_build", |bench| {
-        bench.iter(|| full_vfs_for_winner_validation.validate_winners());
-    });
-
-    let full_vfs_for_full_validation = build_full_vfs(&inputs);
-    group.bench_function("validate_full_after_full_build", |bench| {
-        bench.iter(|| full_vfs_for_full_validation.validate());
     });
 
     group.finish();

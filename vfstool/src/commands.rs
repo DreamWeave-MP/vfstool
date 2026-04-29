@@ -400,10 +400,6 @@ fn format_archive_choices<'a>(
     }
 }
 
-fn handle_case_collisions(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
-    write_serialized(output, format, &vfs.case_collisions())
-}
-
 fn handle_contributions(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
     write_serialized(output, format, &vfs.source_contributions())
 }
@@ -568,10 +564,6 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
             output,
         } => {
             handle_archive_list(vfs, archive.as_deref(), source_index, format, output)?;
-            Ok(None)
-        }
-        Commands::CaseCollisions { format, output } => {
-            handle_case_collisions(vfs, format, output)?;
             Ok(None)
         }
         Commands::Contributions { format, output } => {
@@ -973,7 +965,6 @@ pub fn run_command(
             | Commands::Duplicates { .. }
             | Commands::Archives { .. }
             | Commands::ArchiveList { .. }
-            | Commands::CaseCollisions { .. }
             | Commands::Contributions { .. }
             | Commands::Validate { full: true, .. }
     );

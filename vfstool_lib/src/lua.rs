@@ -7,17 +7,16 @@
 
 use crate::analysis::{ProvenanceChain, ProviderRecord};
 use crate::{
-    ArchiveHashMode, AssetClass, CaseCollision, CaseCollisionReport, CollapseOptions,
-    ConflictIndex, ConflictSourceEntry, ConflictsReport, DiffReport, DirectoryDiff, DriftEntry,
-    DriftKind, DriftReport, DuplicateEntry, DuplicateReport, ExplainReport, LayerIndex,
-    LayerProvider, MaterializationAction, MaterializationIssue, MaterializationPlan,
-    MetadataSnapshot, NormalizedPath, SemanticConflictReport, SemanticDelta, SemanticOpts,
-    SemanticProvider, SemanticRelation, ShadowedReport, ShadowedSource, Snapshot,
-    SourceContribution, SourceContributionReport, SourceKind, SourceMeta, VFS, ValidationIssue,
-    ValidationReport, VfsFile, VfsLock, VfsLockEntry, VfsProvider, VfsProviderRecord, analyze_pair,
-    changed_files, changed_files_metadata, normalize_host_path_in_place, path_glob_matches,
-    paths::key_to_path_buf_lossy, run_finalize, run_finalize_tracked, run_setup, run_setup_tracked,
-    snapshot_directory, snapshot_directory_metadata, source_glob_matches,
+    ArchiveHashMode, AssetClass, CollapseOptions, ConflictIndex, ConflictSourceEntry,
+    ConflictsReport, DiffReport, DirectoryDiff, DriftEntry, DriftKind, DriftReport, DuplicateEntry,
+    DuplicateReport, ExplainReport, LayerIndex, LayerProvider, MaterializationAction,
+    MaterializationIssue, MaterializationPlan, MetadataSnapshot, NormalizedPath,
+    SemanticConflictReport, SemanticDelta, SemanticOpts, SemanticProvider, SemanticRelation,
+    ShadowedReport, ShadowedSource, Snapshot, SourceContribution, SourceContributionReport,
+    SourceKind, SourceMeta, VFS, VfsFile, VfsLock, VfsLockEntry, VfsProvider, VfsProviderRecord,
+    analyze_pair, changed_files, changed_files_metadata, normalize_host_path_in_place,
+    path_glob_matches, paths::key_to_path_buf_lossy, run_finalize, run_finalize_tracked, run_setup,
+    run_setup_tracked, snapshot_directory, snapshot_directory_metadata, source_glob_matches,
 };
 #[cfg(feature = "serialize")]
 use crate::{SerializeType, serialize_value};
@@ -455,14 +454,8 @@ fn add_vfs_report_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method("files_from_archive", |lua, this, archive: String| {
         paths_to_table(lua, this.0.files_from_archive(archive).iter())
     });
-    methods.add_method("case_collisions", |lua, this, ()| {
-        case_collision_report_to_table(lua, &this.0.case_collisions())
-    });
     methods.add_method("source_contributions", |lua, this, ()| {
         source_contribution_report_to_table(lua, &this.0.source_contributions())
-    });
-    methods.add_method("validate", |lua, this, ()| {
-        validation_report_to_table(lua, &this.0.validate())
     });
     methods.add_method(
         "materialization_plan",
@@ -1059,26 +1052,6 @@ fn archive_entries_to_table(lua: &Lua, entries: &[crate::ArchiveEntry]) -> LuaRe
     Ok(table)
 }
 
-fn case_collision_report_to_table(lua: &Lua, report: &CaseCollisionReport) -> LuaResult<Table> {
-    let table = lua.create_table()?;
-    let collisions = lua.create_table()?;
-    for (index, collision) in report.collisions.iter().enumerate() {
-        collisions.set(index + 1, case_collision_to_table(lua, collision)?)?;
-    }
-    table.set("collisions", collisions)?;
-    Ok(table)
-}
-
-fn case_collision_to_table(lua: &Lua, collision: &CaseCollision) -> LuaResult<Table> {
-    let table = lua.create_table()?;
-    table.set("key", path_to_string(collision.key.clone()))?;
-    table.set(
-        "providers",
-        provider_records_to_table(lua, &collision.providers)?,
-    )?;
-    Ok(table)
-}
-
 fn source_contribution_report_to_table(
     lua: &Lua,
     report: &SourceContributionReport,
@@ -1178,41 +1151,6 @@ fn drift_entry_to_table(lua: &Lua, entry: &DriftEntry) -> LuaResult<Table> {
     let table = lua.create_table()?;
     table.set("key", path_to_string(entry.key.clone()))?;
     table.set("kind", drift_kind_name(entry.kind))?;
-    Ok(table)
-}
-
-fn validation_report_to_table(lua: &Lua, report: &ValidationReport) -> LuaResult<Table> {
-    let table = lua.create_table()?;
-    let issues = lua.create_table()?;
-    for (index, issue) in report.issues.iter().enumerate() {
-        issues.set(index + 1, validation_issue_to_table(lua, issue)?)?;
-    }
-    table.set("issues", issues)?;
-    Ok(table)
-}
-
-fn validation_issue_to_table(lua: &Lua, issue: &ValidationIssue) -> LuaResult<Table> {
-    let table = lua.create_table()?;
-    match issue {
-        ValidationIssue::MissingLooseSource { key, source } => {
-            table.set("kind", "missing_loose_source")?;
-            table.set("key", path_to_string(key.clone()))?;
-            table.set("source", path_to_string(source.clone()))?;
-        }
-        ValidationIssue::FileDirectoryConflict {
-            file_key,
-            directory_key,
-        } => {
-            table.set("kind", "file_directory_conflict")?;
-            table.set("file_key", path_to_string(file_key.clone()))?;
-            table.set("directory_key", path_to_string(directory_key.clone()))?;
-        }
-        ValidationIssue::CaseCollision { key, providers } => {
-            table.set("kind", "case_collision")?;
-            table.set("key", path_to_string(key.clone()))?;
-            table.set("providers", paths_to_table(lua, providers.iter())?)?;
-        }
-    }
     Ok(table)
 }
 
