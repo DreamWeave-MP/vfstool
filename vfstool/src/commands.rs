@@ -421,6 +421,19 @@ enum AppValidationIssue {
     MissingGroundcoverFile { name: String },
 }
 
+fn write_validation_report(
+    output: Option<PathBuf>,
+    format: OutputFormat,
+    issues: Vec<AppValidationIssue>,
+) -> Result<()> {
+    let has_issues = !issues.is_empty();
+    write_serialized(output, format, &AppValidationReport { issues })?;
+    if has_issues {
+        std::process::exit(VFSToolExitCode::ValidationIssues.into());
+    }
+    Ok(())
+}
+
 fn handle_validate_fast(
     resolved_config_dir: PathBuf,
     format: OutputFormat,
@@ -477,7 +490,7 @@ fn handle_validate_fast(
         }
     }
 
-    write_serialized(output, format, &AppValidationReport { issues })
+    write_validation_report(output, format, issues)
 }
 
 fn handle_validate_full(
@@ -532,7 +545,7 @@ fn handle_validate_full(
         }
     }
 
-    write_serialized(output, format, &AppValidationReport { issues })
+    write_validation_report(output, format, issues)
 }
 
 fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Commands>> {

@@ -320,6 +320,7 @@ vfstool drift [OPTIONS] <LOCK_FILE>
 | `1` | `find-file` did not find the requested VFS path |
 | `2` | `find-file --only_physical` found the path only inside an archive |
 | `4` | `drift --fail-on-drift` detected drift |
+| `5` | `validate` found load-order/configuration problems |
 | `6` | invalid regular expression |
 | `7` | failed to load `openmw.cfg` |
 | `8` | invalid input, such as an unknown source path |
