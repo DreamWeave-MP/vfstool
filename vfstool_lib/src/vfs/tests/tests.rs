@@ -1,5 +1,6 @@
 use super::*;
-use dream_archive::{Ba2Builder, Tes3BsaBuilder, Tes4BsaBuilder};
+use crate::CollapseOptions;
+use dream_archive::{Ba2Builder, Tes3BsaBuilder, Tes4BsaBuilder, bsa::tes4::ArchiveTypes};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -150,6 +151,61 @@ fn ba2_archive_entry_loses_to_loose_file() {
     assert_eq!(file.path(), loose);
 }
 
+#[test]
+fn collapse_extracts_fallout3_bsa_archive_entry() {
+    let dir = TempDir::new("vfs_fallout3_collapse_archive");
+    create_fallout3_bsa_archive(dir.path(), "Fallout - Meshes.bsa");
+    let out = TempDir::new("vfs_fallout3_collapse_archive_out");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["Fallout - Meshes.bsa"]));
+    let file = vfs.get_file("meshes/test.nif").unwrap();
+    assert!(file.is_archive());
+
+    vfs.collapse_into(
+        out.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read(out.path().join("meshes/test.nif")).unwrap(),
+        b"fallout3 mesh payload"
+    );
+    assert!(!out.path().join("Fallout - Meshes.bsa").exists());
+}
+
+#[test]
+fn collapse_prefers_loose_file_over_fallout3_bsa_archive_entry() {
+    let dir = TempDir::new("vfs_fallout3_collapse_loose_priority");
+    create_fallout3_bsa_archive(dir.path(), "Fallout - Meshes.bsa");
+    dir.write("meshes/test.nif", b"loose mesh payload");
+    let out = TempDir::new("vfs_fallout3_collapse_loose_priority_out");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["Fallout - Meshes.bsa"]));
+    let file = vfs.get_file("meshes/test.nif").unwrap();
+    assert!(file.is_loose());
+
+    vfs.collapse_into(
+        out.path(),
+        &CollapseOptions {
+            allow_copying: true,
+            extract_archives: true,
+            use_symlinks: false,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        fs::read(out.path().join("meshes/test.nif")).unwrap(),
+        b"loose mesh payload"
+    );
+    assert!(!out.path().join("Fallout - Meshes.bsa").exists());
+}
+
 fn create_test_dirs_and_files(temp: &TempDir) -> (PathBuf, PathBuf, PathBuf) {
     let dir1 = temp.child("dir1");
     let dir2 = temp.child("dir2");
@@ -180,6 +236,17 @@ fn create_tes4_bsa_archive(archive_dir: &Path, archive_name: &str) -> PathBuf {
         .unwrap();
     builder
         .add_bytes("textures/landscape/rock.dds", b"tes4 texture payload")
+        .unwrap();
+    builder.write_path(&archive_path).unwrap();
+    archive_path
+}
+
+fn create_fallout3_bsa_archive(archive_dir: &Path, archive_name: &str) -> PathBuf {
+    let archive_path = archive_dir.join(archive_name);
+    let mut builder = Tes4BsaBuilder::fallout3();
+    builder.set_archive_types(ArchiveTypes::MESHES);
+    builder
+        .add_bytes("meshes/test.nif", b"fallout3 mesh payload")
         .unwrap();
     builder.write_path(&archive_path).unwrap();
     archive_path
