@@ -11,15 +11,15 @@ repository = "https://github.com/DreamWeave-MP/vfstool"
 keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 
 [dependencies]
-clap = { version = "4.5.48", features = ["derive"] }
-openmw-config = "1.0.2"
+clap = { version = "4.6.7", features = ["derive"] }
+openmw-config = "1.1.0"
 vfstool_lib = { path = "../vfstool_lib", version = "0.9", features = [
     "serialize",
     "beth-archives",
 ] }
 
 [dev-dependencies]
-criterion = { version = "0.8", features = ["html_reports"] }
+criterion = { version = "0.8.2", features = ["html_reports"] }
 dream_archive = { version = "0.1.6", default-features = false, features = ["bsa"] }
 
 [[bench]]

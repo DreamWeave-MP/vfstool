@@ -666,7 +666,7 @@ fn lua_normalize_host_path(_: &Lua, path: String) -> String {
 
 fn lua_analyze_pair(
     lua: &Lua,
-    (path, left, right): (String, mlua::String, mlua::String),
+    (path, left, right): (String, mlua::LuaString, mlua::LuaString),
 ) -> LuaResult<Table> {
     let (class, delta) = analyze_pair(
         Path::new(&path),
