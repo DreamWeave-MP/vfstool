@@ -372,18 +372,18 @@ dependencies = [
 
 [[package]]
 name = "dream-path"
-version = "0.1.3"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a19898f64cdf9fab61a1fa0f839b1ce360bc6a858db67717ff57b3e653f5c877"
+checksum = "e583db715c69f57e21a9a6583a5eef99b707582dff189842a3cd595fa18cac31"
 dependencies = [
  "bstr",
 ]
 
 [[package]]
 name = "dream_archive"
-version = "0.1.6"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b430d6bfd34d48ba33ac26ea6d78099e205fbb1b04b54a916bed8bb3905fa08f"
+checksum = "9b8153b18ab32ccc5447f2fb412c2e91c7259374accc12b0d43349139414ae51"
 dependencies = [
  "dream-path",
  "encoding_rs",
@@ -610,9 +610,9 @@ dependencies = [
 
 [[package]]
 name = "lz4_flex"
-version = "0.13.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ef0d4ed8669f8f8826eb00dc878084aa8f253506c4fd5e8f58f5bce72ddb97e"
+checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
 dependencies = [
  "twox-hash",
 ]
