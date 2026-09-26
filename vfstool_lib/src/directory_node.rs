@@ -161,7 +161,7 @@ mod tests {
         let node = sample_directory_node();
         let json_output = serde_json::to_string_pretty(&node).expect("JSON serialization failed");
 
-        println!("{}", &json_output);
+        println!("{json_output}");
 
         let expected = r#"{
   "subdir1": {
@@ -216,7 +216,7 @@ mod tests {
         let node = sample_directory_node();
         let toml_output = toml::to_string_pretty(&node).expect("TOML serialization failed");
 
-        println!("{}", &toml_output);
+        println!("{toml_output}");
         let expected = r#"[subdir1]
 "." = [
     "file1_1.txt",
@@ -268,7 +268,7 @@ mod tests {
         let node = sample_directory_node();
         let yaml_output = serde_yaml::to_string(&node).expect("YAML serialization failed");
 
-        println!("{}", &yaml_output);
+        println!("{yaml_output}");
 
         let expected = "subdir1:\n  .:\n  - file1_1.txt\n  - file1_2.txt\n  - file1_3.txt\n  child_subdir1:\n    .:\n    - nested_file1_1.txt\n    - nested_file1_2.txt\n    - nested_file1_3.txt\nsubdir2:\n  .:\n  - file2_1.txt\n  - file2_2.txt\n  - file2_3.txt\n  child_subdir2:\n    .:\n    - nested_file2_1.txt\n    - nested_file2_2.txt\n    - nested_file2_3.txt\nsubdir3:\n  .:\n  - file3_1.txt\n  - file3_2.txt\n  - file3_3.txt\n  child_subdir3:\n    .:\n    - nested_file3_1.txt\n    - nested_file3_2.txt\n    - nested_file3_3.txt\n";
 
