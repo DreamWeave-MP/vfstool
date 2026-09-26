@@ -256,8 +256,7 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
 | `beth-archives` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
 | `zip` | ZIP/PK3 archive support |
 | `serialize` | JSON/YAML/TOML output via serde |
-| `lua` | Embedded `mlua` bindings for the promoted stable API surface; see [`docs/lua.md`](docs/lua.md) |
-| `standalone-lua` | Enables `lua` with vendored LuaJIT for embedded standalone tools; not a `cdylib` Lua module |
+| `lua` | Embedded Luau bindings (`mlua` with the vendored Luau runtime) for the promoted stable API surface; not a `cdylib` Lua module; see [`docs/lua.md`](docs/lua.md) |
 
 ---
 

@@ -37,38 +37,38 @@ pub fn open(lua: &Lua) -> LuaResult<Table> {
     let module = lua.create_table()?;
 
     module.set(
-        "normalize_host_path",
+        "normalizeHostPath",
         lua.create_function(|lua, path| Ok(lua_normalize_host_path(lua, path)))?,
     )?;
     module.set(
-        "normalize_host_path_in_place",
+        "normalizeHostPathInPlace",
         lua.create_function(|lua, path| Ok(lua_normalize_host_path(lua, path)))?,
     )?;
     module.set(
-        "path_glob_matches",
+        "pathGlobMatches",
         lua.create_function(|_, (glob, path): (String, String)| {
             Ok(path_glob_matches(&glob, Path::new(&path)))
         })?,
     )?;
     module.set(
-        "source_glob_matches",
+        "sourceGlobMatches",
         lua.create_function(|_, (glob, source): (String, String)| {
             Ok(source_glob_matches(&glob, &PathBuf::from(source)))
         })?,
     )?;
-    module.set("analyze_pair", lua.create_function(lua_analyze_pair)?)?;
-    module.set("run_setup", lua.create_function(lua_run_setup)?)?;
+    module.set("analyzePair", lua.create_function(lua_analyze_pair)?)?;
+    module.set("runSetup", lua.create_function(lua_run_setup)?)?;
     module.set(
-        "run_setup_tracked",
+        "runSetupTracked",
         lua.create_function(lua_run_setup_tracked)?,
     )?;
-    module.set("run_finalize", lua.create_function(lua_run_finalize)?)?;
+    module.set("runFinalize", lua.create_function(lua_run_finalize)?)?;
     module.set(
-        "run_finalize_tracked",
+        "runFinalizeTracked",
         lua.create_function(lua_run_finalize_tracked)?,
     )?;
     module.set(
-        "snapshot_directory",
+        "snapshotDirectory",
         lua.create_function(|_, dir: String| {
             snapshot_directory(Path::new(&dir))
                 .map(LuaSnapshot)
@@ -76,16 +76,16 @@ pub fn open(lua: &Lua) -> LuaResult<Table> {
         })?,
     )?;
     module.set(
-        "snapshot_directory_metadata",
+        "snapshotDirectoryMetadata",
         lua.create_function(|_, dir: String| {
             snapshot_directory_metadata(Path::new(&dir))
                 .map(LuaMetadataSnapshot)
                 .map_err(LuaError::external)
         })?,
     )?;
-    module.set("changed_files", lua.create_function(lua_changed_files)?)?;
+    module.set("changedFiles", lua.create_function(lua_changed_files)?)?;
     module.set(
-        "changed_files_metadata",
+        "changedFilesMetadata",
         lua.create_function(lua_changed_files_metadata)?,
     )?;
 
@@ -134,7 +134,7 @@ fn vfs_class(lua: &Lua) -> LuaResult<Table> {
     let class = lua.create_table()?;
     class.set("new", lua.create_function(|_, ()| Ok(LuaVfs(VFS::new())))?)?;
     class.set(
-        "from_directories",
+        "fromDirectories",
         lua.create_function(|_, (dirs, opts): (Table, Option<Table>)| {
             let dirs = pathbufs_from_sequence(&dirs)?;
             let archive_list = archive_list_from_opts(opts)?;
@@ -145,7 +145,7 @@ fn vfs_class(lua: &Lua) -> LuaResult<Table> {
         })?,
     )?;
     class.set(
-        "from_directories_with_conflict_index",
+        "fromDirectoriesWithConflictIndex",
         lua.create_function(|_, (dirs, opts): (Table, Option<Table>)| {
             let dirs = pathbufs_from_sequence(&dirs)?;
             let archive_list = archive_list_from_opts(opts)?;
@@ -158,7 +158,7 @@ fn vfs_class(lua: &Lua) -> LuaResult<Table> {
         })?,
     )?;
     class.set(
-        "from_directories_with_layer_index",
+        "fromDirectoriesWithLayerIndex",
         lua.create_function(|_, (dirs, opts): (Table, Option<Table>)| {
             let dirs = pathbufs_from_sequence(&dirs)?;
             let archive_list = archive_list_from_opts(opts)?;
@@ -199,7 +199,7 @@ fn vfs_provider_class(lua: &Lua) -> LuaResult<Table> {
 fn layer_index_class(lua: &Lua) -> LuaResult<Table> {
     let class = lua.create_table()?;
     class.set(
-        "from_file_lists",
+        "fromFileLists",
         lua.create_function(|_, sources: Table| {
             let mut rows = Vec::new();
             for row in sources.sequence_values::<Table>() {
@@ -221,7 +221,7 @@ fn layer_index_class(lua: &Lua) -> LuaResult<Table> {
 fn conflict_index_class(lua: &Lua) -> LuaResult<Table> {
     let class = lua.create_table()?;
     class.set(
-        "from_directories",
+        "fromDirectories",
         lua.create_function(|_, dirs: Table| {
             let dirs = pathbufs_from_sequence(&dirs)?;
             Ok(LuaConflictIndex(ConflictIndex::from_directories(
@@ -230,7 +230,7 @@ fn conflict_index_class(lua: &Lua) -> LuaResult<Table> {
         })?,
     )?;
     class.set(
-        "from_file_lists",
+        "fromFileLists",
         lua.create_function(|_, sources: Table| {
             let mut rows = Vec::new();
             for row in sources.sequence_values::<Table>() {
@@ -247,7 +247,7 @@ fn conflict_index_class(lua: &Lua) -> LuaResult<Table> {
         })?,
     )?;
     class.set(
-        "from_layer_index",
+        "fromLayerIndex",
         lua.create_function(|_, layer: AnyUserData| {
             let layer = layer.borrow::<LuaLayerIndex>()?;
             Ok(LuaConflictIndex(ConflictIndex::from_layer_index(&layer.0)))
@@ -267,21 +267,21 @@ impl UserData for LuaVfs {
 
 fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method("len", |_, this, ()| Ok(this.0.iter().count()));
-    methods.add_method("is_empty", |_, this, ()| Ok(this.0.iter().next().is_none()));
+    methods.add_method("isEmpty", |_, this, ()| Ok(this.0.iter().next().is_none()));
     methods.add_method("keys", |lua, this, ()| {
         normalized_paths_to_table(lua, this.0.iter().map(|(k, _)| k))
     });
     methods.add_method("entries", |lua, this, ()| {
         vfs_entries_to_table(lua, this.0.iter())
     });
-    methods.add_method("get_file", |_, this, path: String| {
+    methods.add_method("getFile", |_, this, path: String| {
         Ok(this.0.get_file(&path).cloned().map(LuaVfsFile))
     });
     methods.add_method("contains", |_, this, path: String| {
         Ok(this.0.contains(Path::new(&path)))
     });
     methods.add_method(
-        "find_by_regex",
+        "findByRegex",
         |lua, this, (pattern, relative): (String, Option<bool>)| {
             display_tree_to_table(
                 lua,
@@ -317,69 +317,66 @@ fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
             )
         },
     );
-    methods.add_method("paths_matching", |lua, this, substring: String| {
+    methods.add_method("pathsMatching", |lua, this, substring: String| {
         vfs_entries_to_table(lua, this.0.paths_matching(substring))
     });
-    methods.add_method("paths_with", |lua, this, prefix: String| {
+    methods.add_method("pathsWith", |lua, this, prefix: String| {
         vfs_entries_to_table(lua, this.0.paths_with(&prefix))
     });
 }
 
 fn add_vfs_mutation_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method_mut(
-        "set_winner_loose_file",
+        "setWinnerLooseFile",
         |_, this, (key, path): (String, String)| {
             Ok(this.0.set_winner_loose_file(&key, path).map(LuaVfsFile))
         },
     );
     methods.add_method_mut(
-        "set_winner_file",
+        "setWinnerFile",
         |_, this, (key, file): (String, AnyUserData)| {
             let file = file.borrow::<LuaVfsFile>()?;
             Ok(this.0.set_winner_file(&key, file.0.clone()).map(LuaVfsFile))
         },
     );
-    methods.add_method_mut("push_directory", |_, this, root: String| {
+    methods.add_method_mut("pushDirectory", |_, this, root: String| {
         this.0.push_directory(root).map_err(LuaError::external)
     });
     methods.add_method_mut(
-        "push_provider",
+        "pushProvider",
         |_, this, (key, provider): (String, AnyUserData)| {
             let provider = provider.borrow::<LuaVfsProvider>()?;
             Ok(this.0.push_provider(&key, provider.0.clone()))
         },
     );
     #[cfg(any(feature = "beth-archives", feature = "zip"))]
-    methods.add_method_mut("push_archive", |_, this, archive: String| {
+    methods.add_method_mut("pushArchive", |_, this, archive: String| {
         Ok(this.0.push_archive(archive))
     });
-    methods.add_method_mut("remove_winner", |_, this, key: String| {
+    methods.add_method_mut("removeWinner", |_, this, key: String| {
         Ok(this.0.remove_winner(&key).map(LuaVfsProvider))
     });
-    methods.add_method_mut("remove_resolved_file", |_, this, key: String| {
+    methods.add_method_mut("removeResolvedFile", |_, this, key: String| {
         Ok(this.0.remove_resolved_file(&key).map(LuaVfsFile))
     });
-    methods.add_method_mut("remove_provider_prefix", |lua, this, prefix: String| {
+    methods.add_method_mut("removeProviderPrefix", |lua, this, prefix: String| {
         removed_providers_to_table(lua, &this.0.remove_provider_prefix(&prefix))
     });
-    methods.add_method_mut("remove_resolved_prefix", |lua, this, prefix: String| {
+    methods.add_method_mut("removeResolvedPrefix", |lua, this, prefix: String| {
         removed_vfs_files_to_table(lua, this.0.remove_resolved_prefix(&prefix))
     });
     methods.add_method_mut(
-        "remove_provider",
+        "removeProvider",
         |lua, this, (key, source): (String, String)| {
             mutable_providers_to_table(lua, &this.0.remove_provider(&key, Path::new(&source)))
         },
     );
-    methods.add_method_mut("remove_source", |lua, this, source: String| {
+    methods.add_method_mut("removeSource", |lua, this, source: String| {
         removed_providers_to_table(lua, &this.0.remove_source(Path::new(&source)))
     });
-    methods.add_method_mut(
-        "remove_resolved_matching_glob",
-        |lua, this, glob: String| {
-            removed_vfs_files_to_table(lua, this.0.remove_resolved_matching_glob(&glob))
-        },
-    );
+    methods.add_method_mut("removeResolvedMatchingGlob", |lua, this, glob: String| {
+        removed_vfs_files_to_table(lua, this.0.remove_resolved_matching_glob(&glob))
+    });
 }
 
 fn add_vfs_materialization_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
@@ -392,7 +389,7 @@ fn add_vfs_materialization_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) 
             .display_filtered(relative.unwrap_or(true), |_, _| true))
     });
     methods.add_method(
-        "dump_to_directory",
+        "dumpToDirectory",
         |_, this, (dir, use_hardlinks): (String, bool)| {
             this.0
                 .dump_to_directory(Path::new(&dir), use_hardlinks)
@@ -400,7 +397,7 @@ fn add_vfs_materialization_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) 
         },
     );
     methods.add_method(
-        "collapse_into",
+        "collapseInto",
         |_, this, (dest, opts): (String, Option<Table>)| {
             let opts = collapse_options_from_table(opts);
             this.0
@@ -408,25 +405,25 @@ fn add_vfs_materialization_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) 
                 .map_err(LuaError::external)
         },
     );
-    methods.add_method("extract_file", |_, this, (path, dest): (String, String)| {
+    methods.add_method("extractFile", |_, this, (path, dest): (String, String)| {
         this.0
             .extract_file(Path::new(&path), Path::new(&dest))
             .map(|path| path.map(path_to_string))
             .map_err(LuaError::external)
     });
-    methods.add_method("diff_directory", |lua, this, dir: String| {
+    methods.add_method("diffDirectory", |lua, this, dir: String| {
         directory_diff_to_table(lua, &this.0.diff_directory(dir))
     });
 }
 
 fn add_vfs_report_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
-    methods.add_method("provider_records_for", |lua, this, path: String| {
+    methods.add_method("providerRecordsFor", |lua, this, path: String| {
         provider_records_to_table(lua, &this.0.provider_records_for(&path))
     });
     methods.add_method("explain", |lua, this, path: String| {
         optional_explain_to_value(lua, this.0.explain(&path))
     });
-    methods.add_method("providers_for", |lua, this, key: String| {
+    methods.add_method("providersFor", |lua, this, key: String| {
         match this.0.providers_for(&key) {
             Some(providers) => {
                 let providers = providers.cloned().collect::<Vec<_>>();
@@ -448,28 +445,28 @@ fn add_vfs_report_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method("archives", |lua, this, ()| {
         archive_infos_to_table(lua, &this.0.archives())
     });
-    methods.add_method("archive_entries", |lua, this, archive: String| {
+    methods.add_method("archiveEntries", |lua, this, archive: String| {
         archive_entries_to_table(lua, &this.0.archive_entries(archive))
     });
-    methods.add_method("files_from_archive", |lua, this, archive: String| {
+    methods.add_method("filesFromArchive", |lua, this, archive: String| {
         paths_to_table(lua, this.0.files_from_archive(archive).iter())
     });
-    methods.add_method("source_contributions", |lua, this, ()| {
+    methods.add_method("sourceContributions", |lua, this, ()| {
         source_contribution_report_to_table(lua, &this.0.source_contributions())
     });
     methods.add_method(
-        "materialization_plan",
+        "materializationPlan",
         |lua, this, (dest, opts): (String, Option<Table>)| {
             let opts = collapse_options_from_table(opts);
             materialization_plan_to_table(lua, &this.0.materialization_plan(dest, &opts))
         },
     );
-    methods.add_method("layer_index", |_, this, ()| {
+    methods.add_method("layerIndex", |_, this, ()| {
         Ok(LuaLayerIndex(this.0.layer_index().clone()))
     });
     #[cfg(feature = "serialize")]
     methods.add_method(
-        "serialize_tree",
+        "serializeTree",
         |_, this, (relative, format): (Option<bool>, String)| {
             crate::VFS::serialize_from_tree(
                 &this.0.tree(relative.unwrap_or(true)),
@@ -482,22 +479,22 @@ fn add_vfs_report_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
 
 impl UserData for LuaVfsFile {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("is_loose", |_, this, ()| Ok(this.0.is_loose()));
-        methods.add_method("is_archive", |_, this, ()| Ok(this.0.is_archive()));
+        methods.add_method("isLoose", |_, this, ()| Ok(this.0.is_loose()));
+        methods.add_method("isArchive", |_, this, ()| Ok(this.0.is_archive()));
         methods.add_method("path", |_, this, ()| Ok(path_to_string(this.0.path())));
-        methods.add_method("file_name", |_, this, ()| {
+        methods.add_method("fileName", |_, this, ()| {
             Ok(this.0.file_name().map(|s| s.to_string_lossy().into_owned()))
         });
-        methods.add_method("file_stem", |_, this, ()| {
+        methods.add_method("fileStem", |_, this, ()| {
             Ok(this.0.file_stem().map(|s| s.to_string_lossy().into_owned()))
         });
-        methods.add_method("parent_archive_path", |_, this, ()| {
+        methods.add_method("parentArchivePath", |_, this, ()| {
             Ok(this.0.parent_archive_path())
         });
-        methods.add_method("parent_archive_name", |_, this, ()| {
+        methods.add_method("parentArchiveName", |_, this, ()| {
             Ok(this.0.parent_archive_name())
         });
-        methods.add_method("read_all", |_, this, ()| {
+        methods.add_method("readAll", |_, this, ()| {
             let mut reader = this.0.open().map_err(LuaError::external)?;
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut reader, &mut bytes).map_err(LuaError::external)?;
@@ -526,23 +523,23 @@ impl UserData for LuaLayerIndex {
         methods.add_method("sources", |lua, this, ()| {
             sources_to_table(lua, &this.0.sources)
         });
-        methods.add_method("source_id_for_path", |_, this, path: String| {
+        methods.add_method("sourceIdForPath", |_, this, path: String| {
             Ok(this
                 .0
                 .source_id_for_path(Path::new(&path))
                 .map(crate::SourceId::as_index))
         });
-        methods.add_method("source_by_id", |lua, this, id: usize| {
+        methods.add_method("sourceById", |lua, this, id: usize| {
             match this.0.source_by_id(crate::SourceId::from_index(id)) {
                 Some(source) => Ok(Value::Table(source_meta_to_table(lua, source)?)),
                 None => Ok(Value::Nil),
             }
         });
-        methods.add_method("sources_containing", |lua, this, path: String| {
+        methods.add_method("sourcesContaining", |lua, this, path: String| {
             indices_to_table(lua, this.0.sources_containing(Path::new(&path)))
         });
         methods.add_method(
-            "provider_original_path",
+            "providerOriginalPath",
             |_, this, (source_index, path): (usize, String)| {
                 Ok(this
                     .0
@@ -550,13 +547,13 @@ impl UserData for LuaLayerIndex {
                     .map(path_to_string_ref))
             },
         );
-        methods.add_method("provider_chain", |lua, this, path: String| {
+        methods.add_method("providerChain", |lua, this, path: String| {
             layer_providers_to_table(lua, &this.0.provider_chain(Path::new(&path)))
         });
-        methods.add_method("duplicate_keys", |lua, this, ()| {
+        methods.add_method("duplicateKeys", |lua, this, ()| {
             normalized_paths_to_table(lua, this.0.duplicate_keys().iter())
         });
-        methods.add_method("source_contributions", |lua, this, ()| {
+        methods.add_method("sourceContributions", |lua, this, ()| {
             source_contribution_report_to_table(lua, &this.0.source_contributions())
         });
         methods.add_method(
@@ -573,7 +570,7 @@ impl UserData for LuaLayerIndex {
                 }
             },
         );
-        methods.add_method("lock_manifest", |_, this, vfs: AnyUserData| {
+        methods.add_method("lockManifest", |_, this, vfs: AnyUserData| {
             let vfs = vfs.borrow::<LuaVfs>()?;
             this.0
                 .lock_manifest(&vfs.0)
@@ -581,7 +578,7 @@ impl UserData for LuaLayerIndex {
                 .map_err(LuaError::external)
         });
         methods.add_method(
-            "diff_against_lock",
+            "diffAgainstLock",
             |lua, this, (vfs, lock): (AnyUserData, AnyUserData)| {
                 let vfs = vfs.borrow::<LuaVfs>()?;
                 let lock = lock.borrow::<LuaVfsLock>()?;
@@ -595,7 +592,7 @@ impl UserData for LuaLayerIndex {
             },
         );
         methods.add_method(
-            "semantic_conflicts",
+            "semanticConflicts",
             |lua, this, (vfs, opts): (AnyUserData, Option<Table>)| {
                 let vfs = vfs.borrow::<LuaVfs>()?;
                 let opts = semantic_opts_from_table(opts)?;
@@ -613,11 +610,11 @@ impl UserData for LuaLayerIndex {
 
 impl UserData for LuaVfsLock {
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_method("schema_version", |_, this, ()| Ok(this.0.schema_version));
+        methods.add_method("schemaVersion", |_, this, ()| Ok(this.0.schema_version));
         methods.add_method("entries", |lua, this, ()| {
             vfs_lock_entries_to_table(lua, &this.0.entries)
         });
-        methods.add_method("to_table", |lua, this, ()| vfs_lock_to_table(lua, &this.0));
+        methods.add_method("toTable", |lua, this, ()| vfs_lock_to_table(lua, &this.0));
     }
 }
 
@@ -626,13 +623,13 @@ impl UserData for LuaConflictIndex {
         methods.add_method("sources", |lua, this, ()| {
             paths_to_table(lua, this.0.sources.iter())
         });
-        methods.add_method("sources_containing", |lua, this, path: String| {
+        methods.add_method("sourcesContaining", |lua, this, path: String| {
             indices_to_table(lua, this.0.sources_containing(Path::new(&path)))
         });
-        methods.add_method("conflicts_report", |lua, this, relative: Option<bool>| {
+        methods.add_method("conflictsReport", |lua, this, relative: Option<bool>| {
             conflicts_report_to_table(lua, &this.0.conflicts_report(relative.unwrap_or(true)))
         });
-        methods.add_method("shadowed_report", |lua, this, args: Variadic<Value>| {
+        methods.add_method("shadowedReport", |lua, this, args: Variadic<Value>| {
             let relative = optional_bool_arg(args.first(), true)?;
             let list_files = optional_bool_arg(args.get(1), true)?;
             shadowed_report_to_table(
@@ -640,7 +637,7 @@ impl UserData for LuaConflictIndex {
                 &this.0.shadowed_report_with_files(relative, list_files),
             )
         });
-        methods.add_method("diff_report", |lua, this, (a, b): (String, String)| {
+        methods.add_method("diffReport", |lua, this, (a, b): (String, String)| {
             diff_report_to_table(lua, &this.0.diff_report(Path::new(&a), Path::new(&b)))
         });
     }
@@ -677,7 +674,7 @@ fn lua_analyze_pair(
         right.as_bytes().as_ref(),
     );
     let table = lua.create_table()?;
-    table.set("asset_class", asset_class_name(class))?;
+    table.set("assetClass", asset_class_name(class))?;
     table.set("delta", semantic_delta_to_table(lua, &delta)?)?;
     Ok(table)
 }
@@ -778,13 +775,13 @@ fn semantic_opts_from_table(opts: Option<Table>) -> LuaResult<SemanticOpts> {
         return Ok(SemanticOpts::default());
     };
     let archive_hash_mode = match opts
-        .get::<Option<String>>("archive_hash_mode")?
+        .get::<Option<String>>("archiveHashMode")?
         .as_deref()
-        .unwrap_or("winner_only")
+        .unwrap_or("winnerOnly")
     {
         "disabled" => ArchiveHashMode::Disabled,
-        "winner_only" => ArchiveHashMode::WinnerOnly,
-        "all_providers" => ArchiveHashMode::AllProviders,
+        "winnerOnly" => ArchiveHashMode::WinnerOnly,
+        "allProviders" => ArchiveHashMode::AllProviders,
         other => {
             return Err(LuaError::external(format!(
                 "unknown archive hash mode: {other}"
@@ -793,7 +790,7 @@ fn semantic_opts_from_table(opts: Option<Table>) -> LuaResult<SemanticOpts> {
     };
     Ok(SemanticOpts {
         archive_hash_mode,
-        include_semantic_deltas: opts.get("include_semantic_deltas").unwrap_or(false),
+        include_semantic_deltas: opts.get("includeSemanticDeltas").unwrap_or(false),
     })
 }
 
@@ -806,9 +803,9 @@ fn collapse_options_from_table(opts: Option<Table>) -> CollapseOptions {
         };
     };
     CollapseOptions {
-        allow_copying: opts.get("allow_copying").unwrap_or(false),
-        extract_archives: opts.get("extract_archives").unwrap_or(false),
-        use_symlinks: opts.get("use_symlinks").unwrap_or(false),
+        allow_copying: opts.get("allowCopying").unwrap_or(false),
+        extract_archives: opts.get("extractArchives").unwrap_or(false),
+        use_symlinks: opts.get("useSymlinks").unwrap_or(false),
     }
 }
 
@@ -821,7 +818,7 @@ fn source_meta_from_table(table: &Table) -> LuaResult<SourceMeta> {
 
 fn source_kind_from_name(name: &str) -> LuaResult<SourceKind> {
     match name {
-        "loose_dir" => Ok(SourceKind::LooseDir),
+        "looseDir" => Ok(SourceKind::LooseDir),
         "archive" => Ok(SourceKind::Archive),
         _ => Err(LuaError::external(format!("unknown source kind: {name}"))),
     }
@@ -829,7 +826,7 @@ fn source_kind_from_name(name: &str) -> LuaResult<SourceKind> {
 
 fn source_kind_name(kind: SourceKind) -> &'static str {
     match kind {
-        SourceKind::LooseDir => "loose_dir",
+        SourceKind::LooseDir => "looseDir",
         SourceKind::Archive => "archive",
     }
 }
@@ -898,10 +895,10 @@ fn sources_to_table(lua: &Lua, sources: &[SourceMeta]) -> LuaResult<Table> {
 fn vfs_file_to_table(lua: &Lua, file: &VfsFile) -> LuaResult<Table> {
     let table = lua.create_table()?;
     table.set("path", path_to_string(file.path()))?;
-    table.set("is_loose", file.is_loose())?;
-    table.set("is_archive", file.is_archive())?;
-    table.set("parent_archive_path", file.parent_archive_path())?;
-    table.set("parent_archive_name", file.parent_archive_name())?;
+    table.set("isLoose", file.is_loose())?;
+    table.set("isArchive", file.is_archive())?;
+    table.set("parentArchivePath", file.parent_archive_path())?;
+    table.set("parentArchiveName", file.parent_archive_name())?;
     table.set("file", LuaVfsFile(file.clone()))?;
     Ok(table)
 }
@@ -968,14 +965,14 @@ fn directory_node_to_table(
 
 fn provider_record_to_table(lua: &Lua, provider: &VfsProviderRecord) -> LuaResult<Table> {
     let table = lua.create_table()?;
-    table.set("source_index", provider.source_index)?;
+    table.set("sourceIndex", provider.source_index)?;
     table.set("source", source_meta_to_table(lua, &provider.source)?)?;
     table.set("key", path_to_string(provider.key.clone()))?;
     table.set(
-        "original_path",
+        "originalPath",
         path_to_string(provider.original_path.clone()),
     )?;
-    table.set("resolved_path", provider.resolved_path.clone())?;
+    table.set("resolvedPath", provider.resolved_path.clone())?;
     Ok(table)
 }
 
@@ -1022,7 +1019,7 @@ fn duplicate_entry_to_table(lua: &Lua, entry: &DuplicateEntry) -> LuaResult<Tabl
         "providers",
         provider_records_to_table(lua, &entry.providers)?,
     )?;
-    table.set("winner_index", entry.winner_index)?;
+    table.set("winnerIndex", entry.winner_index)?;
     Ok(table)
 }
 
@@ -1030,10 +1027,10 @@ fn archive_infos_to_table(lua: &Lua, infos: &[crate::ArchiveInfo]) -> LuaResult<
     let table = lua.create_table()?;
     for (index, info) in infos.iter().enumerate() {
         let row = lua.create_table()?;
-        row.set("source_index", info.source_index)?;
+        row.set("sourceIndex", info.source_index)?;
         row.set("path", path_to_string(info.path.clone()))?;
-        row.set("entry_count", info.entry_count)?;
-        row.set("winning_entry_count", info.winning_entry_count)?;
+        row.set("entryCount", info.entry_count)?;
+        row.set("winningEntryCount", info.winning_entry_count)?;
         table.set(index + 1, row)?;
     }
     Ok(table)
@@ -1044,8 +1041,8 @@ fn archive_entries_to_table(lua: &Lua, entries: &[crate::ArchiveEntry]) -> LuaRe
     for (index, entry) in entries.iter().enumerate() {
         let row = lua.create_table()?;
         row.set("key", path_to_string(entry.key.clone()))?;
-        row.set("archive_path", path_to_string(entry.archive_path.clone()))?;
-        row.set("original_path", path_to_string(entry.original_path.clone()))?;
+        row.set("archivePath", path_to_string(entry.archive_path.clone()))?;
+        row.set("originalPath", path_to_string(entry.original_path.clone()))?;
         row.set("wins", entry.wins)?;
         table.set(index + 1, row)?;
     }
@@ -1067,23 +1064,23 @@ fn source_contribution_report_to_table(
 
 fn source_contribution_to_table(lua: &Lua, contribution: &SourceContribution) -> LuaResult<Table> {
     let table = lua.create_table()?;
-    table.set("source_index", contribution.source_index)?;
+    table.set("sourceIndex", contribution.source_index)?;
     table.set("source", source_meta_to_table(lua, &contribution.source)?)?;
-    table.set("winning_files", contribution.winning_files)?;
-    table.set("overriding_files", contribution.overriding_files)?;
-    table.set("overridden_files", contribution.overridden_files)?;
-    table.set("unique_files", contribution.unique_files)?;
-    table.set("duplicate_files", contribution.duplicate_files)?;
-    table.set("loose_files", contribution.loose_files)?;
-    table.set("archive_files", contribution.archive_files)?;
+    table.set("winningFiles", contribution.winning_files)?;
+    table.set("overridingFiles", contribution.overriding_files)?;
+    table.set("overriddenFiles", contribution.overridden_files)?;
+    table.set("uniqueFiles", contribution.unique_files)?;
+    table.set("duplicateFiles", contribution.duplicate_files)?;
+    table.set("looseFiles", contribution.loose_files)?;
+    table.set("archiveFiles", contribution.archive_files)?;
     Ok(table)
 }
 
 fn provider_record_to_lua_table(lua: &Lua, provider: &ProviderRecord) -> LuaResult<Table> {
     let table = lua.create_table()?;
     table.set("source", source_meta_to_table(lua, &provider.source)?)?;
-    table.set("resolved_path", provider.resolved_path.clone())?;
-    table.set("hash_blake3", provider.hash_blake3.clone())?;
+    table.set("resolvedPath", provider.resolved_path.clone())?;
+    table.set("hashBlake3", provider.hash_blake3.clone())?;
     table.set("size", provider.size)?;
     Ok(table)
 }
@@ -1102,7 +1099,7 @@ fn provenance_chain_to_table(lua: &Lua, chain: &ProvenanceChain) -> LuaResult<Ta
 
 fn vfs_lock_to_table(lua: &Lua, lock: &VfsLock) -> LuaResult<Table> {
     let table = lua.create_table()?;
-    table.set("schema_version", lock.schema_version)?;
+    table.set("schemaVersion", lock.schema_version)?;
     table.set("entries", vfs_lock_entries_to_table(lua, &lock.entries)?)?;
     Ok(table)
 }
@@ -1112,11 +1109,11 @@ fn vfs_lock_entries_to_table(lua: &Lua, entries: &[VfsLockEntry]) -> LuaResult<T
     for (index, entry) in entries.iter().enumerate() {
         let row = lua.create_table()?;
         row.set("key", path_to_string(entry.key.clone()))?;
-        row.set("winner_source", path_to_string(entry.winner_source.clone()))?;
-        row.set("winner_kind", source_kind_name(entry.winner_kind))?;
-        row.set("winner_hash_blake3", entry.winner_hash_blake3.clone())?;
-        row.set("winner_size", entry.winner_size)?;
-        row.set("provider_count", entry.provider_count)?;
+        row.set("winnerSource", path_to_string(entry.winner_source.clone()))?;
+        row.set("winnerKind", source_kind_name(entry.winner_kind))?;
+        row.set("winnerHashBlake3", entry.winner_hash_blake3.clone())?;
+        row.set("winnerSize", entry.winner_size)?;
+        row.set("providerCount", entry.provider_count)?;
         table.set(index + 1, row)?;
     }
     Ok(table)
@@ -1126,9 +1123,9 @@ fn drift_kind_name(kind: DriftKind) -> &'static str {
     match kind {
         DriftKind::Added => "added",
         DriftKind::Removed => "removed",
-        DriftKind::WinnerSourceChanged => "winner_source_changed",
-        DriftKind::WinnerHashChanged => "winner_hash_changed",
-        DriftKind::ProviderCountChanged => "provider_count_changed",
+        DriftKind::WinnerSourceChanged => "winnerSourceChanged",
+        DriftKind::WinnerHashChanged => "winnerHashChanged",
+        DriftKind::ProviderCountChanged => "providerCountChanged",
     }
 }
 
@@ -1183,14 +1180,14 @@ fn materialization_action_to_table(lua: &Lua, action: &MaterializationAction) ->
         }
         MaterializationAction::ExtractArchive { key, archive, dest } => set_materialization_row(
             &table,
-            "extract_archive",
+            "extractArchive",
             key,
             None,
             Some(archive),
             Some(dest),
         )?,
         MaterializationAction::SkipArchiveFile { key, archive } => {
-            set_materialization_row(&table, "skip_archive_file", key, None, Some(archive), None)?;
+            set_materialization_row(&table, "skipArchiveFile", key, None, Some(archive), None)?;
         }
     }
     Ok(table)
@@ -1216,17 +1213,17 @@ fn materialization_issue_to_table(lua: &Lua, issue: &MaterializationIssue) -> Lu
     let table = lua.create_table()?;
     match issue {
         MaterializationIssue::MissingLooseSource { key, source } => {
-            table.set("kind", "missing_loose_source")?;
+            table.set("kind", "missingLooseSource")?;
             table.set("key", path_to_string(key.clone()))?;
             table.set("source", path_to_string(source.clone()))?;
         }
         MaterializationIssue::FileDirectoryConflict { key, dest } => {
-            table.set("kind", "file_directory_conflict")?;
+            table.set("kind", "fileDirectoryConflict")?;
             table.set("key", path_to_string(key.clone()))?;
             table.set("dest", path_to_string(dest.clone()))?;
         }
         MaterializationIssue::UnsafeDestination { key, dest } => {
-            table.set("kind", "unsafe_destination")?;
+            table.set("kind", "unsafeDestination")?;
             table.set("key", path_to_string(key.clone()))?;
             table.set("dest", path_to_string(dest.clone()))?;
         }
@@ -1260,12 +1257,12 @@ fn layer_providers_to_table(lua: &Lua, providers: &[LayerProvider]) -> LuaResult
     let table = lua.create_table()?;
     for (index, provider) in providers.iter().enumerate() {
         let row = lua.create_table()?;
-        row.set("source_index", provider.source_index)?;
-        row.set("provider_index", provider.provider_index)?;
+        row.set("sourceIndex", provider.source_index)?;
+        row.set("providerIndex", provider.provider_index)?;
         row.set("source", source_meta_to_table(lua, &provider.source)?)?;
         row.set("key", path_to_string(provider.key.clone()))?;
         row.set(
-            "original_path",
+            "originalPath",
             path_to_string(provider.original_path.clone()),
         )?;
         table.set(index + 1, row)?;
@@ -1321,7 +1318,7 @@ fn conflict_source_entry_to_table(lua: &Lua, source: &ConflictSourceEntry) -> Lu
     table.set("path", path_to_string(source.path.clone()))?;
     table.set("overrides", paths_to_table(lua, source.overrides.iter())?)?;
     table.set(
-        "overridden_by",
+        "overriddenBy",
         paths_to_table(lua, source.overridden_by.iter())?,
     )?;
     Ok(table)
@@ -1341,7 +1338,7 @@ fn shadowed_source_to_table(lua: &Lua, source: &ShadowedSource) -> LuaResult<Tab
     let table = lua.create_table()?;
     table.set("path", path_to_string(source.path.clone()))?;
     table.set(
-        "shadowed_files",
+        "shadowedFiles",
         paths_to_table(lua, source.shadowed_files.iter())?,
     )?;
     Ok(table)
@@ -1349,15 +1346,15 @@ fn shadowed_source_to_table(lua: &Lua, source: &ShadowedSource) -> LuaResult<Tab
 
 fn diff_report_to_table(lua: &Lua, report: &DiffReport) -> LuaResult<Table> {
     let table = lua.create_table()?;
-    table.set("source_a", path_to_string(report.source_a.clone()))?;
-    table.set("source_b", path_to_string(report.source_b.clone()))?;
+    table.set("sourceA", path_to_string(report.source_a.clone()))?;
+    table.set("sourceB", path_to_string(report.source_b.clone()))?;
     table.set(
-        "higher_priority",
+        "higherPriority",
         path_to_string(report.higher_priority.clone()),
     )?;
     table.set("shared", strings_to_table(lua, report.shared.iter())?)?;
-    table.set("only_in_a", strings_to_table(lua, report.only_in_a.iter())?)?;
-    table.set("only_in_b", strings_to_table(lua, report.only_in_b.iter())?)?;
+    table.set("onlyInA", strings_to_table(lua, report.only_in_a.iter())?)?;
+    table.set("onlyInB", strings_to_table(lua, report.only_in_b.iter())?)?;
     Ok(table)
 }
 
@@ -1365,8 +1362,8 @@ fn copied_to_table(lua: &Lua, copied: &[(PathBuf, PathBuf)]) -> LuaResult<Table>
     let table = lua.create_table()?;
     for (index, (relative_path, destination_path)) in copied.iter().enumerate() {
         let row = lua.create_table()?;
-        row.set("relative_path", path_to_string(relative_path.clone()))?;
-        row.set("destination_path", path_to_string(destination_path.clone()))?;
+        row.set("relativePath", path_to_string(relative_path.clone()))?;
+        row.set("destinationPath", path_to_string(destination_path.clone()))?;
         table.set(index + 1, row)?;
     }
     Ok(table)
@@ -1377,8 +1374,8 @@ fn asset_class_name(class: AssetClass) -> &'static str {
         AssetClass::Ini => "ini",
         AssetClass::Toml => "toml",
         AssetClass::Json => "json",
-        AssetClass::LuaScript => "lua_script",
-        AssetClass::MwScriptLike => "mw_script_like",
+        AssetClass::LuaScript => "luaScript",
+        AssetClass::MwScriptLike => "mwScriptLike",
         AssetClass::Text => "text",
         AssetClass::Binary => "binary",
         AssetClass::Unknown => "unknown",
@@ -1388,15 +1385,15 @@ fn asset_class_name(class: AssetClass) -> &'static str {
 fn semantic_delta_to_table(lua: &Lua, delta: &SemanticDelta) -> LuaResult<Table> {
     let table = lua.create_table()?;
     match delta {
-        SemanticDelta::NoOpEquivalent => table.set("kind", "no_op_equivalent")?,
-        SemanticDelta::CosmeticOnly => table.set("kind", "cosmetic_only")?,
+        SemanticDelta::NoOpEquivalent => table.set("kind", "noOpEquivalent")?,
+        SemanticDelta::CosmeticOnly => table.set("kind", "cosmeticOnly")?,
         SemanticDelta::BehaviorChanging { change_summary } => {
-            table.set("kind", "behavior_changing")?;
+            table.set("kind", "behaviorChanging")?;
             let changes = lua.create_table()?;
             for (index, change) in change_summary.iter().enumerate() {
                 changes.set(index + 1, change.clone())?;
             }
-            table.set("change_summary", changes)?;
+            table.set("changeSummary", changes)?;
         }
         SemanticDelta::Unknown => table.set("kind", "unknown")?,
     }
@@ -1405,8 +1402,8 @@ fn semantic_delta_to_table(lua: &Lua, delta: &SemanticDelta) -> LuaResult<Table>
 
 fn semantic_relation_name(relation: SemanticRelation) -> &'static str {
     match relation {
-        SemanticRelation::IdenticalToWinner => "identical_to_winner",
-        SemanticRelation::DifferentFromWinner => "different_from_winner",
+        SemanticRelation::IdenticalToWinner => "identicalToWinner",
+        SemanticRelation::DifferentFromWinner => "differentFromWinner",
         SemanticRelation::Unknown => "unknown",
     }
 }
@@ -1415,14 +1412,14 @@ fn semantic_provider_to_table(lua: &Lua, provider: &SemanticProvider) -> LuaResu
     let table = lua.create_table()?;
     table.set("source", source_meta_to_table(lua, &provider.source)?)?;
     table.set("relation", semantic_relation_name(provider.relation))?;
-    table.set("hash_blake3", provider.hash_blake3.clone())?;
+    table.set("hashBlake3", provider.hash_blake3.clone())?;
     table.set("size", provider.size)?;
     match &provider.semantic_delta_to_winner {
         Some(delta) => table.set(
-            "semantic_delta_to_winner",
+            "semanticDeltaToWinner",
             semantic_delta_to_table(lua, delta)?,
         )?,
-        None => table.set("semantic_delta_to_winner", Value::Nil)?,
+        None => table.set("semanticDeltaToWinner", Value::Nil)?,
     }
     Ok(table)
 }
@@ -1445,9 +1442,9 @@ fn semantic_conflict_report_to_table(
             )?;
         }
         row.set("providers", providers)?;
-        row.set("asset_class", asset_class_name(entry.asset_class))?;
-        row.set("all_identical", entry.all_identical)?;
-        row.set("distinct_versions", entry.distinct_versions)?;
+        row.set("assetClass", asset_class_name(entry.asset_class))?;
+        row.set("allIdentical", entry.all_identical)?;
+        row.set("distinctVersions", entry.distinct_versions)?;
         entries.set(index + 1, row)?;
     }
     table.set("entries", entries)?;

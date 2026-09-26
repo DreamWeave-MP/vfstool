@@ -23,14 +23,10 @@ Enable the binding layer with:
 vfstool_lib = { version = "1", features = ["lua"] }
 ```
 
-The bare `lua` feature intentionally does **not** select a Lua runtime or link a standalone LuaJIT.
-It is for host workspaces that provide one central Lua crate/runtime and re-export `mlua`, so ten
-library crates do not all try to choose and build their own Lua backend. If `vfstool_lib` is built on
-its own and you want it to select a vendored LuaJIT backend, use:
-
-```toml
-vfstool_lib = { version = "1", features = ["standalone-lua"] }
-```
+The runtime is [Luau](https://luau.org): the `lua` feature enables `mlua`'s `luau` backend, which
+is built from source, so there is nothing to install and every host gets the same runtime. Hosts
+that register several libraries into one state (`vfstool` and `jess`, say) must use the same `mlua`
+version.
 
 The binding is embedded either way. There is no dynamic Lua module pretending to be a stable C ABI.
 Good.
@@ -47,7 +43,7 @@ The Lua surface binds the promoted stable API and methods on its stable associat
 - lock/provenance/drift/semantic-conflict reports reachable from `LayerIndex`
 - run-workflow helpers
 - path/glob helpers
-- semantic `analyze_pair`
+- semantic `analyzePair`
 
 It deliberately does **not** bind:
 
@@ -61,8 +57,9 @@ Reports are plain Lua tables. Long-lived mutable structures are userdata.
 ## Conventions
 
 - Paths are strings.
-- Enums are snake-case strings, for example `"loose_dir"`, `"archive"`, `"ini"`,
-  `"cosmetic_only"`, `"winner_hash_changed"`.
+- Functions, methods, and table fields are camelCase, and so are enum-like string values, for
+  example `"looseDir"`, `"archive"`, `"ini"`, `"cosmeticOnly"`, `"winnerHashChanged"`.
+- Luau has no `io` library; read and write files through the bindings or the host.
 - Constructors that take directories expect arrays: `{ "/data/base", "/data/mod" }`.
 - Archive loading still depends on `beth-archives` / `zip` Cargo features.
 - `VFS` stores provider stacks low priority to high priority and caches the resolved winner map.
@@ -72,32 +69,32 @@ Reports are plain Lua tables. Long-lived mutable structures are userdata.
 ## Top-level functions
 
 ```lua
-vfstool.normalize_host_path(path) -> string
-vfstool.normalize_host_path_in_place(path) -> string
-vfstool.path_glob_matches(glob, path) -> boolean
-vfstool.source_glob_matches(glob, source_path) -> boolean
+vfstool.normalizeHostPath(path) -> string
+vfstool.normalizeHostPathInPlace(path) -> string
+vfstool.pathGlobMatches(glob, path) -> boolean
+vfstool.sourceGlobMatches(glob, sourcePath) -> boolean
 
-vfstool.analyze_pair(path, left_bytes, right_bytes) -> {
-  asset_class = string,
-  delta = { kind = string, change_summary = { string }? },
+vfstool.analyzePair(path, leftBytes, rightBytes) -> {
+  assetClass = string,
+  delta = { kind = string, changeSummary = { string }? },
 }
 ```
 
 Run workflow:
 
 ```lua
-count, snapshot = vfstool.run_setup(vfs, merged_dir, use_hardlinks)
-count, metadata_snapshot = vfstool.run_setup_tracked(vfs, merged_dir, use_hardlinks)
-snapshot = vfstool.snapshot_directory(dir)
-metadata_snapshot = vfstool.snapshot_directory_metadata(dir)
-changed = vfstool.changed_files(dir, snapshot)
-changed = vfstool.changed_files_metadata(dir, metadata_snapshot)
-copied = vfstool.run_finalize(merged_dir, output_dir, snapshot)
-copied = vfstool.run_finalize_tracked(merged_dir, output_dir, metadata_snapshot)
+count, snapshot = vfstool.runSetup(vfs, mergedDir, useHardlinks)
+count, metadataSnapshot = vfstool.runSetupTracked(vfs, mergedDir, useHardlinks)
+snapshot = vfstool.snapshotDirectory(dir)
+metadataSnapshot = vfstool.snapshotDirectoryMetadata(dir)
+changed = vfstool.changedFiles(dir, snapshot)
+changed = vfstool.changedFilesMetadata(dir, metadataSnapshot)
+copied = vfstool.runFinalize(mergedDir, outputDir, snapshot)
+copied = vfstool.runFinalizeTracked(mergedDir, outputDir, metadataSnapshot)
 ```
 
-`run_setup` may hardlink loose files into the merged directory. Child tools that edit files in place
-can mutate the original source files through those hardlinks. Use `false` for `use_hardlinks` if the
+`runSetup` may hardlink loose files into the merged directory. Child tools that edit files in place
+can mutate the original source files through those hardlinks. Use `false` for `useHardlinks` if the
 child tool is not hardlink-safe. This warning is part of the API, not decorative prose.
 
 With `serialize` enabled:
@@ -110,60 +107,60 @@ vfstool.serialize(value, "json" | "yaml" | "toml") -> string
 
 ```lua
 vfs = vfstool.VFS.new()
-vfs = vfstool.VFS.from_directories({ dir1, dir2 }, { archives = { "base.bsa" } })
-vfs, conflicts = vfstool.VFS.from_directories_with_conflict_index({ dir1, dir2 })
-vfs, layer = vfstool.VFS.from_directories_with_layer_index({ dir1, dir2 })
+vfs = vfstool.VFS.fromDirectories({ dir1, dir2 }, { archives = { "base.bsa" } })
+vfs, conflicts = vfstool.VFS.fromDirectoriesWithConflictIndex({ dir1, dir2 })
+vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex({ dir1, dir2 })
 
 vfs:len() -> integer
-vfs:is_empty() -> boolean
+vfs:isEmpty() -> boolean
 vfs:keys() -> { string }
 vfs:entries() -> { { key = string, file = VfsFile } }
-vfs:get_file(path) -> VfsFile | nil
+vfs:getFile(path) -> VfsFile | nil
 vfs:contains(path) -> boolean
-vfs:find_by_regex(pattern, relative?) -> table
-vfs:remaining(filter_path, replacements_only, all_dirs, relative?) -> table
-vfs:paths_matching(substring) -> { { key = string, file = VfsFile } }
-vfs:paths_with(prefix) -> { { key = string, file = VfsFile } }
+vfs:findByRegex(pattern, relative?) -> table
+vfs:remaining(filterPath, replacementsOnly, allDirs, relative?) -> table
+vfs:pathsMatching(substring) -> { { key = string, file = VfsFile } }
+vfs:pathsWith(prefix) -> { { key = string, file = VfsFile } }
 
-vfs:set_winner_file(key, file) -> VfsFile | nil
-vfs:set_winner_loose_file(key, physical_path) -> VfsFile | nil
-vfs:push_directory(path) -> nil
-vfs:push_archive(path) -> boolean
-vfs:push_provider(key, provider) -> boolean
-vfs:remove_winner(key) -> VfsProvider | nil
-vfs:remove_resolved_file(key) -> VfsFile | nil
-vfs:remove_provider(key, source_path) -> { VfsProvider }
-vfs:remove_source(source_path) -> { { key = string, provider = table } }
-vfs:remove_provider_prefix(prefix) -> { { key = string, provider = table } }
-vfs:remove_resolved_prefix(prefix) -> { { key = string, file = VfsFile } }
-vfs:remove_resolved_matching_glob(glob) -> { { key = string, file = VfsFile } }
+vfs:setWinnerFile(key, file) -> VfsFile | nil
+vfs:setWinnerLooseFile(key, physicalPath) -> VfsFile | nil
+vfs:pushDirectory(path) -> nil
+vfs:pushArchive(path) -> boolean
+vfs:pushProvider(key, provider) -> boolean
+vfs:removeWinner(key) -> VfsProvider | nil
+vfs:removeResolvedFile(key) -> VfsFile | nil
+vfs:removeProvider(key, sourcePath) -> { VfsProvider }
+vfs:removeSource(sourcePath) -> { { key = string, provider = table } }
+vfs:removeProviderPrefix(prefix) -> { { key = string, provider = table } }
+vfs:removeResolvedPrefix(prefix) -> { { key = string, file = VfsFile } }
+vfs:removeResolvedMatchingGlob(glob) -> { { key = string, file = VfsFile } }
 
 vfs:tree(relative?) -> table
 vfs:display(relative?) -> string
-vfs:dump_to_directory(dir, use_hardlinks) -> integer
-vfs:collapse_into(dest, opts) -> nil
-vfs:extract_file(vfs_path, dest_dir) -> string | nil
-vfs:diff_directory(dir) -> table
+vfs:dumpToDirectory(dir, useHardlinks) -> integer
+vfs:collapseInto(dest, opts) -> nil
+vfs:extractFile(vfsPath, destDir) -> string | nil
+vfs:diffDirectory(dir) -> table
 
-vfs:provider_records_for(path) -> { ProviderRecord }
-vfs:providers_for(path) -> { VfsProvider } | nil
+vfs:providerRecordsFor(path) -> { ProviderRecord }
+vfs:providersFor(path) -> { VfsProvider } | nil
 vfs:explain(path) -> table | nil
 vfs:duplicates(pattern?) -> table
 vfs:archives() -> { ArchiveInfo }
-vfs:archive_entries(archive) -> { ArchiveEntry }
-vfs:files_from_archive(archive) -> { string }
-vfs:source_contributions() -> table
-vfs:materialization_plan(dest, opts) -> table
-vfs:layer_index() -> LayerIndex
+vfs:archiveEntries(archive) -> { ArchiveEntry }
+vfs:filesFromArchive(archive) -> { string }
+vfs:sourceContributions() -> table
+vfs:materializationPlan(dest, opts) -> table
+vfs:layerIndex() -> LayerIndex
 ```
 
-`collapse_into` and `materialization_plan` options:
+`collapseInto` and `materializationPlan` options:
 
 ```lua
 {
-  allow_copying = false,
-  extract_archives = false,
-  use_symlinks = false,
+  allowCopying = false,
+  extractArchives = false,
+  useSymlinks = false,
 }
 ```
 
@@ -171,20 +168,20 @@ vfs:layer_index() -> LayerIndex
 
 ```lua
 file = vfstool.VfsFile.from(path)
-file:is_loose() -> boolean
-file:is_archive() -> boolean
+file:isLoose() -> boolean
+file:isArchive() -> boolean
 file:path() -> string
-file:file_name() -> string | nil
-file:file_stem() -> string | nil
-file:parent_archive_path() -> string | nil
-file:parent_archive_name() -> string | nil
-file:read_all() -> string
+file:fileName() -> string | nil
+file:fileStem() -> string | nil
+file:parentArchivePath() -> string | nil
+file:parentArchiveName() -> string | nil
+file:readAll() -> string
 ```
 
 ## `VfsProvider`
 
 ```lua
-provider = vfstool.VfsProvider.new({ path = dir, kind = "loose_dir" }, file)
+provider = vfstool.VfsProvider.new({ path = dir, kind = "looseDir" }, file)
 provider:source() -> { path = string, kind = string }
 provider:file() -> VfsFile
 ```
@@ -192,62 +189,62 @@ provider:file() -> VfsFile
 ## `LayerIndex`
 
 ```lua
-layer = vfstool.LayerIndex.from_file_lists({
-  { source = { path = "base", kind = "loose_dir" }, files = { "a.txt" } },
+layer = vfstool.LayerIndex.fromFileLists({
+  { source = { path = "base", kind = "looseDir" }, files = { "a.txt" } },
 })
 
 layer:keys() -> { string }
 layer:sources() -> { { path = string, kind = string } }
-layer:source_id_for_path(path) -> integer | nil
-layer:source_by_id(id) -> table | nil
-layer:sources_containing(path) -> { integer }
-layer:provider_original_path(source_index, path) -> string | nil
-layer:provider_chain(path) -> { LayerProvider }
-layer:duplicate_keys() -> { string }
-layer:source_contributions() -> table
-layer:provenance(vfs, path, with_hashes) -> table | nil
-lock = layer:lock_manifest(vfs)
-layer:diff_against_lock(vfs, lock) -> table
-layer:semantic_conflicts(vfs, opts?) -> table
+layer:sourceIdForPath(path) -> integer | nil
+layer:sourceById(id) -> table | nil
+layer:sourcesContaining(path) -> { integer }
+layer:providerOriginalPath(sourceIndex, path) -> string | nil
+layer:providerChain(path) -> { LayerProvider }
+layer:duplicateKeys() -> { string }
+layer:sourceContributions() -> table
+layer:provenance(vfs, path, withHashes) -> table | nil
+lock = layer:lockManifest(vfs)
+layer:diffAgainstLock(vfs, lock) -> table
+layer:semanticConflicts(vfs, opts?) -> table
 ```
 
 Semantic conflict options:
 
 ```lua
 {
-  archive_hash_mode = "disabled" | "winner_only" | "all_providers",
-  include_semantic_deltas = false,
+  archiveHashMode = "disabled" | "winnerOnly" | "allProviders",
+  includeSemanticDeltas = false,
 }
 ```
 
 ## `ConflictIndex`
 
 ```lua
-conflicts = vfstool.ConflictIndex.from_directories({ dir1, dir2 })
-conflicts = vfstool.ConflictIndex.from_file_lists({
+conflicts = vfstool.ConflictIndex.fromDirectories({ dir1, dir2 })
+conflicts = vfstool.ConflictIndex.fromFileLists({
   { source = "base", files = { "a.txt" } },
 })
-conflicts = vfstool.ConflictIndex.from_layer_index(layer)
+conflicts = vfstool.ConflictIndex.fromLayerIndex(layer)
 
 conflicts:sources() -> { string }
-conflicts:sources_containing(path) -> { integer }
-conflicts:conflicts_report(relative?) -> table
-conflicts:shadowed_report(relative?, list_files?) -> table
-conflicts:diff_report(source_a, source_b) -> table
+conflicts:sourcesContaining(path) -> { integer }
+conflicts:conflictsReport(relative?) -> table
+conflicts:shadowedReport(relative?, listFiles?) -> table
+conflicts:diffReport(sourceA, sourceB) -> table
 ```
 
 ## Report tables
 
-Report table field names mirror the Rust report structs using snake_case. Nested provider records
+Report table field names mirror the Rust report structs, in camelCase. Nested provider records
 use this shape:
 
 ```lua
 {
-  source_index = 1,
-  source = { path = "/mods/foo", kind = "loose_dir" },
+  sourceIndex = 1,
+  source = { path = "/mods/foo", kind = "looseDir" },
   key = "textures/foo.dds",
-  original_path = "Textures/Foo.DDS",
-  resolved_path = "/mods/foo/Textures/Foo.DDS",
+  originalPath = "Textures/Foo.DDS",
+  resolvedPath = "/mods/foo/Textures/Foo.DDS",
 }
 ```
 

@@ -33,11 +33,10 @@ default = []
 beth-archives = ["dep:dream_archive"]
 zip = ["dep:zip"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
-lua = ["dep:mlua", "mlua/serialize"]
-standalone-lua = ["lua", "mlua/luajit52", "mlua/vendored"]
+lua = ["dep:mlua", "mlua/serialize", "mlua/luau"]
 
 [package.metadata.docs.rs]
-features = ["beth-archives", "zip", "serialize", "standalone-lua"]
+features = ["beth-archives", "zip", "serialize", "lua"]
 
 [[bench]]
 name = "vfs_benchmarks"

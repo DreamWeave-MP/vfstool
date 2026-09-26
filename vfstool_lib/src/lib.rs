@@ -136,9 +136,9 @@
 //!   tools can use the exact serialization stack selected by `vfstool_lib` instead of pinning a
 //!   parallel set of dependencies. Two TOML parsers in one tool is technically valid. It is also
 //!   how you get to debug nothing for an afternoon.
-//! - `lua`: embedded `mlua` bindings for the promoted stable API surface. This is not a `cdylib`
-//!   Lua module; hosts register `lua::open` or `lua::register` into their own Lua state.
-//! - `standalone-lua`: enables `lua` with vendored `LuaJIT` for standalone embedded hosts.
+//! - `lua`: embedded Luau bindings (`mlua` with the vendored Luau runtime) for the promoted stable
+//!   API surface. This is not a `cdylib` Lua module; hosts register `lua::open` or `lua::register`
+//!   into their own Lua state.
 //!
 //! # Runner warning
 //!

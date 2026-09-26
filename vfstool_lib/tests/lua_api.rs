@@ -63,11 +63,11 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
         .unwrap();
     lua.load(
         r#"
-        local vfs, conflict = vfstool.VFS.from_directories_with_conflict_index({ low, high })
+        local vfs, conflict = vfstool.VFS.fromDirectoriesWithConflictIndex({ low, high })
         assert(vfs:len() == 2)
         assert(vfs:contains("TEXTURES\\FOO.DDS"))
-        assert(vfs:get_file("textures/foo.dds"):is_loose())
-        assert(vfs:paths_matching("textures")[1].key == "textures/foo.dds")
+        assert(vfs:getFile("textures/foo.dds"):isLoose())
+        assert(vfs:pathsMatching("textures")[1].key == "textures/foo.dds")
 
         local explain = vfs:explain("textures/foo.dds")
         assert(explain.winner.source.path == high)
@@ -75,27 +75,27 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
         assert(#vfs:duplicates().entries == 1)
         assert(#vfs:duplicates("^textures/").entries == 1)
         assert(#vfs:duplicates("^meshes/").entries == 0)
-        assert(#vfs:materialization_plan(high, { allow_copying = true }).actions >= 1)
+        assert(#vfs:materializationPlan(high, { allowCopying = true }).actions >= 1)
 
-        local layer = vfs:layer_index()
+        local layer = vfs:layerIndex()
         assert(#layer:keys() == 2)
-        assert(#layer:provider_chain("textures/foo.dds") == 2)
-        assert(#layer:source_contributions().sources == 2)
+        assert(#layer:providerChain("textures/foo.dds") == 2)
+        assert(#layer:sourceContributions().sources == 2)
 
         local provenance = layer:provenance(vfs, "textures/foo.dds", true)
         assert(provenance.winner.path == high)
-        local lock = layer:lock_manifest(vfs)
-        assert(lock:schema_version() == 1)
+        local lock = layer:lockManifest(vfs)
+        assert(lock:schemaVersion() == 1)
         assert(#lock:entries() == 2)
-        assert(#layer:diff_against_lock(vfs, lock).entries == 0)
-        assert(layer:semantic_conflicts(vfs, { include_semantic_deltas = true }).entries[1].all_identical)
+        assert(#layer:diffAgainstLock(vfs, lock).entries == 0)
+        assert(layer:semanticConflicts(vfs, { includeSemanticDeltas = true }).entries[1].allIdentical)
 
         assert(#conflict:sources() == 2)
-        assert(#conflict:sources_containing("textures/foo.dds") == 2)
-        assert(#conflict:conflicts_report(true).sources == 2)
-        assert(#conflict:shadowed_report(true).sources == 1)
-        assert(#conflict:shadowed_report(true, false).sources[1].shadowed_files == 0)
-        assert(#conflict:diff_report(low, high).shared == 1)
+        assert(#conflict:sourcesContaining("textures/foo.dds") == 2)
+        assert(#conflict:conflictsReport(true).sources == 2)
+        assert(#conflict:shadowedReport(true).sources == 1)
+        assert(#conflict:shadowedReport(true, false).sources[1].shadowedFiles == 0)
+        assert(#conflict:diffReport(low, high).shared == 1)
     "#,
     )
     .exec()
@@ -119,24 +119,24 @@ fn lua_vfs_reveals_lower_provider_and_accepts_manual_provider() {
         .set("high", high.path().to_string_lossy().as_ref())
         .unwrap();
     lua.globals()
-        .set("manual_root", manual.path().to_string_lossy().as_ref())
+        .set("manualRoot", manual.path().to_string_lossy().as_ref())
         .unwrap();
     lua.globals()
-        .set("manual_file", manual_file.to_string_lossy().as_ref())
+        .set("manualFile", manual_file.to_string_lossy().as_ref())
         .unwrap();
     lua.load(
         r#"
-        local vfs = vfstool.VFS.from_directories({ low, high })
-        assert(#vfs:providers_for("shared.txt") == 2)
-        local removed = vfs:remove_winner("shared.txt")
+        local vfs = vfstool.VFS.fromDirectories({ low, high })
+        assert(#vfs:providersFor("shared.txt") == 2)
+        local removed = vfs:removeWinner("shared.txt")
         assert(removed:source().path == high)
-        assert(vfs:get_file("shared.txt"):path():find(low, 1, true) == 1)
+        assert(vfs:getFile("shared.txt"):path():find(low, 1, true) == 1)
 
-        local file = vfstool.VfsFile.from(manual_file)
-        local provider = vfstool.VfsProvider.new({ path = manual_root, kind = "loose_dir" }, file)
-        assert(vfs:push_provider("manual.txt", provider))
+        local file = vfstool.VfsFile.from(manualFile)
+        local provider = vfstool.VfsProvider.new({ path = manualRoot, kind = "looseDir" }, file)
+        assert(vfs:pushProvider("manual.txt", provider))
         assert(vfs:contains("manual.txt"))
-        assert(#vfs:remove_source(manual_root) == 1)
+        assert(#vfs:removeSource(manualRoot) == 1)
         assert(vfs:contains("manual.txt") == false)
     "#,
     )
@@ -161,31 +161,34 @@ fn lua_top_level_helpers_and_run_workflow() {
     lua.globals()
         .set("output", output.path().to_string_lossy().as_ref())
         .unwrap();
+    // Luau has no `io` library; the script edits merged files through this helper.
+    let write_file = lua
+        .create_function(|_, (path, text): (String, String)| {
+            fs::write(path, text).map_err(mlua::Error::external)
+        })
+        .unwrap();
+    lua.globals().set("writeFile", write_file).unwrap();
     lua.load(
         r##"
-        assert(vfstool.normalize_host_path("Textures\\Foo.DDS") == "textures/foo.dds")
-        assert(vfstool.path_glob_matches("config/**", "config/settings.ini"))
-        assert(vfstool.source_glob_matches("**", data))
-        local semantic = vfstool.analyze_pair("settings.ini", "[x]\na=1\n", "# comment\n[x]\na=1\n")
-        assert(semantic.asset_class == "ini")
-        assert(semantic.delta.kind == "cosmetic_only")
+        assert(vfstool.normalizeHostPath("Textures\\Foo.DDS") == "textures/foo.dds")
+        assert(vfstool.pathGlobMatches("config/**", "config/settings.ini"))
+        assert(vfstool.sourceGlobMatches("**", data))
+        local semantic = vfstool.analyzePair("settings.ini", "[x]\na=1\n", "# comment\n[x]\na=1\n")
+        assert(semantic.assetClass == "ini")
+        assert(semantic.delta.kind == "cosmeticOnly")
 
-        local vfs = vfstool.VFS.from_directories({ data })
-        local count, snapshot = vfstool.run_setup(vfs, merged, false)
+        local vfs = vfstool.VFS.fromDirectories({ data })
+        local count, snapshot = vfstool.runSetup(vfs, merged, false)
         assert(count == 1)
-        local f = io.open(merged .. "/config/settings.ini", "w")
-        f:write("[x]\na = 2\n")
-        f:close()
-        assert(#vfstool.changed_files(merged, snapshot) == 1)
-        local copied = vfstool.run_finalize(merged, output, snapshot)
-        assert(vfstool.normalize_host_path(copied[1].relative_path) == "config/settings.ini")
+        writeFile(merged .. "/config/settings.ini", "[x]\na = 2\n")
+        assert(#vfstool.changedFiles(merged, snapshot) == 1)
+        local copied = vfstool.runFinalize(merged, output, snapshot)
+        assert(vfstool.normalizeHostPath(copied[1].relativePath) == "config/settings.ini")
 
-        local _, tracked = vfstool.run_setup_tracked(vfs, merged, false)
-        local f2 = io.open(merged .. "/new.txt", "w")
-        f2:write("new")
-        f2:close()
-        assert(#vfstool.changed_files_metadata(merged, tracked) == 1)
-        assert(#vfstool.run_finalize_tracked(merged, output, tracked) == 1)
+        local _, tracked = vfstool.runSetupTracked(vfs, merged, false)
+        writeFile(merged .. "/new.txt", "new")
+        assert(#vfstool.changedFilesMetadata(merged, tracked) == 1)
+        assert(#vfstool.runFinalizeTracked(merged, output, tracked) == 1)
     "##,
     )
     .exec()
