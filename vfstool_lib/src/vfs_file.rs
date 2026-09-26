@@ -116,6 +116,7 @@ impl VfsFile {
 
     /// Creates a [`VfsFile`] backed by a byte-named entry inside `parent_archive`.
     #[cfg(any(feature = "beth-archives", feature = "zip"))]
+    #[must_use]
     pub fn from_archive_bytes(path: &[u8], parent_archive: Arc<StoredArchive>) -> Self {
         VfsFile {
             file: FileType::Archive(ArchiveReference::from_bytes(path, parent_archive)),

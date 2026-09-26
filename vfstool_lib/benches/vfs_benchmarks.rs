@@ -7,8 +7,8 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 use vfstool_lib::{
-    CollapseOptions, ConflictIndex, NormalizedPath, SourceKind, SourceMeta, VFS, VfsFile,
-    changed_files, changed_files_metadata, normalize_host_path, normalize_host_path_in_place,
+    ConflictIndex, NormalizedPath, SourceKind, SourceMeta, VFS, VfsFile, changed_files,
+    changed_files_metadata, normalize_host_path, normalize_host_path_in_place,
     run_finalize_tracked, run_setup, run_setup_tracked, snapshot_directory,
     snapshot_directory_metadata,
 };
@@ -17,6 +17,8 @@ use vfstool_lib::SemanticOpts;
 
 #[cfg(feature = "zip")]
 use vfstool_lib::ArchiveHashMode;
+#[cfg(feature = "zip")]
+use vfstool_lib::CollapseOptions;
 
 #[cfg(feature = "zip")]
 use std::io::Write as IoWrite;

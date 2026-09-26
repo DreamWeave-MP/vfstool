@@ -951,10 +951,10 @@ pub fn run_command(
     use_relative: bool,
     resolved_config_dir: PathBuf,
 ) -> Result<()> {
-    if let Commands::FindFile { path, simple, .. } = &command {
-        if handle_find_file_fast(resolved_config_dir.clone(), path, *simple) {
-            return Ok(());
-        }
+    if let Commands::FindFile { path, simple, .. } = &command
+        && handle_find_file_fast(resolved_config_dir.clone(), path, *simple)
+    {
+        return Ok(());
     }
 
     if let Commands::Validate {

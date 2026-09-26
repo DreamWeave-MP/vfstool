@@ -129,11 +129,11 @@ fn diff_dir_uses_byte_keys_for_non_utf8_filenames() {
     let vfs_dir = TempDir::new("vfsdiff_non_utf8_base");
     let base_file = vfs_dir.path().join(&file_name);
     let write_result = fs::write(&base_file, b"base");
-    if let Err(err) = &write_result {
-        if err.raw_os_error() == Some(92) || err.kind() == io::ErrorKind::InvalidInput {
-            eprintln!("skipping non-UTF8 diff test: filesystem rejected byte filename: {err}");
-            return;
-        }
+    if let Err(err) = &write_result
+        && (err.raw_os_error() == Some(92) || err.kind() == io::ErrorKind::InvalidInput)
+    {
+        eprintln!("skipping non-UTF8 diff test: filesystem rejected byte filename: {err}");
+        return;
     }
     write_result.unwrap();
     let vfs = VFS::from_directories(vec![vfs_dir.path()], None);

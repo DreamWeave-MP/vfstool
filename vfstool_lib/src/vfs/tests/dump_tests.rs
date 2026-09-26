@@ -81,13 +81,13 @@ fn materialization_preserves_non_utf8_key_bytes() {
     let src = TempDir::new("dump_non_utf8_src");
     let source_file = src.path().join(&file_name);
     let write_result = fs::write(&source_file, b"bytes");
-    if let Err(err) = &write_result {
-        if err.raw_os_error() == Some(92) || err.kind() == io::ErrorKind::InvalidInput {
-            eprintln!(
-                "skipping non-UTF8 materialization test: filesystem rejected byte filename: {err}"
-            );
-            return;
-        }
+    if let Err(err) = &write_result
+        && (err.raw_os_error() == Some(92) || err.kind() == io::ErrorKind::InvalidInput)
+    {
+        eprintln!(
+            "skipping non-UTF8 materialization test: filesystem rejected byte filename: {err}"
+        );
+        return;
     }
     write_result.unwrap();
     let vfs = VFS::from_directories(vec![src.path()], None);
