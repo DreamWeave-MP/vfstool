@@ -113,7 +113,7 @@ vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex({ dir1, dir2 })
 
 vfs:len() -> integer
 vfs:isEmpty() -> boolean
-vfs:keys() -> { string }
+vfs:keys() -> { string }                 -- sorted
 vfs:entries() -> { { key = string, file = VfsFile } }
 vfs:getFile(path) -> VfsFile | nil
 vfs:contains(path) -> boolean
@@ -193,7 +193,7 @@ layer = vfstool.LayerIndex.fromFileLists({
   { source = { path = "base", kind = "looseDir" }, files = { "a.txt" } },
 })
 
-layer:keys() -> { string }
+layer:keys() -> { string }               -- sorted
 layer:sources() -> { { path = string, kind = string } }
 layer:sourceIdForPath(path) -> integer | nil
 layer:sourceById(id) -> table | nil

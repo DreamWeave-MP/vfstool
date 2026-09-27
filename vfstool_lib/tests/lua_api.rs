@@ -69,6 +69,8 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
         assert(vfs:getFile("textures/foo.dds"):isLoose())
         assert(vfs:getFile("meshes/bar.nif"):readAll() == "mesh")
         assert(vfs:pathsMatching("textures")[1].key == "textures/foo.dds")
+        local keys = vfs:keys()
+        assert(#keys == 2 and keys[1] == "meshes/bar.nif" and keys[2] == "textures/foo.dds")
         assert(#vfs:pathsWith("textures") == 1)
         assert(#vfs:pathsWith("textures/") == 1)
         assert(#vfs:pathsWith("Textures\\") == 1)
@@ -208,6 +210,30 @@ fn lua_serialize_helper_is_available_with_serialize_feature() {
         local encoded = vfstool.serialize({ answer = 42 }, "json")
         assert(encoded:find("answer", 1, true))
     "#,
+    )
+    .exec()
+    .unwrap();
+}
+
+#[test]
+fn lua_vfs_keys_are_sorted() {
+    let dir = TempDir::new("lua_vfs_keys_sorted");
+    for index in 0..64 {
+        dir.write(&format!("dir{}/file{index}.txt", index % 7), b"");
+    }
+
+    let lua = lua_with_vfstool();
+    lua.globals()
+        .set("dir", dir.path().to_string_lossy().as_ref())
+        .unwrap();
+    lua.load(
+        r"
+        local keys = vfstool.VFS.fromDirectories({ dir }):keys()
+        assert(#keys == 64)
+        for index = 2, #keys do
+            assert(keys[index - 1] < keys[index], keys[index - 1] .. ' before ' .. keys[index])
+        end
+    ",
     )
     .exec()
     .unwrap();

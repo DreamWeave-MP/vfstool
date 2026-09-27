@@ -269,7 +269,10 @@ fn add_vfs_query_methods<M: UserDataMethods<LuaVfs>>(methods: &mut M) {
     methods.add_method("len", |_, this, ()| Ok(this.0.iter().count()));
     methods.add_method("isEmpty", |_, this, ()| Ok(this.0.iter().next().is_none()));
     methods.add_method("keys", |lua, this, ()| {
-        normalized_paths_to_table(lua, this.0.iter().map(|(k, _)| k))
+        // The resolved-winner map is a hash map; sort so scripts see a stable order.
+        let mut keys = this.0.iter().map(|(key, _)| key).collect::<Vec<_>>();
+        keys.sort_unstable();
+        normalized_paths_to_table(lua, keys)
     });
     methods.add_method("entries", |lua, this, ()| {
         vfs_entries_to_table(lua, this.0.iter())
