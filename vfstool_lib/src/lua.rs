@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Embedded Lua bindings for the promoted stable `vfstool_lib` API.
 //!
 //! This module intentionally exposes only the stable top-level API surface and methods on those

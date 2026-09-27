@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{ArchiveList, StoredArchive, TypedArchive, keys::normalized_archive_key};
 use crate::{NormalizedPath, VfsFile};
 use ahash::AHashMap;

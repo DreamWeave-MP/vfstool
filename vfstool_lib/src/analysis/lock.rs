@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{LayerIndex, VFS_LOCK_SCHEMA_VERSION, VfsLock, VfsLockEntry};
 use crate::{NormalizedPath, VFS, paths::key_to_path_buf_lossy, semantic::ArchiveHashMode};
 use rayon::prelude::*;

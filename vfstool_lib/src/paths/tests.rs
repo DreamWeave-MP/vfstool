@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{VfsKeyInput, normalize_host_path, normalize_host_path_in_place};
 use std::path::PathBuf;
 

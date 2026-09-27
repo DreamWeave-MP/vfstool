@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::{NormalizedPath, paths::normalized_safe_key_bytes};
 #[cfg(feature = "zip")]
 use std::path::Path;

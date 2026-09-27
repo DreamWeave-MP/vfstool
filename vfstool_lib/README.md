@@ -280,4 +280,4 @@ pretending a synthetic ZIP is the same thing. It is not.
 
 ## License
 
-Licensed under the [GNU General Public License v3.0](../LICENSE).
+Licensed under either of [MIT](../LICENSE-MIT) or [Apache-2.0](../LICENSE-APACHE), at your option.

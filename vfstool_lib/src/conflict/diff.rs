@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use super::ConflictIndex;
 use crate::{VFS, paths::key_to_string_lossy, reports::DiffReport};
 use std::{collections::HashSet, path::Path};

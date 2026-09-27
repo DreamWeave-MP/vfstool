@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta};
 use crate::{NormalizedPath, VFS, path_glob_matches, paths::key_to_path_buf_lossy};
 use ahash::AHashSet;

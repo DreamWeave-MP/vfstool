@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 #[cfg(feature = "zip")]
 use super::keys::is_zip_or_pk3;
 use super::{ArchiveList, StoredArchive, TypedArchive};

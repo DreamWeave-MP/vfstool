@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::NormalizedKey;
 use ahash::AHashMap;
 use std::{collections::BTreeMap, path::PathBuf};

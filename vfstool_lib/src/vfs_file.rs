@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-only
+// SPDX-License-Identifier: MIT OR Apache-2.0
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
 use std::sync::Arc;
 
