@@ -119,7 +119,12 @@ pub(crate) fn normalized_safe_normalized_bytes(bytes: &[u8]) -> bool {
 #[must_use]
 pub(crate) fn key_is_at_or_under_prefix(key: &NormalizedPath, prefix: &NormalizedPath) -> bool {
     let key = key.as_bytes();
-    let prefix = prefix.as_bytes();
+    // A directory prefix may be written with trailing separators (`meshes/`); they name the
+    // same directory as `meshes`. Normalization already turned `\` into `/`.
+    let mut prefix = prefix.as_bytes();
+    while let Some(trimmed) = prefix.strip_suffix(b"/") {
+        prefix = trimmed;
+    }
     key == prefix
         || key
             .strip_prefix(prefix)

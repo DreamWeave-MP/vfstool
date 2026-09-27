@@ -264,6 +264,34 @@ fn paths_with_uses_path_component_boundaries() {
 }
 
 #[test]
+fn paths_with_accepts_trailing_separators_case_and_backslashes() {
+    let dir = TempDir::new("vfsloose_with_trailing");
+    dir.write("meshes/a.nif", b"");
+    dir.write("meshes/x/b.nif", b"");
+    dir.write("meshes2/c.nif", b"");
+    let vfs = VFS::from_directories(vec![dir.path()], None);
+
+    for prefix in [
+        "meshes", "meshes/", "meshes//", "Meshes/", "MESHES\\", "meshes\\",
+    ] {
+        assert_eq!(vfs.paths_with(prefix).count(), 2, "prefix {prefix:?}");
+    }
+    assert_eq!(vfs.paths_with("meshes/x/").count(), 1);
+    assert_eq!(vfs.paths_with("Meshes\\X\\").count(), 1);
+}
+
+#[test]
+fn remove_provider_prefix_accepts_trailing_separator() {
+    let dir = TempDir::new("vfsloose_remove_prefix_trailing");
+    dir.write("meshes/a.nif", b"");
+    dir.write("meshes2/c.nif", b"");
+    let mut vfs = VFS::from_directories(vec![dir.path()], None);
+
+    assert_eq!(vfs.remove_provider_prefix("meshes/").len(), 1);
+    assert!(vfs.contains("meshes2/c.nif"));
+}
+
+#[test]
 fn paths_with_returns_empty_for_nonexistent_prefix() {
     let dir = TempDir::new("vfsloose_with_none");
     dir.write("textures/foo.dds", b"");

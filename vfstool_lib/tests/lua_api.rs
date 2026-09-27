@@ -69,6 +69,9 @@ fn lua_vfs_provider_reports_and_layer_workflows() {
         assert(vfs:getFile("textures/foo.dds"):isLoose())
         assert(vfs:getFile("meshes/bar.nif"):readAll() == "mesh")
         assert(vfs:pathsMatching("textures")[1].key == "textures/foo.dds")
+        assert(#vfs:pathsWith("textures") == 1)
+        assert(#vfs:pathsWith("textures/") == 1)
+        assert(#vfs:pathsWith("Textures\\") == 1)
 
         local explain = vfs:explain("textures/foo.dds")
         assert(explain.winner.source.path == high)

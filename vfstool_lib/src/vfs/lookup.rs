@@ -101,6 +101,9 @@ impl VFS {
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
+    ///
+    /// The prefix is normalized like any VFS key and matched on path component boundaries;
+    /// trailing separators are ignored, so `meshes`, `meshes/`, and `Meshes\` are equivalent.
     pub fn paths_with<P: VfsKeyInput + ?Sized>(
         &self,
         prefix: &P,
@@ -112,6 +115,8 @@ impl VFS {
     }
 
     /// Given a path prefix to a location in the VFS, return a parallel iterator to *all* of its contents.
+    ///
+    /// Accepts the same prefix spellings as [`VFS::paths_with`].
     pub fn par_paths_with<P: VfsKeyInput + ?Sized>(
         &self,
         prefix: &P,
