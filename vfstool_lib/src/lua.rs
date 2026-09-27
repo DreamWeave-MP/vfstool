@@ -494,11 +494,11 @@ impl UserData for LuaVfsFile {
         methods.add_method("parentArchiveName", |_, this, ()| {
             Ok(this.0.parent_archive_name())
         });
-        methods.add_method("readAll", |_, this, ()| {
+        methods.add_method("readAll", |lua, this, ()| {
             let mut reader = this.0.open().map_err(LuaError::external)?;
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut reader, &mut bytes).map_err(LuaError::external)?;
-            Ok(bytes)
+            lua.create_string(bytes)
         });
     }
 }
