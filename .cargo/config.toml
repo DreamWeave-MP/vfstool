@@ -1,10 +1,11 @@
 [net]
 git-fetch-with-cli = true   # use the `git` executable for git operations
 
-# The l3i toolchain policy (copied from l3i's own .cargo/config.toml): clang compiles Luau, the
-# Rust side emits bitcode, and lld runs one thin LTO over both languages. l3i's build script
-# refuses anything else unless L3I_UNVERIFIED_TOOLCHAIN is set (docs.rs is exempt). Environment
-# variables override every entry here.
+# The verified toolchain (TOOLCHAIN.md): clang compiles Luau, the Rust side emits bitcode, and
+# lld runs one thin LTO over both languages. build.rs refuses anything else unless
+# L3I_UNVERIFIED_TOOLCHAIN is set (docs.rs is exempt). Environment variables override every
+# entry here. Linux is the measured configuration; the Windows entries follow the same shape
+# (clang-cl plus lld-link) and are what CI runs. Apple targets are the vetted exception below.
 [env]
 CXX = "clang++"
 CXX_x86_64-pc-windows-msvc = "clang-cl"
@@ -16,11 +17,15 @@ rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
 
+# No -Clinker-plugin-lto on Apple targets: rustc passes that flag's GNU `-plugin-opt` arguments
+# to the linker, and ld64.lld rejects them (vetted in dream-ini's CI). clang and lld still link,
+# the release profile's thin LTO runs in rustc instead, and the cross-language inlining the
+# binder's hot paths gain from is forfeited there; macOS pays a few percent, portability does not.
 [target.x86_64-apple-darwin]
-rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+rustflags = ["-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
 
 [target.aarch64-apple-darwin]
-rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+rustflags = ["-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
 
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-Clinker-plugin-lto", "-Clinker=lld-link"]
