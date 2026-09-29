@@ -17,7 +17,7 @@ use l3i::{
 use super::{
     ConflictIndexHandle, LayerIndexHandle, Vfs, VfsFileHandle, VfsProviderHandle, class_function,
     frozen_class_table, host_path, io_error, paths_from_array, regex_error, reports, types,
-    views::{self, Entries, KeyBlob, ProviderRecords, Providers},
+    views::{self, Entries, ProviderRecords, Providers},
     with_key,
 };
 use crate::{CollapseOptions, VFS};
@@ -155,12 +155,11 @@ fn describe_queries(vfs: &mut UserdataBuilder<'_, Vfs>) {
     vfs.method("isEmpty", |v: &Vfs| v.with(VFS::is_empty))
         .signature("(self): boolean");
     vfs.method("keys", |v: &Vfs, call: &Call| {
-        let keys = v.with(|vfs| KeyBlob::sorted(vfs.iter().map(|(key, _)| key.clone())))?;
-        views::push_keys(call, keys).map(drop)?;
+        views::push_keys(call, v.sorted_keys()?).map(drop)?;
         Ok::<_, Error>(StackResults)
     })
     .signature("(self): dream_vfs_Keys")
-    .doc("Every resolved key, sorted, as a sequence view.");
+    .doc("Every resolved key, sorted, as a sequence view; sorted once and shared until the next mutation.");
     vfs.method("entries", |v: &Vfs, call: &Call| {
         let entries = v.with(|vfs| Entries::cloned(vfs.iter()))?;
         views::push_entries(call, entries).map(drop)?;

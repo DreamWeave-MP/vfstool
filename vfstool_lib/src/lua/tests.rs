@@ -250,6 +250,11 @@ fn keys_and_entries_are_sequence_views_with_one_based_indices() {
             assert(not pcall(function() return layer:sourceById(0) end), 'zero is not an index')
             assert(layer:providerChain('dir0/file0.txt')[1].providerIndex == 1)
             assert(tostring(vfs) == 'dream.vfs.VFS(8 files)')
+            -- The sorted key list is shared between calls and rebuilt after a mutation.
+            local before = vfs:keys()
+            assert(vfs:removeResolvedFile('dir0/file0.txt') ~= nil)
+            local after = vfs:keys()
+            assert(#before == 8 and #after == 7 and after[1] == 'dir0/file3.txt', 'keys follow mutation')
             ",
         )
         .unwrap();

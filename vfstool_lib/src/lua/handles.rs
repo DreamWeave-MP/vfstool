@@ -14,6 +14,7 @@ use l3i::{
     value::Table,
 };
 
+use super::views::KeyBlob;
 use super::{
     class_function, frozen_class_table, host_path, io_error, path_bytes, reports,
     source_kind_from_name,
@@ -24,8 +25,12 @@ use crate::{
 };
 
 /// A VFS as scripts see it (`dream.vfs.VFS`): the VFS behind a `RefCell`, because scripts
-/// mutate it through methods and Luau hands out shared references.
-pub struct Vfs(RefCell<VFS>);
+/// mutate it through methods and Luau hands out shared references, plus the sorted key list
+/// `keys()` last built, kept until the next mutation.
+pub struct Vfs {
+    inner: RefCell<VFS>,
+    keys: RefCell<Option<KeyBlob>>,
+}
 
 // SAFETY: plain Rust data (maps, paths, archive handles), no Lua references, no Lua API in `Drop`.
 unsafe impl Userdata for Vfs {
@@ -36,7 +41,10 @@ impl Vfs {
     /// Wraps a VFS the host built.
     #[must_use]
     pub fn new(vfs: VFS) -> Self {
-        Vfs(RefCell::new(vfs))
+        Vfs {
+            inner: RefCell::new(vfs),
+            keys: RefCell::new(None),
+        }
     }
 
     /// Pushes a VFS handle onto `scope` (the `dream.vfs` extension must be installed).
@@ -55,10 +63,20 @@ impl Vfs {
     /// Returns an error if a mutation of this VFS is in progress.
     pub fn with<R>(&self, body: impl FnOnce(&VFS) -> R) -> Result<R> {
         let vfs = self
-            .0
+            .inner
             .try_borrow()
             .map_err(|_| Error::runtime("dream.vfs: the VFS is being mutated"))?;
         Ok(body(&vfs))
+    }
+
+    /// The sorted keys, built on the first call after a mutation and shared afterwards.
+    pub(super) fn sorted_keys(&self) -> Result<KeyBlob> {
+        if let Some(keys) = self.keys.borrow().as_ref() {
+            return Ok(keys.clone());
+        }
+        let keys = self.with(|vfs| KeyBlob::sorted(vfs.iter().map(|(key, _)| key.clone())))?;
+        *self.keys.borrow_mut() = Some(keys.clone());
+        Ok(keys)
     }
 
     /// Runs `body` with the VFS borrowed mutably.
@@ -68,9 +86,11 @@ impl Vfs {
     /// Returns an error if the VFS is otherwise in use.
     pub fn with_mut<R>(&self, body: impl FnOnce(&mut VFS) -> R) -> Result<R> {
         let mut vfs = self
-            .0
+            .inner
             .try_borrow_mut()
             .map_err(|_| Error::runtime("dream.vfs: the VFS is in use"))?;
+        // Whatever the mutation does to the key set, the cached list is stale.
+        *self.keys.borrow_mut() = None;
         Ok(body(&mut vfs))
     }
 
