@@ -1,39 +1,41 @@
-# Embedded Lua API
+# Embedded Luau API
 
-`vfstool_lib` exposes optional embedded Lua bindings through the `lua` feature. This is not a
-`cdylib` plugin ABI and it does not install a global module by itself. Host applications create a
-Lua state and register the table they want.
-
-```rust
-let lua = mlua::Lua::new();
-vfstool_lib::lua::register(&lua)?; // installs global `vfstool`
-```
-
-Or avoid globals:
+`vfstool_lib` exposes its promoted stable API to Luau through the `lua` feature as an
+[l3i](https://github.com/DreamWeave-MP/l3i) extension: `vfstool_lib::lua::VfsExtension`, id
+`dream.vfs`, module `@dream/vfs`. It is not a `cdylib` plugin ABI, it never creates a VM, and it
+never installs a global. The host composes the extension into its `RuntimePlan` (together with
+dream-path's `PathExtension`, which it requires) and every runtime made from that plan can
+`require("@dream/vfs")`.
 
 ```rust
-let lua = mlua::Lua::new();
-let module = vfstool_lib::lua::open(&lua)?;
-lua.globals().set("vfstool", module)?;
+use l3i::Runtime;
+use l3i::extension::{RuntimePlan, RuntimePolicy};
+use vfstool_lib::lua::{MODULE, MODULE_NAME, VfsExtension};
+
+// Optional: expose the module as the historical `vfstool` global as well.
+let policy = RuntimePolicy::new().compat_global(MODULE, MODULE_NAME);
+let plan = RuntimePlan::builder()
+    .policy(policy)
+    .extension(dream_path::lua::PathExtension)
+    .extension(VfsExtension)
+    .finalize()?;
+let runtime = Runtime::from_plan(&plan)?;
+runtime.exec(r#"local vfstool = require("@dream/vfs") print(vfstool.VFS.new():len())"#)?;
 ```
 
 Enable the binding layer with:
 
 ```toml
-vfstool_lib = { version = "1", features = ["lua"] }
+vfstool_lib = { version = "0.11", features = ["lua"] }
 ```
 
-The runtime is [Luau](https://luau.org): the `lua` feature enables `mlua`'s `luau` backend, which
-is built from source, so there is nothing to install and every host gets the same runtime. Hosts
-that register several libraries into one state (`vfstool` and `jess`, say) must use the same `mlua`
-version.
-
-The binding is embedded either way. There is no dynamic Lua module pretending to be a stable C ABI.
-Good.
+A host that built a `VFS` in Rust hands it to scripts with `vfstool_lib::lua::Vfs::push`. The
+plan's `type_definitions()` is the `.d.luau` for the whole composition, and the crate's tests
+type check a strict script against it, so the declared API and the runtime cannot drift apart.
 
 ## Scope
 
-The Lua surface binds the promoted stable API and methods on its stable associated types:
+The Luau surface binds the promoted stable API and methods on its stable associated types:
 
 - `VFS`
 - `VfsFile`
@@ -52,13 +54,23 @@ It deliberately does **not** bind:
 - low-level archive internals
 - Rust iterators or parallel iterators
 
-Reports are plain Lua tables. Long-lived mutable structures are userdata.
+Reports are plain Lua tables. Long-lived mutable structures are userdata. Lists a script walks
+are sequence views (below).
 
 ## Conventions
 
-- Paths are strings.
+- Paths are strings read as bytes. No UTF-8 is required anywhere: a key spelled with bytes that
+  are not UTF-8 is a key, and `file:path()` returns the exact bytes of the host path or entry name.
+- A VFS key argument may be spelled any way (`Textures\Foo.DDS`); it is normalized once, into a
+  reusable scratch buffer, and looked up without allocating.
 - Functions, methods, and table fields are camelCase, and so are enum-like string values, for
   example `"looseDir"`, `"archive"`, `"ini"`, `"cosmeticOnly"`, `"winnerHashChanged"`.
+- Indices are 1-based: `sourceIndex`, `providerIndex`, `winnerIndex`, the results of
+  `sourcesContaining` and `sourceIdForPath`, and the arguments of `sourceById` and
+  `providerOriginalPath`.
+- Byte sizes (`size`, `winnerSize`) are Luau integers (`4i`); counts and indices are numbers.
+- Option tables are strict: an unknown key is an error, so a misspelt option never becomes a
+  silently ignored default.
 - Luau has no `io` library; read and write files through the bindings or the host.
 - Constructors that take directories expect arrays: `{ "/data/base", "/data/mod" }`.
 - Archive loading still depends on `beth-archives` / `zip` Cargo features.
@@ -66,11 +78,24 @@ Reports are plain Lua tables. Long-lived mutable structures are userdata.
 - Winner-only and stack-preserving mutation use different names. If a method says it removes only the
   winner, it reveals the next provider; if it says it removes the resolved file, it discards the stack.
 
+### Sequence views
+
+`keys`, `entries`, `pathsMatching`, `pathsWith`, `providersFor`, `providerRecordsFor`,
+`layer:keys`, `layer:duplicateKeys`, and `filesFromArchive` return sequence views over the native
+collection instead of copying it into a table: `#items`, `items[i]` (1-based, `nil` past the end),
+`for index, item in items do`, and `items:toTable()` for the plain table the previous binding
+returned. Only the item a script touches is pushed. They are userdata, so `ipairs`, `table.sort`,
+and friends want `items:toTable()`; `vfstool.serialize` accepts a view directly.
+
+`tree`, `findByRegex`, and `remaining` return a `Tree` stream: `for _, row in tree do` yields
+`{ dir = string, file = VfsFile }` rows in sorted, depth-first order, `tree:count()` is the number
+of rows, and `tree:toTable()` is the nested `{ [root] = { files = {...}, subdirs = {...} } }` shape.
+
 ## Top-level functions
 
 ```lua
 vfstool.normalizeHostPath(path) -> string
-vfstool.normalizeHostPathInPlace(path) -> string
+vfstool.normalizeHostPathInPlace(path) -> string   -- same result; kept for compatibility
 vfstool.pathGlobMatches(glob, path) -> boolean
 vfstool.sourceGlobMatches(glob, sourcePath) -> boolean
 
@@ -85,11 +110,11 @@ Run workflow:
 ```lua
 count, snapshot = vfstool.runSetup(vfs, mergedDir, useHardlinks)
 count, metadataSnapshot = vfstool.runSetupTracked(vfs, mergedDir, useHardlinks)
-snapshot = vfstool.snapshotDirectory(dir)
+snapshot = vfstool.snapshotDirectory(dir)             -- snapshot:len()
 metadataSnapshot = vfstool.snapshotDirectoryMetadata(dir)
-changed = vfstool.changedFiles(dir, snapshot)
+changed = vfstool.changedFiles(dir, snapshot)         -- { string }
 changed = vfstool.changedFilesMetadata(dir, metadataSnapshot)
-copied = vfstool.runFinalize(mergedDir, outputDir, snapshot)
+copied = vfstool.runFinalize(mergedDir, outputDir, snapshot)   -- { { relativePath, destinationPath } }
 copied = vfstool.runFinalizeTracked(mergedDir, outputDir, metadataSnapshot)
 ```
 
@@ -103,6 +128,9 @@ With `serialize` enabled:
 vfstool.serialize(value, "json" | "yaml" | "toml") -> string
 ```
 
+Tables whose keys are exactly `1..n` (and empty tables) serialize as arrays, other tables as objects
+with string keys, sequence views as arrays of their `toTable()` rows; strings must be UTF-8.
+
 ## `VFS`
 
 ```lua
@@ -111,50 +139,51 @@ vfs = vfstool.VFS.fromDirectories({ dir1, dir2 }, { archives = { "base.bsa" } })
 vfs, conflicts = vfstool.VFS.fromDirectoriesWithConflictIndex({ dir1, dir2 })
 vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex({ dir1, dir2 })
 
-vfs:len() -> integer
+vfs:len() -> number                       -- O(1)
 vfs:isEmpty() -> boolean
-vfs:keys() -> { string }                 -- sorted
-vfs:entries() -> { { key = string, file = VfsFile } }
+vfs:keys() -> Keys                        -- sorted sequence view of strings
+vfs:entries() -> Entries                  -- sorted sequence view of { key = string, file = VfsFile }
 vfs:getFile(path) -> VfsFile | nil
 vfs:contains(path) -> boolean
-vfs:findByRegex(pattern, relative?) -> table
-vfs:remaining(filterPath, replacementsOnly, allDirs, relative?) -> table
-vfs:pathsMatching(substring) -> { { key = string, file = VfsFile } }
-vfs:pathsWith(prefix) -> { { key = string, file = VfsFile } }
+vfs:findByRegex(pattern, relative?) -> Tree
+vfs:remaining(filterPath, replacementsOnly, allDirs, relative?) -> Tree
+vfs:pathsMatching(substring) -> Entries
+vfs:pathsWith(prefix) -> Entries
 
 vfs:setWinnerFile(key, file) -> VfsFile | nil
 vfs:setWinnerLooseFile(key, physicalPath) -> VfsFile | nil
 vfs:pushDirectory(path) -> nil
-vfs:pushArchive(path) -> boolean
+vfs:pushArchive(path) -> boolean          -- with an archive feature
 vfs:pushProvider(key, provider) -> boolean
 vfs:removeWinner(key) -> VfsProvider | nil
 vfs:removeResolvedFile(key) -> VfsFile | nil
-vfs:removeProvider(key, sourcePath) -> { VfsProvider }
-vfs:removeSource(sourcePath) -> { { key = string, provider = table } }
-vfs:removeProviderPrefix(prefix) -> { { key = string, provider = table } }
+vfs:removeProvider(key, sourcePath) -> { { source = { path, kind }, file = VfsFile } }
+vfs:removeSource(sourcePath) -> { { key = string, provider = { source, file } } }
+vfs:removeProviderPrefix(prefix) -> { { key = string, provider = { source, file } } }
 vfs:removeResolvedPrefix(prefix) -> { { key = string, file = VfsFile } }
 vfs:removeResolvedMatchingGlob(glob) -> { { key = string, file = VfsFile } }
 
-vfs:tree(relative?) -> table
+vfs:tree(relative?) -> Tree
 vfs:display(relative?) -> string
-vfs:dumpToDirectory(dir, useHardlinks) -> integer
+vfs:dumpToDirectory(dir, useHardlinks) -> number
 vfs:collapseInto(dest, opts) -> nil
 vfs:extractFile(vfsPath, destDir) -> string | nil
-vfs:diffDirectory(dir) -> table
+vfs:diffDirectory(dir) -> { conflicts = { { key, incoming, current } }, additions = { { key, file } } }
 
-vfs:providerRecordsFor(path) -> { ProviderRecord }
-vfs:providersFor(path) -> { VfsProvider } | nil
-vfs:explain(path) -> table | nil
-vfs:duplicates(pattern?) -> table
+vfs:providerRecordsFor(path) -> ProviderRecords   -- sequence view of provider record rows
+vfs:providersFor(path) -> Providers | nil         -- sequence view of { source, file } rows
+vfs:explain(path) -> { key, winner, overridden } | nil
+vfs:duplicates(pattern?) -> { entries = { { key, providers, winnerIndex } } }
 vfs:archives() -> { ArchiveInfo }
 vfs:archiveEntries(archive) -> { ArchiveEntry }
-vfs:filesFromArchive(archive) -> { string }
-vfs:sourceContributions() -> table
-vfs:materializationPlan(dest, opts) -> table
+vfs:filesFromArchive(archive) -> Keys
+vfs:sourceContributions() -> { sources = { ... } }
+vfs:materializationPlan(dest, opts) -> { actions = {...}, issues = {...} }
 vfs:layerIndex() -> LayerIndex
+vfs:serializeTree(relative?, format) -> string      -- with `serialize`
 ```
 
-`collapseInto` and `materializationPlan` options:
+`collapseInto` and `materializationPlan` options (all optional, no other keys):
 
 ```lua
 {
@@ -170,13 +199,18 @@ vfs:layerIndex() -> LayerIndex
 file = vfstool.VfsFile.from(path)
 file:isLoose() -> boolean
 file:isArchive() -> boolean
-file:path() -> string
+file:path() -> string                 -- exact bytes
 file:fileName() -> string | nil
 file:fileStem() -> string | nil
 file:parentArchivePath() -> string | nil
 file:parentArchiveName() -> string | nil
 file:readAll() -> string
+file:readInto(buffer, offset?) -> number   -- bytes written, at most the space after offset
 ```
+
+`readInto` streams the file straight into a Luau buffer and returns how many bytes it wrote; a
+file larger than the space left is truncated to it, so compare the result with the space to detect
+that. `readAll` is the convenient form and copies once more.
 
 ## `VfsProvider`
 
@@ -193,14 +227,14 @@ layer = vfstool.LayerIndex.fromFileLists({
   { source = { path = "base", kind = "looseDir" }, files = { "a.txt" } },
 })
 
-layer:keys() -> { string }               -- sorted
+layer:keys() -> Keys                     -- sorted sequence view
 layer:sources() -> { { path = string, kind = string } }
-layer:sourceIdForPath(path) -> integer | nil
-layer:sourceById(id) -> table | nil
-layer:sourcesContaining(path) -> { integer }
+layer:sourceIdForPath(path) -> number | nil       -- 1-based
+layer:sourceById(id) -> table | nil               -- 1-based
+layer:sourcesContaining(path) -> { number }       -- 1-based
 layer:providerOriginalPath(sourceIndex, path) -> string | nil
 layer:providerChain(path) -> { LayerProvider }
-layer:duplicateKeys() -> { string }
+layer:duplicateKeys() -> Keys
 layer:sourceContributions() -> table
 layer:provenance(vfs, path, withHashes) -> table | nil
 lock = layer:lockManifest(vfs)
@@ -217,6 +251,14 @@ Semantic conflict options:
 }
 ```
 
+## `VfsLock`
+
+```lua
+lock:schemaVersion() -> number
+lock:entries() -> { { key, winnerSource, winnerKind, winnerHashBlake3, winnerSize, providerCount } }
+lock:toTable() -> { schemaVersion, entries }
+```
+
 ## `ConflictIndex`
 
 ```lua
@@ -227,7 +269,7 @@ conflicts = vfstool.ConflictIndex.fromFileLists({
 conflicts = vfstool.ConflictIndex.fromLayerIndex(layer)
 
 conflicts:sources() -> { string }
-conflicts:sourcesContaining(path) -> { integer }
+conflicts:sourcesContaining(path) -> { number }   -- 1-based
 conflicts:conflictsReport(relative?) -> table
 conflicts:shadowedReport(relative?, listFiles?) -> table
 conflicts:diffReport(sourceA, sourceB) -> table
@@ -250,3 +292,22 @@ use this shape:
 
 The Lua binding is intentionally boring: deterministic tables in, deterministic tables out. Clever
 Lua magic belongs in the host application, not in the FFI seam.
+
+## Migrating from the mlua binding (0.10)
+
+- `lua::open(&Lua)` and `lua::register(&Lua)` are gone with `mlua`. Compose `lua::VfsExtension`
+  (and dream-path's `PathExtension`) into the host's `RuntimePlan`; the `vfstool` global, if the
+  host still wants one, is `RuntimePolicy::compat_global("@dream/vfs", "vfstool")`.
+- `keys`, `entries`, `pathsMatching`, `pathsWith`, `providersFor`, `providerRecordsFor`,
+  `layer:keys`, `layer:duplicateKeys`, and `filesFromArchive` are sequence views: `#`, `[i]`, and
+  `for` work as before; `ipairs`, `table.*`, and other table-only code need `:toTable()`.
+- `tree`, `findByRegex`, and `remaining` are a `Tree` stream; `tree:toTable()` is the old nested
+  table.
+- Indices are 1-based everywhere they used to be 0-based.
+- `size` and `winnerSize` are Luau integers (`==` compares them with `4i`; `tonumber` converts).
+- Unknown keys in option tables (`{ archives = ... }`, collapse options, semantic options, source
+  metadata) are errors.
+- Paths are bytes: a key that is not UTF-8 no longer raises a conversion error, and `file:path()`
+  returns the exact bytes rather than a lossy string.
+- Added: `file:readInto(buffer, offset?)`, `tree:count()`, `snapshot:len()`,
+  `lock:toTable()` shape unchanged.

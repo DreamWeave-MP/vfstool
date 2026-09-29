@@ -256,7 +256,7 @@ for policy, solver, and knowledge-base workflows, but it is not promoted or stab
 | `beth-archives` | BSA/BA2 archive support (Morrowind, Oblivion, Skyrim, Fallout 4) |
 | `zip` | ZIP/PK3 archive support |
 | `serialize` | JSON/YAML/TOML output via serde |
-| `lua` | Embedded Luau bindings (`mlua` with the vendored Luau runtime) for the promoted stable API surface; not a `cdylib` Lua module; see [`docs/lua.md`](docs/lua.md) |
+| `lua` | The promoted stable API surface as an [l3i](https://github.com/DreamWeave-MP/l3i) extension (`lua::VfsExtension`, module `@dream/vfs`); never creates a VM, never installs a global; see [`docs/lua.md`](docs/lua.md) |
 
 ---
 

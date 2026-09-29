@@ -136,9 +136,9 @@
 //!   tools can use the exact serialization stack selected by `vfstool_lib` instead of pinning a
 //!   parallel set of dependencies. Two TOML parsers in one tool is technically valid. It is also
 //!   how you get to debug nothing for an afternoon.
-//! - `lua`: embedded Luau bindings (`mlua` with the vendored Luau runtime) for the promoted stable
-//!   API surface. This is not a `cdylib` Lua module; hosts register `lua::open` or `lua::register`
-//!   into their own Lua state.
+//! - `lua`: the promoted stable API surface as an [l3i](https://github.com/DreamWeave-MP/l3i)
+//!   extension (`lua::VfsExtension`, module `@dream/vfs`). This is not a `cdylib` Lua module and it
+//!   never creates a VM; the host composes the extension into its `RuntimePlan`.
 //!
 //! # Runner warning
 //!
@@ -162,7 +162,7 @@ pub mod experimental;
 /// Core shared identifiers and normalized key/digest types.
 pub mod foundation;
 mod kb;
-/// Embedded Lua bindings for the promoted stable API surface.
+/// The `@dream/vfs` Luau module for the promoted stable API surface (an l3i extension).
 #[cfg(feature = "lua")]
 pub mod lua;
 /// Shared glob/path matching utilities.

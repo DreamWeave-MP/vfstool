@@ -15,7 +15,7 @@ ahash = "0.8"
 blake3 = "1"
 dream-path = { version = "0.3", path = "../../dream-path" }
 dream_archive = { version = "0.2.2", optional = true, default-features = false, features = ["ba2", "bsa", "parallel"] }
-mlua = { version = "0.12.1", default-features = false, features = ["serialize"], optional = true }
+l3i = { version = "0.1", path = "../../dream-binder", optional = true }
 zip = { version = "8.6", optional = true, default-features = false, features = ["deflate", "lzma"] }
 rayon = "1.12.0"
 regex = "1"
@@ -27,13 +27,15 @@ walkdir = "2.5.0"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
+# The definitions gate (`RuntimePlan::check_definitions`) needs Luau's analysis frontend.
+l3i = { version = "0.1", path = "../../dream-binder", features = ["analysis"] }
 
 [features]
 default = []
 beth-archives = ["dep:dream_archive"]
 zip = ["dep:zip"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
-lua = ["dep:mlua", "mlua/serialize", "mlua/luau"]
+lua = ["dep:l3i", "dream-path/lua"]
 
 [package.metadata.docs.rs]
 features = ["beth-archives", "zip", "serialize", "lua"]
