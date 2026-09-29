@@ -983,3 +983,34 @@ fn run_gives_a_relative_merged_dir_to_a_command_in_another_working_dir() {
     assert!(!fixture.path("merged").exists());
     assert!(fixture.data_local.join("found.txt").exists());
 }
+
+#[test]
+#[cfg(unix)]
+fn run_rejects_a_merged_dir_that_is_a_file_or_a_symbolic_link() {
+    let fixture = Fixture::new("run_rejects_file_merged");
+    let file = fixture.path("merged.txt");
+    write_file(&file, b"keep");
+    let empty = fixture.path("empty");
+    fs::create_dir_all(&empty).expect("empty dir should be creatable");
+    let link = fixture.path("link");
+    std::os::unix::fs::symlink(&empty, &link).expect("symlink should be creatable");
+
+    for merged in [&file, &link] {
+        let output = fixture.run(&[
+            "run",
+            "--copy",
+            merged.to_str().expect("merged path should be utf-8"),
+            "--",
+            "true",
+        ]);
+        assert_eq!(
+            output.status.code(),
+            Some(8),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert_eq!(fs::read(&file).unwrap(), b"keep");
+    assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+    assert!(empty.is_dir());
+}

@@ -70,7 +70,7 @@ becomes the folder's path exactly as the system spells it, whether or not it is 
 
 | Situation | Result |
 |---|---|
-| `MERGED_DIR` exists and is not empty | Exit 8 before anything is written, and the folder is left alone |
+| `MERGED_DIR` exists and is not an empty folder: a folder with files in it, a file, or a symbolic link | Exit 8 before anything is written, and it is left alone |
 | No `data-local` in the cfg and no `--output` | Exit 8 before anything is written |
 | The command exits with a nonzero code | Nothing is captured; vfstool exits with the same code |
 | The command cannot be started | Exit 9 |

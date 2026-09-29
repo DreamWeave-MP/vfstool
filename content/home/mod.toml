@@ -204,5 +204,6 @@ fixed = [
     "`run` whose output is read by something that stops early, such as `head`, finishes capturing and removes the merged folder; it panicked with exit code 101 partway through the list of captured files and left the folder behind.",
     "`run` passes the command's arguments and the `{}` folder byte for byte: an argument that is not UTF-8 was refused with exit code 2, and a merged folder whose name is not UTF-8 reached the command with U+FFFD in its path, a folder that does not exist.",
     "`run` replaces `{}` with the merged folder's absolute path, so a relative `MERGED_DIR` still names it from the command's `--working-dir`.",
+    "`run` refuses a `MERGED_DIR` that is a file or a symbolic link with exit code 8, as it does a folder with files in it. A file stopped it with `Not a directory` and exit code 9, and a symbolic link to an empty folder was replaced by a folder of its own and then deleted.",
     "On Linux and macOS, every report writes a file or folder name that is not UTF-8 with U+FFFD in place of its invalid bytes, instead of stopping with `path contains invalid UTF-8 characters` and exit code 9, and `drift` reads a lock of such a name back without drift.",
 ]

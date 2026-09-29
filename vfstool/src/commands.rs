@@ -615,12 +615,9 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: &RunParams<'_>) -
     });
 
     let merged = &params.merged_dir;
-    if merged
-        .read_dir()
-        .is_ok_and(|mut entries| entries.next().is_some())
-    {
+    if !is_new_or_empty_directory(merged)? {
         eprintln!(
-            "{}merged directory {} already exists and is not empty; choose an empty scratch directory.",
+            "{}merged directory {} already exists and is not an empty directory; choose an empty scratch directory.",
             print::err_prefix(),
             merged.display()
         );
@@ -654,6 +651,18 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: &RunParams<'_>) -
             .and_then(|s| s.code())
             .unwrap_or(VFSToolExitCode::RuntimeFailure.into()),
     );
+}
+
+/// Whether `run` may use `path` as its merged folder: nothing is there yet, or an empty directory,
+/// which it deletes afterwards. A file, or a symbolic link, which `run` would replace with a
+/// directory of its own and then delete, is not.
+fn is_new_or_empty_directory(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => Ok(fs::read_dir(path)?.next().is_none()),
+        Ok(_) => Ok(false),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(true),
+        Err(e) => Err(e),
+    }
 }
 
 /// Ctrl+C reaches the whole foreground process group: the command gets it and stops, and vfstool,
