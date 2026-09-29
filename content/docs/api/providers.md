@@ -184,7 +184,6 @@ name counts twice. Two occurrences from the same source never count as overridin
 | `loose_files` | `usize` | from a loose directory: all of them, or none |
 | `archive_files` | `usize` | from an archive: all of them, or none |
 
-The index only has sources that provide at least one key. A data directory that is empty or
-missing has no row, and the `source_index` here then differs from the one in
-`VfsProviderRecord` and `ArchiveInfo`, which count every source: with an empty first directory,
-the second directory is `source_index` 1 in `explain` and 0 here.
+A data directory that is empty or missing has a row of zeros, so the `source_index` here is the
+one in `VfsProviderRecord` and `ArchiveInfo`. Only a source whose providers were all removed
+leaves the index, and the numbers after it then differ from the VFS's, which never change.

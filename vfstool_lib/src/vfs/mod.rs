@@ -58,6 +58,9 @@ pub struct VFS {
     dir_prefix_counts: AHashMap<NormalizedPath, usize>,
     pub(crate) providers: AHashMap<NormalizedPath, Vec<ProviderEntry>>,
     pub(crate) sources: Vec<SourceMeta>,
+    /// Whether each source has ever had a provider. One that never had, such as an empty data
+    /// directory, stays in the layer index; one whose providers were all removed leaves it.
+    has_provided: Vec<bool>,
     layer_index: OnceLock<LayerIndex>,
 }
 

@@ -31,12 +31,13 @@ impl VFS {
         let previous = self.file_map.get(&normalized).cloned();
         let source = provider_source(&file);
         let source_index = self.push_source(source.clone());
-        self.providers.insert(
-            normalized.clone(),
-            vec![ProviderEntry {
+        self.providers.remove(&normalized);
+        self.push_provider_entry(
+            &normalized,
+            ProviderEntry {
                 source_index,
                 provider: VfsProvider { source, file },
-            }],
+            },
         );
         self.file_map.insert(
             normalized.clone(),
@@ -72,13 +73,13 @@ impl VFS {
             return false;
         }
         let source_index = self.push_source(provider.source.clone());
-        self.providers
-            .entry(key.clone())
-            .or_default()
-            .push(ProviderEntry {
+        self.push_provider_entry(
+            &key,
+            ProviderEntry {
                 source_index,
                 provider,
-            });
+            },
+        );
         self.refresh_winner(&key);
         self.rebuild_layer_index();
         true
@@ -110,16 +111,16 @@ impl VFS {
             if !self.file_map.contains_key(&key) && self.key_has_materialization_conflict(&key) {
                 continue;
             }
-            self.providers
-                .entry(key.clone())
-                .or_default()
-                .push(ProviderEntry {
+            self.push_provider_entry(
+                &key,
+                ProviderEntry {
                     source_index,
                     provider: VfsProvider {
                         source: source.clone(),
                         file,
                     },
-                });
+                },
+            );
             touched.push(key);
             inserted += 1;
         }
@@ -129,7 +130,7 @@ impl VFS {
         if inserted > 0 {
             self.rebuild_layer_index();
         } else {
-            self.sources.pop();
+            self.pop_source();
         }
         inserted
     }

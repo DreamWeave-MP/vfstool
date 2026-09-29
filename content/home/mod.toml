@@ -210,5 +210,6 @@ fixed = [
     "`archives -f toml` and `archive-list -f toml` write their list under `archives` and `entries`, since TOML has no top-level lists. They stopped with `unsupported array type` and exit code 9. JSON and YAML are unchanged.",
     "`diff` with a data directory spelled in another case compares its files; on Linux it read the folder as typed, found nothing, and could name the wrong one as `higher_priority`.",
     "`conflicts` and `shadowed -l` without `-r` spell each loose file's path as it is on disk, `Textures/Tx_Wood_01.dds`, instead of joining the source with the lowercase key, a path that does not exist on Linux.",
+    "`contributions` numbers sources as `explain`, `duplicates` and `archives` do, and lists an empty or missing data directory with zeros; it left such a directory out and numbered every later source one lower. `conflicts` lists such a directory too.",
     "On Linux and macOS, every report writes a file or folder name that is not UTF-8 with U+FFFD in place of its invalid bytes, instead of stopping with `path contains invalid UTF-8 characters` and exit code 9, and `drift` reads a lock of such a name back without drift.",
 ]

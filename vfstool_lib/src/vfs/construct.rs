@@ -14,16 +14,16 @@ impl VFS {
                 if !self.file_map.contains_key(key) && self.key_has_materialization_conflict(key) {
                     continue;
                 }
-                self.providers
-                    .entry(key.clone())
-                    .or_default()
-                    .push(super::ProviderEntry {
+                self.push_provider_entry(
+                    key,
+                    super::ProviderEntry {
                         source_index,
                         provider: VfsProvider {
                             source: source.source.clone(),
                             file: file.clone(),
                         },
-                    });
+                    },
+                );
                 self.refresh_winner(key);
             }
         }

@@ -33,9 +33,10 @@ returns `None`, and `lock_manifest` and `semantic_conflicts` write no entry for 
 that belongs to the VFS: `vfs.layer_index()`, or the one `from_directories_with_layer_index`
 returned.
 
-An index built from a VFS lists only the sources that provide at least one key. A data directory
-with no files in it is in neither `sources` nor any chain, so a source index here can be smaller
-than the source's position in the list of directories the VFS was built from.
+An index built from a VFS lists its sources in the VFS's order, a data directory with no files in
+it too, so a source's position here is its `source_index` in the VFS's provider records. A source
+whose providers were all removed is left out, and the positions after it are then one lower than
+the VFS's numbers, which never change.
 
 ## LayerIndex
 

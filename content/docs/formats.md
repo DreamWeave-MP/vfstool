@@ -115,11 +115,11 @@ the files are, and an archive's are `<archive>::<key>`.
 
 ## contributions
 
-`sources`, every source with files, in load order:
+`sources`, every source, in load order, an empty or missing data directory too:
 
 | Field | |
 |---|---|
-| `source_index` | The source's number, counting only sources with files: after an empty data directory it is lower than in `explain` or `archives` |
+| `source_index` | The source's number in load order, as in `explain` and `archives` |
 | `source` | As in a provider record |
 | `winning_files` | Its files that win |
 | `overriding_files` | Its files that a lower source also has |

@@ -19,7 +19,8 @@ The examples run against the [example install](@/docs/luau/module.md#the-example
 
 Every provider of every key, lowest priority first, and the sources they come from. Get one from
 `VFS.fromDirectoriesWithLayerIndex`, from `vfs:layerIndex()`, or build one from lists of paths.
-Its sources are the VFS's sources that provide at least one file, archives first, numbered from 1.
+Its sources are the VFS's sources, archives first, numbered from 1 as the VFS numbers them; only a
+source whose files were all removed is left out.
 
 ### LayerIndex.fromFileLists
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::VFS;
+use super::{ProviderEntry, VFS};
 use ahash::AHashMap;
 use rayon::prelude::*;
 
@@ -18,6 +18,7 @@ impl VFS {
             dir_prefix_counts: AHashMap::new(),
             providers: AHashMap::new(),
             sources: Vec::new(),
+            has_provided: Vec::new(),
             layer_index: std::sync::OnceLock::new(),
         }
     }
@@ -47,7 +48,19 @@ impl VFS {
     pub(crate) fn push_source(&mut self, source: SourceMeta) -> usize {
         let source_index = self.sources.len();
         self.sources.push(source);
+        self.has_provided.push(false);
         source_index
+    }
+
+    pub(crate) fn pop_source(&mut self) {
+        self.sources.pop();
+        self.has_provided.pop();
+    }
+
+    /// Adds `entry` on top of `key`'s provider stack. The winner is not refreshed.
+    pub(crate) fn push_provider_entry(&mut self, key: &NormalizedPath, entry: ProviderEntry) {
+        self.has_provided[entry.source_index] = true;
+        self.providers.entry(key.clone()).or_default().push(entry);
     }
 
     pub(crate) fn provider_original_path(
@@ -150,8 +163,11 @@ impl VFS {
         self.providers.get(key)?.len().checked_sub(1)
     }
 
+    /// The provider index of this VFS. It lists every source that provides a key, and every source
+    /// that never has, such as an empty data directory, so the two number sources alike; a source
+    /// whose providers were all removed is left out.
     pub(crate) fn build_layer_index(&self) -> LayerIndex {
-        let mut used = vec![false; self.sources.len()];
+        let mut used: Vec<bool> = self.has_provided.iter().map(|provided| !provided).collect();
         for providers in self.providers.values() {
             for entry in providers {
                 used[entry.source_index] = true;

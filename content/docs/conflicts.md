@@ -57,9 +57,12 @@ sources:
   - textures/tx_stone_01.dds
   - textures/tx_wood_01.dds
   overridden_by: []
+- path: /tmp/mw/openmw/data
+  overrides: []
+  overridden_by: []
 ```
 
-Every source with at least one file is listed, in load order. With the global `-r` (`--use-relative`),
+Every source is listed, in load order, an empty data directory too. With the global `-r` (`--use-relative`),
 files are keys, as here. Without it, each is the file's path on disk, the source's path joined with
 the file's own spelling, `/tmp/mw/mods/Crisp Textures/Textures/Tx_Wood_01.dds`, and an archive's is
 the archive and the key with `::` between them:
@@ -110,7 +113,8 @@ sources:
   archive_files: 0
 ```
 
-That is two of its six sources. The counts:
+That is two of its seven sources; the empty `data-local` folder is the last, with every count
+zero. The counts:
 
 | Field | Counts the source's files that |
 |---|---|

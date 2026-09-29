@@ -20,6 +20,48 @@ fn provenance_chain_respects_load_order() {
 }
 
 #[test]
+fn a_vfs_and_its_layer_index_number_sources_alike_after_an_empty_directory() {
+    let empty = TempDir::new("analysis_numbering_empty");
+    let mods = TempDir::new("analysis_numbering_mods");
+    let patch = TempDir::new("analysis_numbering_patch");
+    mods.write("textures/a.dds", b"mods");
+    patch.write("textures/a.dds", b"patch");
+    patch.write("textures/b.dds", b"patch");
+
+    let (mut vfs, index) =
+        VFS::from_directories_with_layer_index([empty.path(), mods.path(), patch.path()], None);
+    let explain = vfs.explain("textures/a.dds").expect("the key resolves");
+    assert_eq!(explain.overridden[0].source_index, 1);
+    assert_eq!(explain.winner.source_index, 2);
+    let contributions = index.source_contributions();
+    let numbers: Vec<_> = contributions
+        .sources
+        .iter()
+        .map(|row| (row.source_index, row.source.path.clone()))
+        .collect();
+    assert_eq!(
+        numbers,
+        [
+            (0, empty.path().to_path_buf()),
+            (1, mods.path().to_path_buf()),
+            (2, patch.path().to_path_buf()),
+        ]
+    );
+    assert_eq!(contributions.sources[0].unique_files, 0);
+    assert_eq!(vfs.source_contributions().sources.len(), 3);
+
+    // A source whose providers are all removed is dropped from the index, as before.
+    assert_eq!(vfs.remove_source(mods.path()).len(), 1);
+    let paths: Vec<_> = vfs
+        .layer_index()
+        .sources
+        .iter()
+        .map(|source| source.path.clone())
+        .collect();
+    assert_eq!(paths, [empty.path(), patch.path()]);
+}
+
+#[test]
 fn layer_index_preserves_provider_occurrences_within_one_source() {
     let index = LayerIndex::from_file_lists(vec![(
         SourceMeta {
