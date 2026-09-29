@@ -876,3 +876,38 @@ fn run_interrupted_with_ctrl_c_removes_merged_dir_and_captures_nothing() {
     assert!(!merged.exists(), "the merged folder should be removed");
     assert!(!fixture.data_local.join("generated.txt").exists());
 }
+
+#[test]
+#[cfg(unix)]
+fn run_with_closed_stdout_still_captures_and_removes_merged_dir() {
+    use std::process::Stdio;
+
+    let fixture = Fixture::new("run_closed_stdout");
+    let merged = fixture.path("merged");
+    let mut run = Command::new(vfstool_bin())
+        .arg("--config")
+        .arg(&fixture.config_dir)
+        .args(["run", "--copy"])
+        .arg(&merged)
+        .args([
+            "--",
+            "sh",
+            "-c",
+            "sleep 1; for i in 1 2 3; do echo $i > \"$1/new$i.txt\"; done",
+            "sh",
+            "{}",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("vfstool command should spawn");
+    // A reader that went away, like `vfstool run ... | head -0`.
+    drop(run.stdout.take());
+
+    let status = run.wait().expect("vfstool should exit");
+    assert_eq!(status.code(), Some(0));
+    assert!(!merged.exists(), "the merged folder should be removed");
+    for i in 1..=3 {
+        assert!(fixture.data_local.join(format!("new{i}.txt")).exists());
+    }
+}

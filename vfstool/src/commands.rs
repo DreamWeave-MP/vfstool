@@ -2,7 +2,7 @@
 use std::{
     ffi::OsStr,
     fs,
-    io::{self, Result},
+    io::{self, Result, Write},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -738,11 +738,26 @@ fn dump_run_and_capture(
             copied.len(),
             data_local.display()
         );
-        for (rel, dest) in &copied {
-            println!("{} -> {}", rel.display(), dest.display());
+        if let Err(e) = list_captured(&copied) {
+            return (Err(e), Some(status));
         }
     }
     (Ok(()), Some(status))
+}
+
+/// Prints `relative -> destination` for each captured file. A reader that went away, as with
+/// `| head`, ends the listing, not the run: the files are captured and the merged folder still
+/// has to be removed.
+fn list_captured(copied: &[(PathBuf, PathBuf)]) -> Result<()> {
+    let mut stdout = io::stdout().lock();
+    for (rel, dest) in copied {
+        match writeln!(stdout, "{} -> {}", rel.display(), dest.display()) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::BrokenPipe => return Ok(()),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 fn handle_conflicts(

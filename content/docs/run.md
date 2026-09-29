@@ -25,7 +25,8 @@ vfstool run [OPTIONS] <MERGED_DIR> -- <COMMAND>...
 3. Runs the command. Every argument that is exactly `{}` is replaced by `MERGED_DIR`.
 4. If the command succeeds, hashes the folder again and copies every file that is new, or whose
    content changed, into `data-local`, or into `--output`, at the same relative path. Each copy is
-   printed as `relative path -> destination`.
+   printed as `relative path -> destination`; a reader that stops early, like `head`, shortens
+   the list, not the capture.
 5. Deletes `MERGED_DIR`, unless `--keep-merged` is given.
 
 ```sh
