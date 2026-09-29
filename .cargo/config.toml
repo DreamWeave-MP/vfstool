@@ -1,5 +1,29 @@
 [net]
 git-fetch-with-cli = true   # use the `git` executable for git operations
 
+# The l3i toolchain policy (copied from l3i's own .cargo/config.toml): clang compiles Luau, the
+# Rust side emits bitcode, and lld runs one thin LTO over both languages. l3i's build script
+# refuses anything else unless L3I_UNVERIFIED_TOOLCHAIN is set (docs.rs is exempt). Environment
+# variables override every entry here.
+[env]
+CXX = "clang++"
+CXX_x86_64-pc-windows-msvc = "clang-cl"
+CXX_aarch64-pc-windows-msvc = "clang-cl"
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
 [target.aarch64-unknown-linux-gnu]
-linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=clang", "-Clink-arg=-fuse-ld=lld"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=lld-link"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-Clinker-plugin-lto", "-Clinker=lld-link"]
