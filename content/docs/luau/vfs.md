@@ -446,7 +446,8 @@ assert(vfs:len() == 1)
 
 Writes every file the VFS resolves into `dir`, at its key, and returns how many it wrote. Files
 from archives are extracted. Loose files are copied, or hard-linked with `useHardlinks`, copied
-after all when the link would cross devices. Existing files in the way are replaced. A loose
+after all when the link would cross devices. Existing files in the way are replaced, except the
+loose file itself when `dir` is the directory it comes from, which stays where it is. A loose
 source that has disappeared, or an archive entry that cannot be read, is skipped with a line on
 standard error. The [run workflow](@/docs/luau/module.md#the-run-workflow) uses this.
 
@@ -465,6 +466,8 @@ default to `false`:
 
 Without `extractArchives`, files from archives are left out, each with a line on standard error.
 A loose source that no longer exists, or a link that fails without `allowCopying`, raises an error.
+A loose file whose destination already is that file, because `dest` is the data directory it
+comes from, is left where it is.
 
 ### materializationPlan
 

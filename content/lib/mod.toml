@@ -148,6 +148,7 @@ changed = [
 ]
 fixed = [
     "On Unix, a key that is not UTF-8 keeps its exact bytes in provider records, lock manifests and semantic conflicts, instead of a lossy spelling that looks up nothing.",
+    "`collapse_into` and `dump_to_directory` into one of the VFS's own data directories leave a loose file that already is its destination where it is. They deleted it before linking or copying it.",
 ]
 known_issues = [
     "serde cannot write a `PathBuf` that is not UTF-8, so serializing a report or lock that holds such a key fails with `path contains invalid UTF-8 characters`.",

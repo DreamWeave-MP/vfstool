@@ -1222,6 +1222,7 @@ dependencies = [
  "rayon",
  "regex",
  "ruzstd",
+ "same-file",
  "serde",
  "serde_json",
  "serde_yaml",

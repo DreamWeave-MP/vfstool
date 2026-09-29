@@ -17,6 +17,9 @@ impl VFS {
     /// link failures fall back to a copy. All other hardlink errors propagate.
     /// Archive files are always read via [`VfsFile::open`] regardless of mode.
     /// Bethesda archive entries stream; ZIP/PK3/JPK entries are currently buffered.
+    /// A loose file whose destination already is that file (the same path, a hard
+    /// link to it, or a symbolic link to it) is left in place and counted, so
+    /// dumping into one of the VFS's own data directories keeps its files.
     /// The destination directory must already exist. Returns the number of
     /// files successfully written.
     ///
@@ -73,6 +76,9 @@ impl VFS {
                         );
                         return Ok(false);
                     }
+                    if Self::destination_is_source(file.path(), &dest)? {
+                        return Ok(true);
+                    }
                     if use_hardlinks {
                         if dest.exists() {
                             std::fs::remove_file(&dest)?;
@@ -114,6 +120,10 @@ impl VFS {
     }
 
     /// Collapse the entire VFS into `dest`, creating hardlinks, symlinks, or copies.
+    ///
+    /// A file already at a destination is replaced, unless it already is the loose file being
+    /// written there (the same path, a hard link to it, or a symbolic link to it): that one is left
+    /// in place, so collapsing into one of the VFS's own data directories keeps its files.
     ///
     /// # Errors
     ///
@@ -181,6 +191,10 @@ impl VFS {
                 "vfstool: skipping archive {}",
                 file.file_name().unwrap_or_default().to_string_lossy()
             );
+            return Ok(());
+        }
+
+        if Self::destination_is_source(file.path(), merged_path)? {
             return Ok(());
         }
 
@@ -323,6 +337,17 @@ impl VFS {
         }
 
         Ok(Some(dest))
+    }
+
+    /// Whether `dest` already is the file at `source`: the same path, another spelling of it on a
+    /// case-insensitive file system, a hard link to it, or a symbolic link that resolves to it.
+    /// Replacing such a destination would delete the source before linking or copying from it.
+    fn destination_is_source(source: &Path, dest: &Path) -> io::Result<bool> {
+        match same_file::is_same_file(source, dest) {
+            Ok(same) => Ok(same),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err),
+        }
     }
 
     fn copy_replacing_output(src: &Path, dest: &Path) -> io::Result<u64> {

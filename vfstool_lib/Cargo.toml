@@ -22,6 +22,9 @@ zip = { version = "8.6", optional = true, default-features = false, features = [
 ruzstd = { version = "0.9", optional = true }
 rayon = "1.12.0"
 regex = "1"
+# Tells a destination that already is its source file (the same file under another name, or a
+# link to it) from one that can be replaced; std has no portable file identity on Windows.
+same-file = "1.0.6"
 serde = { version = "1.0.229", features = ["derive"], optional = true }
 serde_json = { version = "1.0.151", optional = true }
 serde_yaml = { version = "0.9.34-deprecated", optional = true }

@@ -55,15 +55,17 @@ merged/tribunal.esm
 `-e` leaves out every file named `.bsa` or `.ba2`, loaded or not, except
 `ArchiveInvalidationInvalidated!.bsa`.
 
-The folder is created if it is missing. A file already at a destination is replaced; a folder
-there, or a symbolic link on the way to it, stops the collapse. A link that fails without `-a`,
-or an archive entry that cannot be read, stops it too, with exit code 9, and leaves what was
-written so far. Files are written in parallel, so the messages come in no fixed order.
+The folder is created if it is missing. A file already at a destination is replaced, unless it
+already is the file that belongs there: collapsing into one of the cfg's data directories leaves
+that directory's own files where they are. A folder at a destination, or a symbolic link on the
+way to it, stops the collapse. A link that fails without `-a`, or an archive entry that cannot be
+read, stops it too, with exit code 9, and leaves what was written so far. Files are written in
+parallel, so the messages come in no fixed order.
 
-{% callout(kind="danger", title="Never collapse into a data directory") %}
-vfstool deletes each destination file before it writes it. When the destination folder is one of
-the cfg's data directories, the destination is the source, and the file is gone: collapsing into
-`Data Files` deletes the loose files in `Data Files`. Collapse into a new, empty folder.
+{% callout(kind="warning", title="Collapsing into a data directory changes that mod") %}
+Every file the VFS takes from elsewhere is added to the folder, and with `-e` every file from
+inside the archives, and OpenMW sees them there from then on. That is what unpacking a game's
+archives into its own `Data` folder wants; for anything else, collapse into a new, empty folder.
 {% end %}
 
 {% callout(kind="warning", title="Links are the mod's own files") %}
@@ -101,8 +103,8 @@ actions:
 
 That is three of its actions; the plan has one per file, sorted by key, then an `issues` list:
 loose files that no longer exist, and destinations that cannot be written safely. The plan names
-a `hardlink` or `symlink` for every loose file; it cannot know in advance which links will fail,
-so `-a` does not change it. `-f` picks YAML, JSON or TOML, and `-o` writes it to a file.
+a `hardlink` or `symlink` for every loose file, including one already in place, which `collapse`
+leaves alone; it cannot know in advance which links will fail, so `-a` does not change it. `-f` picks YAML, JSON or TOML, and `-o` writes it to a file.
 [Report formats](@/docs/formats.md#collapse-dry-run) lists every action.
 
 ## Extract one file

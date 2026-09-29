@@ -58,8 +58,12 @@ lowercase: `Meshes/Door.NIF` becomes `meshes/door.nif`. Losing providers are nev
 
 All three methods refuse to write through a symbolic link: if the destination is a symbolic link,
 or a directory already under it on the way to a file is one, the call fails with `InvalidInput`.
-A file already at a destination is replaced; a directory there is an error. Files are written in
-parallel, so when a call fails, some others may already be written.
+A file already at a destination is replaced; a directory there is an error. `collapse_into` and
+`dump_to_directory` leave a loose file alone when its destination already is that file: the same
+path, another spelling of it on a file system that ignores case, a hard link to it, or a symbolic
+link to it. Writing into one of the VFS's own data directories therefore keeps that directory's
+files and adds the rest around them. Files are written in parallel, so when a call fails, some
+others may already be written.
 
 {{ api_signature(value="fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()>") }}
 

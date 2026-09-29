@@ -196,6 +196,9 @@ summary = "First stable release: the commands, their options, their reports and 
 changed = [
     "No command or option changed since 0.10.4. Built on vfstool_lib 1.0.0: looking up a path that is already normalized allocates nothing.",
 ]
+fixed = [
+    "`collapse` into one of the cfg's own data directories leaves that directory's loose files where they are. It deleted each one before linking it, then failed.",
+]
 known_issues = [
     "On Linux and macOS, when a file name in the VFS is not UTF-8, `explain`, `duplicates`, `conflicts`, `shadowed --list-files`, `lock`, `drift` and `collapse --dry-run` stop with `path contains invalid UTF-8 characters` and exit code 9.",
 ]

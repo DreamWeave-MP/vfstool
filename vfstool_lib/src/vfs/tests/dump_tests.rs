@@ -198,6 +198,48 @@ fn collapse_reports_missing_loose_source() {
 }
 
 #[test]
+fn collapse_into_one_of_its_own_data_directories_keeps_the_files_there() {
+    let low = TempDir::new("collapse_into_source_low");
+    let data = TempDir::new("collapse_into_source_data");
+    low.write("meshes/door.nif", b"door");
+    let own = data.write("textures/a.dds", b"texture");
+    let vfs = VFS::from_directories(vec![low.path(), data.path()], None);
+
+    for (allow_copying, use_symlinks) in [(false, false), (true, false), (false, true)] {
+        vfs.collapse_into(
+            data.path(),
+            &CollapseOptions {
+                allow_copying,
+                extract_archives: true,
+                use_symlinks,
+            },
+        )
+        .unwrap();
+        assert_eq!(fs::read(&own).unwrap(), b"texture");
+        assert!(!fs::symlink_metadata(&own).unwrap().is_symlink());
+        assert_eq!(
+            fs::read(data.path().join("meshes/door.nif")).unwrap(),
+            b"door"
+        );
+    }
+}
+
+#[test]
+fn dump_into_one_of_its_own_data_directories_keeps_the_files_there() {
+    let data = TempDir::new("dump_into_source_data");
+    let own = data.write("textures/a.dds", b"texture");
+    let vfs = VFS::from_directories(vec![data.path()], None);
+
+    for use_hardlinks in [true, false] {
+        assert_eq!(
+            vfs.dump_to_directory(data.path(), use_hardlinks).unwrap(),
+            1
+        );
+        assert_eq!(fs::read(&own).unwrap(), b"texture");
+    }
+}
+
+#[test]
 #[cfg(feature = "zip")]
 fn collapse_extract_archives_skips_loose_archive_without_deleting_existing_output() {
     let src = TempDir::new("collapse_skip_loose_archive_src");
