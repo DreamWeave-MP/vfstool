@@ -18,3 +18,38 @@
     grid-row: 1
     justify-self: start
     width: 7rem
+
+// The hero's art is static/js/vfstool-hero.js: the load order's sources as a stack of trays and
+// archive vaults in 3D, beside the text. With it, the stack stands where the icon did; without
+// JavaScript the icon stays. Until the first frame, and without WebGL, a still of the stack stands
+// in its place.
+.dw-hero__art
+  > .vfs-hero__canvas
+    opacity: 0
+    transition: opacity .6s var(--dw-ease)
+
+  > .vfs-hero__still
+    position: absolute
+    width: auto
+    height: auto
+    object-fit: contain
+    opacity: 0
+    transition: opacity .6s var(--dw-ease)
+    pointer-events: none
+
+  &.is-placed > .vfs-hero__still
+    opacity: 1
+
+  &.is-live > .vfs-hero__canvas
+    opacity: 1
+
+  &.is-live > .vfs-hero__still
+    opacity: 0
+
+html.dw-js .dw-hero--art .dw-hero__figure
+  display: none
+
+// Where the text takes the whole width, the stack stands above it.
+@media (max-width: 1000px)
+  html.dw-js .dw-hero--art .dw-hero__text
+    padding-top: min(19rem, 72vw)
