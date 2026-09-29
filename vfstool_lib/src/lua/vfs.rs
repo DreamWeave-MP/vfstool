@@ -92,7 +92,7 @@ impl Constructor {
         #[cfg(feature = "lua-write")]
         if let Some(root) = self.write_root {
             handle.check_write_root_grant(&format!("{context}.writeRoot"))?;
-            handle.set_write_root(Some(root));
+            handle.set_write_root(Some(root)).map_err(io_error)?;
         }
         #[cfg(not(feature = "lua-write"))]
         let _ = context;

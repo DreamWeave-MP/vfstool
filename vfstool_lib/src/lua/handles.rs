@@ -146,18 +146,33 @@ impl Vfs {
         self.with_mut(std::mem::take)
     }
 
-    /// The directory `writeFile`, `openWrite`, `mkdir`, `remove` and `rename` work under, or
-    /// `None` when the VFS refuses writes.
+    /// The directory `writeFile`, `openWrite`, `mkdir`, `remove` and `rename` work under, in
+    /// canonical form, or `None` when the VFS refuses writes.
     #[cfg(feature = "lua-write")]
     #[must_use]
     pub fn write_root(&self) -> Option<std::path::PathBuf> {
         self.0.write_root.borrow().clone()
     }
 
-    /// Sets, or with `None` clears, the write root.
+    /// Makes `root` the write root, creating the directory when it is absent and keeping its
+    /// canonical path, so that a key resolved under it can be checked against it; `None`
+    /// clears the root.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error of creating or canonicalizing the directory; the root is then
+    /// unchanged.
     #[cfg(feature = "lua-write")]
-    pub fn set_write_root(&self, root: Option<std::path::PathBuf>) {
+    pub fn set_write_root(&self, root: Option<std::path::PathBuf>) -> std::io::Result<()> {
+        let root = match root {
+            Some(root) => {
+                std::fs::create_dir_all(&root)?;
+                Some(std::fs::canonicalize(&root)?)
+            }
+            None => None,
+        };
         *self.0.write_root.borrow_mut() = root;
+        Ok(())
     }
 
     /// Who may give this VFS its write root from a script.

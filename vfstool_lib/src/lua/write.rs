@@ -384,7 +384,8 @@ fn write_root(what: &str, v: &Vfs) -> Result<PathBuf> {
 }
 
 /// The host path of `key` under the write root, refused before anything touches the disk when
-/// the key could leave it.
+/// the key could leave it: lexically (`..`, a root, a drive letter, NUL), or on disk, through a
+/// symbolic link between the root and the target.
 #[cfg(feature = "lua-write")]
 fn target(what: &str, v: &Vfs, key: &[u8]) -> Result<PathBuf> {
     let root = write_root(what, v)?;
@@ -398,7 +399,48 @@ fn target(what: &str, v: &Vfs, key: &[u8]) -> Result<PathBuf> {
         .iter()
         .map(|&byte| if byte == b'\\' { b'/' } else { byte })
         .collect();
+    contain(what, &root, &relative)?;
     Ok(root.join(host_path(&relative)))
+}
+
+/// Refuses `<root>/<relative>` when a symbolic link sits at any existing component from the
+/// root down to it, or when the deepest existing part of it resolves outside the canonical
+/// `root`. `relative` is a checked key with `/` separators, so its segments are plain names.
+///
+/// The walk reads the disk once per component and the write follows; a writer with its own
+/// access to the root can change things in between, which the sandbox does not defend against.
+#[cfg(feature = "lua-write")]
+fn contain(what: &str, root: &Path, relative: &[u8]) -> Result<()> {
+    let mut deepest = root.to_path_buf();
+    let mut end = 0;
+    for segment in relative.split(|&byte| byte == b'/') {
+        end += segment.len();
+        let walked = &relative[..end];
+        end += 1;
+        let current = root.join(host_path(walked));
+        let Ok(meta) = std::fs::symlink_metadata(&current) else {
+            // Nothing there (or nothing a directory can hold): the write creates the rest, or
+            // reports its own error.
+            break;
+        };
+        if meta.file_type().is_symlink() {
+            return Err(Error::runtime(format!(
+                "dream.vfs: {what}: '{}' is a symbolic link; the write root does not follow links",
+                String::from_utf8_lossy(walked)
+            )));
+        }
+        deepest = current;
+    }
+    let resolved = std::fs::canonicalize(&deepest).map_err(io_error)?;
+    if !resolved.starts_with(root) {
+        return Err(Error::runtime(format!(
+            "dream.vfs: {what}: key '{}' escapes the write root ({} resolves to {})",
+            String::from_utf8_lossy(relative),
+            deepest.display(),
+            resolved.display()
+        )));
+    }
+    Ok(())
 }
 
 /// [`target`] for a key that will become a file: also refused, before the disk is touched, when
@@ -475,14 +517,13 @@ pub(super) fn describe_vfs_writes(vfs: &mut l3i::extension::UserdataBuilder<'_, 
         v.write_root().map(|root| path_bytes(&root).to_vec())
     })
     .signature("(self): string?")
-    .doc("The directory writes go under, or nil when this VFS refuses writes.");
+    .doc("The directory writes go under, as the canonical path, or nil when this VFS refuses writes.");
     vfs.method("setWriteRoot", |v: &Vfs, dir: &[u8]| {
         v.check_write_root_grant("setWriteRoot")?;
-        v.set_write_root(Some(host_path(dir)));
-        Ok::<_, Error>(())
+        v.set_write_root(Some(host_path(dir))).map_err(io_error)
     })
     .signature("(self, dir: string)")
-    .doc("Makes dir the write root; it is created when the first write needs it. Needs the filesystem.write capability.");
+    .doc("Makes dir the write root, created if absent and kept as its canonical path. Needs the filesystem.write capability.");
     vfs.method(
         "writeFile",
         |v: &Vfs, call: &Call, key: &[u8], data: BytesView, options: Option<ValueView>| {

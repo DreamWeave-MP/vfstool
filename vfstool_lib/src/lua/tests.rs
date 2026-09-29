@@ -25,7 +25,8 @@ impl TempDir {
                 .as_nanos()
         ));
         fs::create_dir_all(&dir).unwrap();
-        Self(dir)
+        // Canonical, as a write root is kept, so that paths compare as text.
+        Self(fs::canonicalize(&dir).unwrap())
     }
 
     fn write(&self, rel: &str, data: &[u8]) -> PathBuf {
@@ -1240,12 +1241,117 @@ fn directory_writes_stay_under_the_root_and_move_the_winners() {
             ok, err = pcall(plain.writeFile, plain, 'a.txt', 'b')
             assert(not ok and err:find('dream.vfs: writeFile: this VFS has no write root', 1, true), err)
             plain:setWriteRoot(out .. '/later')
+            assert(plain:writeRoot() == out .. '/later', 'created at once, canonical')
             assert(plain:writeFile('a.txt', 'b'):path() == out .. '/later/a.txt')
             ",
         )
         .unwrap();
     assert!(out.0.join("made/dir").is_dir());
     assert!(!out.0.join("tmp").exists() && !out.0.join("d1").exists());
+}
+
+#[cfg(all(feature = "lua-write", unix))]
+#[test]
+fn the_write_root_does_not_follow_symbolic_links() {
+    let out = TempDir::new("symlink_root");
+    let outside = TempDir::new("symlink_outside");
+    outside.write("keep/victim.txt", b"untouched");
+    fs::create_dir_all(out.0.join("textures")).unwrap();
+    // A directory link and a file link, both pointing outside the root, and a link to a
+    // directory inside it.
+    std::os::unix::fs::symlink(outside.0.join("keep"), out.0.join("textures/link")).unwrap();
+    std::os::unix::fs::symlink(outside.0.join("keep/victim.txt"), out.0.join("victim.txt"))
+        .unwrap();
+    std::os::unix::fs::symlink(out.0.join("textures"), out.0.join("inside")).unwrap();
+    let runtime = runtime();
+    runtime
+        .exec(&format!(
+            "out = {:?} outside = {:?}",
+            out.lua(),
+            outside.lua()
+        ))
+        .unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.new()
+            vfs:setWriteRoot(out)
+            local function refused(what, ...)
+                local ok, err = pcall(vfs[what], vfs, ...)
+                assert(not ok, what .. ' went through: ' .. tostring((...)))
+                return err
+            end
+            local err = refused('writeFile', 'textures/link/new.txt', 'x')
+            assert(err == [[dream.vfs: writeFile: 'textures/link' is a symbolic link; the write root does not follow links]], err)
+            err = refused('writeFile', [[textures\link\deeper\new.txt]], 'x')
+            assert(err:find([['textures/link' is a symbolic link]], 1, true), err)
+            err = refused('writeFile', 'victim.txt', 'x')
+            assert(err:find([['victim.txt' is a symbolic link]], 1, true), err)
+            err = refused('openWrite', 'textures/link/new.txt')
+            assert(err:find('openWrite: ', 1, true) and err:find('is a symbolic link', 1, true), err)
+            err = refused('mkdir', 'textures/link/dir')
+            assert(err:find('mkdir: ', 1, true) and err:find('is a symbolic link', 1, true), err)
+            err = refused('remove', 'textures/link')
+            assert(err:find('remove: ', 1, true) and err:find('is a symbolic link', 1, true), err)
+            err = refused('remove', 'textures/link/victim.txt')
+            assert(err:find('is a symbolic link', 1, true), err)
+            vfs:writeFile('real.txt', 'real')
+            err = refused('rename', 'real.txt', 'textures/link/moved.txt')
+            assert(err:find('rename: ', 1, true) and err:find('is a symbolic link', 1, true), err)
+            err = refused('rename', 'victim.txt', 'elsewhere.txt')
+            assert(err:find([[rename: 'victim.txt' is a symbolic link]], 1, true), err)
+            -- A link that stays inside the root is still a link.
+            err = refused('writeFile', 'inside/new.txt', 'x')
+            assert(err:find([['inside' is a symbolic link]], 1, true), err)
+            -- Ordinary keys next to the links write as ever.
+            assert(vfs:writeFile('textures/plain.txt', 'plain'):path() == out .. '/textures/plain.txt')
+            vfs:mkdir('textures/made')
+            vfs:rename('real.txt', 'textures/made/real.txt')
+            assert(vfs:getFile('textures/made/real.txt'):readAll() == 'real')
+            ",
+        )
+        .unwrap();
+    assert_eq!(
+        fs::read(outside.0.join("keep/victim.txt")).unwrap(),
+        b"untouched"
+    );
+    assert!(!outside.0.join("keep/new.txt").exists());
+    assert!(!outside.0.join("keep/deeper").exists());
+    assert!(!outside.0.join("keep/dir").exists());
+    assert!(!outside.0.join("keep/moved.txt").exists());
+    assert!(
+        out.0.join("textures/link").is_symlink(),
+        "the link itself was not removed"
+    );
+    assert!(out.0.join("victim.txt").is_symlink());
+    assert_eq!(
+        fs::read(out.0.join("textures/plain.txt")).unwrap(),
+        b"plain"
+    );
+    // A root given through a link is kept canonical, so a key under it is checked against the
+    // real directory.
+    let linked = TempDir::new("symlink_root_link");
+    let link = linked.0.join("root");
+    std::os::unix::fs::symlink(&out.0, &link).unwrap();
+    runtime
+        .exec(&format!("link = {:?}", link.to_string_lossy()))
+        .unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({}, { writeRoot = link })
+            assert(vfs:writeRoot() == out, vfs:writeRoot())
+            assert(vfs:writeFile('via.txt', 'v'):path() == out .. '/via.txt')
+            local fresh = vfstool.VFS.new()
+            fresh:setWriteRoot(out .. '/made/now')
+            assert(fresh:writeRoot() == out .. '/made/now')
+            ",
+        )
+        .unwrap();
+    assert!(
+        out.0.join("made/now").is_dir(),
+        "setWriteRoot creates the directory"
+    );
 }
 
 #[cfg(feature = "lua-write")]
@@ -1295,7 +1401,7 @@ fn a_vfs_from_the_host_keeps_the_write_root_the_host_set() {
     let out = TempDir::new("host_vfs_root");
     let vfs = super::Vfs::new(crate::VFS::from_directories([&data.0], None));
     assert_eq!(vfs.write_root_grant(), WriteRootGrant::Host);
-    vfs.set_write_root(Some(out.0.clone()));
+    vfs.set_write_root(Some(out.0.clone())).unwrap();
     // Even a runtime that grants nothing writes through the root the host set, and cannot
     // move it.
     let runtime = ungranted_runtime();
