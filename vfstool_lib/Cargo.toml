@@ -16,6 +16,9 @@ blake3 = "1"
 dream-path = { version = "1.0.0", path = "../../dream-path" }
 dream_archive = { version = "0.2.2", optional = true, default-features = false, features = ["ba2", "bsa", "parallel"] }
 l3i = { version = "1.0.0", path = "../../dream-binder", optional = true }
+# Positional reads of loose files in Luau map the file once (pure Rust); a file that cannot be
+# mapped falls back to positional reads on the handle.
+memmap2 = { version = "0.9", optional = true }
 zip = { version = "8.6", optional = true, default-features = false, features = ["deflate", "lzma"] }
 # Zstandard entries (method 93) decode through ruzstd, a pure-Rust decoder: the zip crate's own
 # `zstd` feature would pull in the C library, which this crate keeps out on purpose.
@@ -39,14 +42,20 @@ default = []
 beth-archives = ["dep:dream_archive"]
 zip = ["dep:zip", "dep:ruzstd"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
-lua = ["dep:l3i", "dream-path/lua"]
+lua = ["dep:l3i", "dep:memmap2", "dream-path/lua"]
+# Writes into a VFS from Luau: a write root, `vfs:writeFile`, `vfs:openWrite`, `mkdir`, `remove`,
+# `rename`, and the `writeRoot` constructor option.
+lua-write = ["lua"]
+# Host-path I/O from Luau: the module's `host` table (files, directories, readers and writers on
+# any host path, with no VFS in between).
+lua-host = ["lua"]
 # The definitions gate (`RuntimePlan::check_definitions`) needs Luau's analysis frontend. Cargo
 # has no optional dev-dependencies, so the typed tests build behind this feature
 # (`cargo test -p vfstool_lib --features luau-analysis`) and a plain `--features lua` run skips them.
 luau-analysis = ["lua", "l3i/analysis"]
 
 [package.metadata.docs.rs]
-features = ["beth-archives", "zip", "serialize", "lua"]
+features = ["beth-archives", "zip", "serialize", "lua", "lua-write", "lua-host"]
 
 [[bench]]
 name = "vfs_benchmarks"
@@ -55,4 +64,4 @@ harness = false
 [[bench]]
 name = "luau_boundary"
 harness = false
-required-features = ["lua", "serialize"]
+required-features = ["lua", "serialize", "lua-write", "lua-host"]

@@ -71,7 +71,7 @@ pub(super) fn push_file_row<'s>(scope: &'s impl Scope, file: &VfsFile) -> Result
         table.raw_set(frame, "parentArchivePath")?;
         frame.push(&file.parent_archive_name())?;
         table.raw_set(frame, "parentArchiveName")?;
-        push_owned(frame, VfsFileHandle(file.clone()))?;
+        push_owned(frame, VfsFileHandle::new(file.clone()))?;
         table.raw_set(frame, "file")
     })
 }
@@ -84,7 +84,7 @@ pub(super) fn push_provider<'s>(
     push_record(scope, 2, |frame, table| {
         push_source_meta(frame, &provider.source)?;
         table.raw_set(frame, "source")?;
-        push_owned(frame, VfsFileHandle(provider.file.clone()))?;
+        push_owned(frame, VfsFileHandle::new(provider.file.clone()))?;
         table.raw_set(frame, "file")
     })
 }
@@ -370,9 +370,9 @@ pub(super) fn directory_diff(scope: &impl Scope, diff: &DirectoryDiff<'_>) -> Re
         push_record(frame, 3, |frame, table| {
             frame.push(path_bytes(key))?;
             table.raw_set(frame, "key")?;
-            push_owned(frame, VfsFileHandle(incoming.clone()))?;
+            push_owned(frame, VfsFileHandle::new(incoming.clone()))?;
             table.raw_set(frame, "incoming")?;
-            push_owned(frame, VfsFileHandle((*current).clone()))?;
+            push_owned(frame, VfsFileHandle::new((*current).clone()))?;
             table.raw_set(frame, "current")
         })
         .map(drop)
@@ -382,7 +382,7 @@ pub(super) fn directory_diff(scope: &impl Scope, diff: &DirectoryDiff<'_>) -> Re
         push_record(frame, 2, |frame, table| {
             frame.push(path_bytes(key))?;
             table.raw_set(frame, "key")?;
-            push_owned(frame, VfsFileHandle(file.clone()))?;
+            push_owned(frame, VfsFileHandle::new(file.clone()))?;
             table.raw_set(frame, "file")
         })
         .map(drop)
@@ -435,7 +435,7 @@ pub(super) fn removed_files(
         push_record(frame, 2, |frame, table| {
             frame.push(key.as_bytes())?;
             table.raw_set(frame, "key")?;
-            push_owned(frame, VfsFileHandle(file.clone()))?;
+            push_owned(frame, VfsFileHandle::new(file.clone()))?;
             table.raw_set(frame, "file")
         })
         .map(drop)

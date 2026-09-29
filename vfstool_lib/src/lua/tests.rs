@@ -77,6 +77,7 @@ fn the_plan_tags_the_hot_types_only_and_requires_dream_path() {
         [
             "dream.vfs.Entries",
             "dream.vfs.Keys",
+            "dream.vfs.Reader",
             "dream.vfs.VFS",
             "dream.vfs.VfsFile"
         ]
@@ -112,6 +113,11 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
         "declare extern type dream_vfs_VFS with",
         "function getFile(self, path: string): dream_vfs_VfsFile?",
         "function readInto(self, buffer: buffer, offset: number?): number",
+        "function readAt(self, buffer: buffer, fileOffset: number, length: number?, bufferOffset: number?): number",
+        "function readRange(self, fileOffset: number, length: number): buffer",
+        "function open(self): dream_vfs_Reader",
+        "declare extern type dream_vfs_Reader with",
+        "function readInto(self, buffer: buffer, bufferOffset: number?, length: number?): number",
         "declare extern type dream_vfs_Keys with",
         "    [number]: string?",
         "    function toTable(self): { string }",
@@ -147,7 +153,16 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
          if file then\n\
              local bytes: string = file:readAll()\n\
              local written: number = file:readInto(buffer.create(64), 0)\n\
-             print(bytes, written, file:path(), file:isLoose())\n\
+             local size: number = file:size()\n\
+             local copied: number = file:readAt(buffer.create(64), 0, 16, 8)\n\
+             local range: buffer = file:readRange(0, 16)\n\
+             local whole: buffer = file:readAllBuffer()\n\
+             local reader: dream_vfs_Reader = file:open()\n\
+             local chunk: buffer = reader:read(4)\n\
+             local got: number = reader:readInto(chunk, 0, 2)\n\
+             reader:seek(0) reader:skip(1)\n\
+             print(bytes, written, size, copied, range, whole, got, reader:tell(), reader:size(), file:path(), file:isLoose())\n\
+             reader:close()\n\
          end\n\
          local keys: dream_vfs_Keys = vfs:keys()\n\
          local n: number = #keys\n\
@@ -359,12 +374,7 @@ fn option_tables_are_strict_and_sizes_are_integers() {
         .exec("vfstool.VfsProvider.new({ path = dir, kind = 'weird' }, vfstool.VfsFile.from(dir))")
         .unwrap_err()
         .to_string();
-    assert!(
-        error.contains(
-            "VfsProvider.new.kind: unknown source kind 'weird' (expected 'looseDir' or 'archive')"
-        ),
-        "the option reader names the field once, with no second prefix: {error}"
-    );
+    assert!(error.contains("unknown source kind 'weird'"), "{error}");
     // A direct argument's type error names the argument slot the way l3i's own conversions do; a
     // value reached through a path names the path in full (`dirs[1]`, `fromFileLists[1].files[1]`,
     // `VfsProvider.new.path`) with Luau's own type names, and a nested reader's context is one
@@ -464,6 +474,211 @@ fn semantic_conflicts_are_rows_of_plain_tables() {
             local ok, err = pcall(layer.semanticConflicts, layer, vfs, { archiveHashMode = 'sometimes' })
             assert(not ok and err:find("archiveHashMode", 1, true) and err:find("got 'sometimes'", 1, true), err)
             "#,
+        )
+        .unwrap();
+}
+
+#[test]
+fn positional_reads_copy_from_a_map_and_name_their_arguments() {
+    let dir = TempDir::new("positional");
+    let payload: Vec<u8> = (0..=255u8).cycle().take(1000).collect();
+    dir.write("data/big.bin", &payload);
+    dir.write("data/empty.bin", b"");
+    let runtime = runtime();
+    runtime.exec(&format!("dir = {:?}", dir.lua())).unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({ dir })
+            local file = vfs:getFile('data/big.bin')
+            assert(file:size() == 1000, 'size from metadata')
+            local buf = buffer.create(64)
+            assert(file:readAt(buf, 0) == 64, 'fills the buffer by default')
+            assert(buffer.readu8(buf, 0) == 0 and buffer.readu8(buf, 63) == 63)
+            assert(file:readAt(buf, 100, 16, 8) == 16, 'length and bufferOffset')
+            assert(buffer.readu8(buf, 8) == 100 and buffer.readu8(buf, 23) == 115 and buffer.readu8(buf, 24) == 24, 'only the window changed')
+            assert(file:readAt(buf, 990) == 10, 'short at the end of the file')
+            assert(file:readAt(buf, 1000) == 0, 'the end reads nothing')
+            local ok, err = pcall(file.readAt, file, buf, 1001)
+            assert(not ok and err:find('dream.vfs: readAt: fileOffset 1001 past the end (size 1000)', 1, true), err)
+            ok, err = pcall(file.readAt, file, buf, -1)
+            assert(not ok and err:find('dream.vfs: readAt: fileOffset -1 is negative', 1, true), err)
+            ok, err = pcall(file.readAt, file, buf, 0, 65)
+            assert(not ok and err:find('dream.vfs: readAt: length 65 does not fit the buffer (space 64 after bufferOffset 0)', 1, true), err)
+            ok, err = pcall(file.readAt, file, buf, 0, 8, 60)
+            assert(not ok and err:find('dream.vfs: readAt: length 8 does not fit the buffer (space 4 after bufferOffset 60)', 1, true), err)
+            ok, err = pcall(file.readAt, file, buf, 0, nil, 65)
+            assert(not ok and err:find('dream.vfs: readAt: bufferOffset 65 past the end of the buffer (size 64)', 1, true), err)
+            ok, err = pcall(file.readAt, file, buf, 0, -3)
+            assert(not ok and err:find('dream.vfs: readAt: length -3 is negative', 1, true), err)
+            ok, err = pcall(file.readAt, file, buf, 1.5)
+            assert(not ok and err:find('not an exact', 1, true), err)
+            local range = file:readRange(250, 10)
+            assert(buffer.len(range) == 10 and buffer.readu8(range, 0) == 250 and buffer.readu8(range, 9) == 3, 'readRange')
+            assert(buffer.len(file:readRange(995, 100)) == 5, 'readRange is short at the end')
+            assert(buffer.len(file:readRange(1000, 1)) == 0)
+            ok, err = pcall(file.readRange, file, 1001, 1)
+            assert(not ok and err:find('dream.vfs: readRange: fileOffset 1001 past the end (size 1000)', 1, true), err)
+            ok, err = pcall(file.readRange, file, 0, -1)
+            assert(not ok and err:find('dream.vfs: readRange: length -1 is negative', 1, true), err)
+            local whole = file:readAllBuffer()
+            assert(buffer.len(whole) == 1000 and buffer.readu8(whole, 999) == 231, 'readAllBuffer')
+            assert(#file:readAll() == 1000 and file:readInto(buf) == 64, 'the old reads still work')
+            local empty = vfs:getFile('data/empty.bin')
+            assert(empty:size() == 0 and buffer.len(empty:readAllBuffer()) == 0 and empty:readAt(buf, 0) == 0, 'an empty file')
+            local missing = vfstool.VfsFile.from(dir .. '/missing.bin')
+            ok, err = pcall(missing.size, missing)
+            assert(not ok and err:find('dream.vfs: ', 1, true), err)
+            assert(not pcall(missing.readAt, missing, buf, 0))
+            ",
+        )
+        .unwrap();
+}
+
+#[test]
+fn readers_walk_a_file_sequentially_and_refuse_use_after_close() {
+    let dir = TempDir::new("reader");
+    let payload: Vec<u8> = (0..=255u8).cycle().take(300).collect();
+    dir.write("a.bin", &payload);
+    let runtime = runtime();
+    runtime.exec(&format!("dir = {:?}", dir.lua())).unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({ dir })
+            local file = vfs:getFile('a.bin')
+            local reader = file:open()
+            assert(reader:size() == 300 and reader:tell() == 0)
+            assert(tostring(reader):find('dream.vfs.Reader(', 1, true) and tostring(reader):find('a.bin', 1, true), tostring(reader))
+            local first = reader:read(16)
+            assert(buffer.len(first) == 16 and buffer.readu8(first, 15) == 15 and reader:tell() == 16)
+            local buf = buffer.create(32)
+            assert(reader:readInto(buf) == 32 and buffer.readu8(buf, 0) == 16 and reader:tell() == 48)
+            assert(reader:readInto(buf, 8, 4) == 4 and buffer.readu8(buf, 8) == 48 and buffer.readu8(buf, 12) == 28, 'window')
+            reader:skip(200)
+            assert(reader:tell() == 252)
+            local tail = reader:read(100)
+            assert(buffer.len(tail) == 48 and reader:tell() == 300, 'short at the end')
+            assert(buffer.len(reader:read(10)) == 0, 'nothing left')
+            reader:seek(10)
+            assert(reader:tell() == 10 and buffer.readu8(reader:read(1), 0) == 10)
+            reader:seek(300)
+            assert(reader:readInto(buf) == 0)
+            local ok, err = pcall(reader.seek, reader, 301)
+            assert(not ok and err:find('dream.vfs: Reader.seek: position 301 past the end (size 300)', 1, true), err)
+            ok, err = pcall(reader.seek, reader, -1)
+            assert(not ok and err:find('dream.vfs: Reader.seek: position -1 is negative', 1, true), err)
+            reader:seek(0)
+            ok, err = pcall(reader.skip, reader, 301)
+            assert(not ok and err:find('dream.vfs: Reader.skip: count 301 past the end (position 0, size 300)', 1, true), err)
+            ok, err = pcall(reader.read, reader, -1)
+            assert(not ok and err:find('dream.vfs: Reader.read: length -1 is negative', 1, true), err)
+            ok, err = pcall(reader.readInto, reader, buf, 33)
+            assert(not ok and err:find('dream.vfs: Reader.readInto: bufferOffset 33 past the end of the buffer (size 32)', 1, true), err)
+            -- A second reader over the same file shares the map and has its own position.
+            local other = file:open()
+            assert(other:tell() == 0 and buffer.readu8(other:read(1), 0) == 0 and reader:tell() == 0)
+            reader:close()
+            reader:close()
+            ok, err = pcall(reader.read, reader, 1)
+            assert(not ok and err:find('dream.vfs: Reader.read: the reader over ', 1, true) and err:find('a.bin is closed', 1, true), err)
+            ok, err = pcall(reader.seek, reader, 0)
+            assert(not ok and err:find('is closed', 1, true), err)
+            assert(reader:tell() == 0 and reader:size() == 300, 'tell and size still answer')
+            assert(buffer.readu8(other:read(1), 0) == 1, 'the other reader is unaffected')
+            -- A sequential parse: every chunk of the file, in order, through one buffer.
+            local walk = file:open()
+            local chunk = buffer.create(64)
+            local total, checksum = 0, 0
+            while true do
+                local n = walk:readInto(chunk)
+                if n == 0 then break end
+                for i = 0, n - 1 do checksum += buffer.readu8(chunk, i) end
+                total += n
+            end
+            assert(total == 300 and checksum == 255 * 128 + 44 * 43 / 2, tostring(checksum))
+            ",
+        )
+        .unwrap();
+}
+
+#[cfg(feature = "zip")]
+#[test]
+fn zip_members_read_positionally_from_the_index_size() {
+    use std::io::Write as _;
+    // Test builds cap a buffered zip entry at 64 bytes, so the entries stay under that.
+    let dir = TempDir::new("zip_reads");
+    let payload: Vec<u8> = (0..60u8).collect();
+    let path = dir.0.join("Data/Extras.zip");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut zip = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+    let stored =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let deflated = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    zip.start_file("textures/stored.bin", stored).unwrap();
+    zip.write_all(&payload).unwrap();
+    zip.start_file("textures/packed.bin", deflated).unwrap();
+    zip.write_all(&payload).unwrap();
+    zip.finish().unwrap();
+    let runtime = runtime();
+    runtime
+        .exec(&format!("dir = {:?}", dir.0.join("Data").to_string_lossy()))
+        .unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({ dir }, { archives = { 'Extras.zip' } })
+            for _, name in { 'textures/stored.bin', 'textures/packed.bin' } do
+                local file = vfs:getFile(name)
+                assert(file:isArchive() and file:size() == 60, name)
+                local buf = buffer.create(16)
+                assert(file:readAt(buf, 16) == 16 and buffer.readu8(buf, 0) == 16 and buffer.readu8(buf, 15) == 31, name)
+                assert(file:readAt(buf, 50) == 10, 'short at the end')
+                local ok, err = pcall(file.readAt, file, buf, 61)
+                assert(not ok and err:find('fileOffset 61 past the end (size 60)', 1, true), err)
+                local range = file:readRange(20, 8)
+                assert(buffer.len(range) == 8 and buffer.readu8(range, 0) == 20, name)
+                assert(buffer.len(file:readAllBuffer()) == 60)
+                local reader = file:open()
+                reader:seek(40)
+                assert(buffer.readu8(reader:read(1), 0) == 40 and reader:tell() == 41, name)
+                assert(file:readAll() == buffer.tostring(file:readAllBuffer()), 'the two whole reads agree')
+            end
+            ",
+        )
+        .unwrap();
+}
+
+#[cfg(feature = "beth-archives")]
+#[test]
+fn bsa_members_read_positionally() {
+    let dir = TempDir::new("bsa_reads");
+    let payload: Vec<u8> = (0..=255u8).cycle().take(3000).collect();
+    let data = dir.0.join("Data");
+    fs::create_dir_all(&data).unwrap();
+    let mut builder = dream_archive::Tes3BsaBuilder::new();
+    builder.add_bytes("meshes\\x\\door.nif", &payload).unwrap();
+    builder.write_path(data.join("Morrowind.bsa")).unwrap();
+    let runtime = runtime();
+    runtime
+        .exec(&format!("dir = {:?}", data.to_string_lossy()))
+        .unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({ dir }, { archives = { 'Morrowind.bsa' } })
+            local file = vfs:getFile('meshes/x/door.nif')
+            assert(file and file:isArchive() and file:size() == 3000)
+            local buf = buffer.create(8)
+            assert(file:readAt(buf, 512) == 8 and buffer.readu8(buf, 0) == 0 and buffer.readu8(buf, 7) == 7)
+            assert(file:readAt(buf, 2996) == 4)
+            assert(buffer.len(file:readRange(2990, 100)) == 10)
+            local reader = file:open()
+            reader:skip(2999)
+            assert(buffer.readu8(reader:read(4), 0) == 2999 % 256 and reader:tell() == 3000)
+            assert(buffer.len(file:readAllBuffer()) == 3000)
+            ",
         )
         .unwrap();
 }

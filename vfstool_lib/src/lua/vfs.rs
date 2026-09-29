@@ -165,7 +165,7 @@ fn describe_queries(vfs: &mut UserdataBuilder<'_, Vfs>) {
     .doc("Every resolved entry sorted by key, as a sequence view of { key, file } rows.");
     vfs.method("getFile", |v: &Vfs, path: &[u8]| {
         v.with(|vfs| with_key(path, |key| vfs.get_file_normalized(key).cloned()))
-            .map(|file| file.map(VfsFileHandle).map(Owned))
+            .map(|file| file.map(VfsFileHandle::new).map(Owned))
     })
     .signature("(self, path: string): dream_vfs_VfsFile?")
     .doc("The winning file for a path in any spelling, or nil.");
@@ -210,15 +210,15 @@ fn describe_queries(vfs: &mut UserdataBuilder<'_, Vfs>) {
 
 fn describe_mutation(vfs: &mut UserdataBuilder<'_, Vfs>) {
     vfs.method("setWinnerLooseFile", |v: &Vfs, key: &[u8], path: &[u8]| {
-        v.with_mut(|vfs| vfs.set_winner_loose_file(key, host_path(path))).map(|file| file.map(VfsFileHandle).map(Owned))
+        v.with_mut(|vfs| vfs.set_winner_loose_file(key, host_path(path))).map(|file| file.map(VfsFileHandle::new).map(Owned))
     })
     .signature("(self, key: string, physicalPath: string): dream_vfs_VfsFile?")
     .doc("Replaces the whole provider stack for key with one loose winner; returns the previous winner.");
     vfs.method(
         "setWinnerFile",
         |v: &Vfs, key: &[u8], file: &VfsFileHandle| {
-            v.with_mut(|vfs| vfs.set_winner_file(key, file.0.clone()))
-                .map(|file| file.map(VfsFileHandle).map(Owned))
+            v.with_mut(|vfs| vfs.set_winner_file(key, file.file.clone()))
+                .map(|file| file.map(VfsFileHandle::new).map(Owned))
         },
     )
     .signature("(self, key: string, file: dream_vfs_VfsFile): dream_vfs_VfsFile?");
@@ -250,7 +250,7 @@ fn describe_mutation(vfs: &mut UserdataBuilder<'_, Vfs>) {
     .doc("Removes only the current winner, revealing the next provider.");
     vfs.method("removeResolvedFile", |v: &Vfs, key: &[u8]| {
         v.with_mut(|vfs| vfs.remove_resolved_file(key))
-            .map(|file| file.map(VfsFileHandle).map(Owned))
+            .map(|file| file.map(VfsFileHandle::new).map(Owned))
     })
     .signature("(self, key: string): dream_vfs_VfsFile?")
     .doc("Removes the key and its whole provider stack.");

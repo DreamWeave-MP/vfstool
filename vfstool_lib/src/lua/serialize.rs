@@ -93,7 +93,7 @@ fn convert(frame: &Frame<'_>, view: ValueView<'_>, depth: usize) -> Result<Value
         Type::Table => table(frame, view, depth),
         Type::Userdata => {
             if let Some(file) = receiver::<VfsFileHandle>(view) {
-                return file_object(&file.0);
+                return file_object(&file.file);
             }
             if let Some(walk) = receiver::<Stream<TreeWalk>>(view) {
                 return tree_object(walk.0.tree());

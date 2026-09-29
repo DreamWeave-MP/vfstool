@@ -1291,6 +1291,7 @@ dependencies = [
  "dream-path 1.0.0",
  "dream_archive",
  "l3i",
+ "memmap2",
  "rayon",
  "regex",
  "ruzstd",

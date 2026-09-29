@@ -241,6 +241,53 @@ impl VfsFile {
         }
     }
 
+    /// The file's size in bytes when it is known without reading its content: a loose file's
+    /// metadata, or an archive entry's uncompressed size when the archive's index records it
+    /// (a TES3 BSA, a BA2, a ZIP). `Ok(None)` when only reading tells, as for a TES4 BSA entry,
+    /// whose true size sits inside its data block.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a loose file's metadata cannot be read, or an archive cannot be
+    /// consulted.
+    pub fn known_size(&self) -> io::Result<Option<u64>> {
+        match &self.file {
+            FileType::Loose(path) => std::fs::metadata(path).map(|meta| Some(meta.len())),
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
+            FileType::Archive(archive_ref) => archive::known_size(archive_ref),
+        }
+    }
+
+    /// The whole file, read through [`VfsFile::open`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened or read.
+    pub fn read_to_vec(&self) -> io::Result<Vec<u8>> {
+        let mut reader = self.open()?;
+        let mut bytes = match self.known_size()? {
+            Some(size) => Vec::with_capacity(usize::try_from(size).unwrap_or_default()),
+            None => Vec::new(),
+        };
+        reader.read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
+
+    /// Reads up to `dst.len()` bytes from `offset` of an archive entry stored without
+    /// compression, straight from the archive: `Ok(None)` for a loose file or an entry that must
+    /// be decompressed as a whole first. Returns the count read, short only at the entry's end.
+    #[cfg_attr(
+        not(any(feature = "beth-archives", feature = "zip")),
+        allow(unused_variables)
+    )]
+    pub(crate) fn read_stored_at(&self, offset: u64, dst: &mut [u8]) -> io::Result<Option<usize>> {
+        match &self.file {
+            FileType::Loose(_) => Ok(None),
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
+            FileType::Archive(archive_ref) => archive::read_stored_at(archive_ref, offset, dst),
+        }
+    }
+
     /// Retrieves the file name (i.e., the last component of the path). An archive entry's path
     /// ends its folders at `\` as well as `/`, on every platform.
     ///

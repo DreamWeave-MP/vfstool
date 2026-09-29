@@ -198,7 +198,7 @@ impl SequenceItem for EntryRow {
         push_record(scope, 2, |frame, table| {
             frame.push(key)?;
             table.raw_set(frame, "key")?;
-            push_owned(frame, VfsFileHandle(file.clone()))?;
+            push_owned(frame, VfsFileHandle::new(file.clone()))?;
             table.raw_set(frame, "file")
         })
         .map(drop)
@@ -334,7 +334,7 @@ impl SequenceItem for Slot<TreeRow> {
         push_record(scope, 2, |frame, table| {
             frame.push(&*row.dir)?;
             table.raw_set(frame, "dir")?;
-            push_owned(frame, VfsFileHandle(row.file.clone()))?;
+            push_owned(frame, VfsFileHandle::new(row.file.clone()))?;
             table.raw_set(frame, "file")
         })
         .map(drop)

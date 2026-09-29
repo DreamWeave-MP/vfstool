@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The userdata handles: the VFS itself, files, providers, indexes, locks, and snapshots.
 
-use std::{cell::RefCell, io::Read as _};
+use std::{cell::RefCell, io::Read as _, rc::Rc};
 
 use l3i::{
     Error, Result,
@@ -16,7 +16,7 @@ use l3i::{
 
 use super::views::KeyBlob;
 use super::{
-    class_function, frozen_class_table, host_path, io_error, path_bytes, reports,
+    class_function, frozen_class_table, host_path, io, io_error, path_bytes, reports,
     source_kind_from_name,
 };
 use crate::{
@@ -26,13 +26,25 @@ use crate::{
 
 /// A VFS as scripts see it (`dream.vfs.VFS`): the VFS behind a `RefCell`, because scripts
 /// mutate it through methods and Luau hands out shared references, plus the sorted key list
-/// `keys()` last built, kept until the next mutation.
-pub struct Vfs {
+/// `keys()` last built, kept until the next mutation, and (with `lua-write`) the write root.
+///
+/// The handle is shared: a clone is the same VFS, so the host keeps one for a
+/// [`VfsRequireNavigator`](crate::lua::VfsRequireNavigator) or a callback and pushes another to
+/// scripts with `l3i::userdata::push_owned(scope, handle.clone())`, and every change a script
+/// makes is visible through both.
+#[derive(Clone)]
+pub struct Vfs(Rc<VfsState>);
+
+/// The state every clone of a [`Vfs`] shares.
+struct VfsState {
     inner: RefCell<VFS>,
     keys: RefCell<Option<KeyBlob>>,
+    #[cfg(feature = "lua-write")]
+    write_root: RefCell<Option<std::path::PathBuf>>,
 }
 
-// SAFETY: plain Rust data (maps, paths, archive handles), no Lua references, no Lua API in `Drop`.
+// SAFETY: plain Rust data (maps, paths, archive handles) behind an `Rc` that only the VM's
+// thread touches, no Lua references, no Lua API in `Drop`.
 unsafe impl Userdata for Vfs {
     const NAME: &'static str = "dream.vfs.VFS";
 }
@@ -41,10 +53,18 @@ impl Vfs {
     /// Wraps a VFS the host built.
     #[must_use]
     pub fn new(vfs: VFS) -> Self {
-        Vfs {
+        Vfs(Rc::new(VfsState {
             inner: RefCell::new(vfs),
             keys: RefCell::new(None),
-        }
+            #[cfg(feature = "lua-write")]
+            write_root: RefCell::new(None),
+        }))
+    }
+
+    /// Whether `other` is a clone of this handle, sharing its VFS.
+    #[must_use]
+    pub fn shares(&self, other: &Vfs) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
     }
 
     /// Pushes a VFS handle onto `scope` (the `dream.vfs` extension must be installed).
@@ -63,6 +83,7 @@ impl Vfs {
     /// Returns an error if a mutation of this VFS is in progress.
     pub fn with<R>(&self, body: impl FnOnce(&VFS) -> R) -> Result<R> {
         let vfs = self
+            .0
             .inner
             .try_borrow()
             .map_err(|_| Error::runtime("dream.vfs: the VFS is being mutated"))?;
@@ -71,11 +92,11 @@ impl Vfs {
 
     /// The sorted keys, built on the first call after a mutation and shared afterwards.
     pub(super) fn sorted_keys(&self) -> Result<KeyBlob> {
-        if let Some(keys) = self.keys.borrow().as_ref() {
+        if let Some(keys) = self.0.keys.borrow().as_ref() {
             return Ok(keys.clone());
         }
         let keys = self.with(|vfs| KeyBlob::sorted(vfs.iter().map(|(key, _)| key.clone())))?;
-        *self.keys.borrow_mut() = Some(keys.clone());
+        *self.0.keys.borrow_mut() = Some(keys.clone());
         Ok(keys)
     }
 
@@ -86,11 +107,12 @@ impl Vfs {
     /// Returns an error if the VFS is otherwise in use.
     pub fn with_mut<R>(&self, body: impl FnOnce(&mut VFS) -> R) -> Result<R> {
         let mut vfs = self
+            .0
             .inner
             .try_borrow_mut()
             .map_err(|_| Error::runtime("dream.vfs: the VFS is in use"))?;
         // Whatever the mutation does to the key set, the cached list is stale.
-        *self.keys.borrow_mut() = None;
+        *self.0.keys.borrow_mut() = None;
         Ok(body(&mut vfs))
     }
 
@@ -102,15 +124,84 @@ impl Vfs {
     pub fn take(&self) -> Result<VFS> {
         self.with_mut(std::mem::take)
     }
+
+    /// The directory `writeFile`, `openWrite`, `mkdir`, `remove` and `rename` work under, or
+    /// `None` when the VFS refuses writes.
+    #[cfg(feature = "lua-write")]
+    #[must_use]
+    pub fn write_root(&self) -> Option<std::path::PathBuf> {
+        self.0.write_root.borrow().clone()
+    }
+
+    /// Sets, or with `None` clears, the write root.
+    #[cfg(feature = "lua-write")]
+    pub fn set_write_root(&self, root: Option<std::path::PathBuf>) {
+        *self.0.write_root.borrow_mut() = root;
+    }
 }
 
-/// A backing file handle (`dream.vfs.VfsFile`).
+/// A backing file handle (`dream.vfs.VfsFile`): the file, and after its first positional read
+/// its backing, a memory map of a loose file or the bytes of an archive entry, kept for every
+/// later `readAt`, `readRange`, `readAllBuffer` and reader.
 #[derive(Debug, Clone)]
-pub struct VfsFileHandle(pub VfsFile);
+pub struct VfsFileHandle {
+    /// The file.
+    pub file: VfsFile,
+    backing: RefCell<Option<io::Backing>>,
+}
 
-// SAFETY: a path or an `Arc` archive reference; no Lua references, no Lua API in `Drop`.
+// SAFETY: a path or an `Arc` archive reference, and a map, file handle or bytes behind `Arc`s;
+// no Lua references, no Lua API in `Drop`.
 unsafe impl Userdata for VfsFileHandle {
     const NAME: &'static str = "dream.vfs.VfsFile";
+}
+
+impl VfsFileHandle {
+    /// A handle to `file`, with nothing read yet.
+    #[must_use]
+    pub fn new(file: VfsFile) -> Self {
+        VfsFileHandle {
+            file,
+            backing: RefCell::new(None),
+        }
+    }
+
+    /// The backing, opened on the first call and kept.
+    pub(super) fn backing(&self) -> Result<io::Backing> {
+        if let Some(backing) = self.backing.borrow().as_ref() {
+            return Ok(backing.clone());
+        }
+        let backing = io::Backing::open(&self.file).map_err(io_error)?;
+        *self.backing.borrow_mut() = Some(backing.clone());
+        Ok(backing)
+    }
+
+    /// The size in bytes: the backing's when it is open, the index's when the archive has one,
+    /// otherwise the content's, which opens the backing.
+    pub(super) fn size(&self) -> Result<u64> {
+        if let Some(backing) = self.backing.borrow().as_ref() {
+            return Ok(backing.len());
+        }
+        match self.file.known_size().map_err(io_error)? {
+            Some(size) => Ok(size),
+            None => self.backing().map(|backing| backing.len()),
+        }
+    }
+
+    /// Copies up to `dst.len()` bytes from `offset` (at most the size) into `dst`, short only at
+    /// the end: from the open backing, straight from the archive for a stored entry, otherwise
+    /// through the backing opened now.
+    pub(super) fn read_at(&self, offset: u64, dst: &mut [u8]) -> Result<usize> {
+        if let Some(backing) = self.backing.borrow().as_ref() {
+            return backing.read_at(offset, dst).map_err(io_error);
+        }
+        if self.file.is_archive()
+            && let Some(count) = self.file.read_stored_at(offset, dst).map_err(io_error)?
+        {
+            return Ok(count);
+        }
+        self.backing()?.read_at(offset, dst).map_err(io_error)
+    }
 }
 
 /// One provider for a key (`dream.vfs.VfsProvider`).
@@ -186,7 +277,7 @@ fn read_into(
     if offset > buffer.len() {
         return Err(Error::runtime("buffer access out of bounds"));
     }
-    let mut reader = file.0.open().map_err(io_error)?;
+    let mut reader = file.file.open().map_err(io_error)?;
     // SAFETY: the reader is this crate's own file or archive reader, which holds no Lua handle
     // and never calls into Lua, and no other view of the buffer exists in this call, so the
     // slice is the only access to the buffer while it lives.
@@ -207,49 +298,64 @@ pub(super) fn describe_file(d: &mut ExtensionDescriptor) {
     let mut file = d.userdata::<VfsFileHandle>(VfsFileHandle::NAME);
     file.tag(TagPolicy::Preferred)
         .doc("A loose file on disk or an entry inside an archive.");
-    file.method("isLoose", |f: &VfsFileHandle| f.0.is_loose())
+    file.method("isLoose", |f: &VfsFileHandle| f.file.is_loose())
         .signature("(self): boolean");
-    file.method("isArchive", |f: &VfsFileHandle| f.0.is_archive())
+    file.method("isArchive", |f: &VfsFileHandle| f.file.is_archive())
         .signature("(self): boolean");
-    file.method("path", |f: &VfsFileHandle| f.0.path_bytes().to_vec())
+    file.method("path", |f: &VfsFileHandle| f.file.path_bytes().to_vec())
         .signature("(self): string")
         .doc("The host path of a loose file, or the entry name inside its archive, byte for byte.");
     file.method("fileName", |f: &VfsFileHandle| {
-        os_str_bytes(f.0.file_name())
+        os_str_bytes(f.file.file_name())
     })
     .signature("(self): string?");
     file.method("fileStem", |f: &VfsFileHandle| {
-        os_str_bytes(f.0.file_stem())
+        os_str_bytes(f.file.file_stem())
     })
     .signature("(self): string?");
     file.method("parentArchivePath", |f: &VfsFileHandle| {
-        f.0.parent_archive_path()
+        f.file.parent_archive_path()
     })
     .signature("(self): string?");
     file.method("parentArchiveName", |f: &VfsFileHandle| {
-        f.0.parent_archive_name()
+        f.file.parent_archive_name()
     })
     .signature("(self): string?");
+    file.method("size", |f: &VfsFileHandle| f.size().map(|size| size as f64))
+        .signature("(self): number")
+        .doc("The size in bytes: a loose file's metadata, or an archive entry's uncompressed size, from the archive's index when it has one.");
     file.method("readAll", |f: &VfsFileHandle| -> Result<Vec<u8>> {
-        let mut reader = f.0.open().map_err(io_error)?;
+        let mut reader = f.file.open().map_err(io_error)?;
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).map_err(io_error)?;
         Ok(bytes)
     })
     .signature("(self): string")
     .doc("The whole file as a string; readInto is the copy-free form.");
+    file.method("readAllBuffer", io::read_all_buffer)
+        .signature("(self): buffer")
+        .doc("The whole file as a new buffer, one copy from the file's map or bytes.");
     file.method("readInto", read_into)
         .signature("(self, buffer: buffer, offset: number?): number")
         .doc("Reads the file into the buffer from offset (default 0), at most the space left; returns the bytes written.");
+    file.method("readAt", io::read_at)
+        .signature("(self, buffer: buffer, fileOffset: number, length: number?, bufferOffset: number?): number")
+        .doc("Copies length bytes (default the space left) from fileOffset into the buffer at bufferOffset (default 0); returns the count, fewer only at the end of the file.");
+    file.method("readRange", io::read_range)
+        .signature("(self, fileOffset: number, length: number): buffer")
+        .doc("A new buffer of length bytes from fileOffset, shorter only at the end of the file.");
+    file.method("open", io::open_reader)
+        .signature("(self): dream_vfs_Reader")
+        .doc("A sequential reader over the file's map or bytes.");
     file.metamethod("__tostring", |f: &VfsFileHandle| {
-        format!("dream.vfs.VfsFile({})", f.0.path().display())
+        format!("dream.vfs.VfsFile({})", f.file.path().display())
     });
 }
 
 pub(super) fn file_class_table(runtime: &l3i::Runtime) -> Result<Table> {
     frozen_class_table(runtime, |table| {
         class_function(runtime, table, "VfsFile", "from", |path: &[u8]| {
-            Owned(VfsFileHandle(VfsFile::from(host_path(path))))
+            Owned(VfsFileHandle::new(VfsFile::from(host_path(path))))
         })
     })
 }
@@ -283,7 +389,7 @@ pub(super) fn describe_provider(d: &mut ExtensionDescriptor) {
         .signature(format!("(self): {}", super::types::SOURCE));
     provider
         .method("file", |p: &VfsProviderHandle| {
-            Owned(VfsFileHandle(p.0.file.clone()))
+            Owned(VfsFileHandle::new(p.0.file.clone()))
         })
         .signature("(self): dream_vfs_VfsFile");
     provider.metamethod("__tostring", |p: &VfsProviderHandle| {
@@ -306,7 +412,7 @@ pub(super) fn provider_class_table(runtime: &l3i::Runtime) -> Result<Table> {
                 let source = source_meta(call, source, "VfsProvider.new")?;
                 Ok::<_, Error>(Owned(VfsProviderHandle(VfsProvider::new(
                     source,
-                    file.0.clone(),
+                    file.file.clone(),
                 ))))
             },
         )

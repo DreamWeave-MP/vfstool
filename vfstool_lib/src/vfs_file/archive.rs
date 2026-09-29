@@ -153,3 +153,94 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
         }
     }
 }
+
+/// The entry's uncompressed size when the archive's index records it: a TES3 BSA record, the
+/// sum of a BA2 entry's chunk sizes, or a ZIP central directory entry. `None` when only
+/// decompressing tells (a TES4 BSA stores the compressed size, and the true size inside the
+/// data block), and for an entry the archive does not know.
+pub(super) fn known_size(archive_ref: &ArchiveReference) -> io::Result<Option<u64>> {
+    match archive_ref.parent_archive.handle() {
+        #[cfg(feature = "beth-archives")]
+        TypedArchive::Bethesda(archive) => Ok(match archive {
+            dream_archive::Archive::Tes3Bsa(bsa) => bsa
+                .get(&archive_ref.raw_path)
+                .map(|entry| u64::from(entry.file().size)),
+            dream_archive::Archive::BA2(ba2) => ba2.get(&archive_ref.raw_path).map(|entry| {
+                entry
+                    .file()
+                    .chunks()
+                    .iter()
+                    .map(|chunk| u64::from(chunk.size()))
+                    .sum()
+            }),
+            dream_archive::Archive::Tes4Bsa(_) => None,
+        }),
+        #[cfg(feature = "zip")]
+        TypedArchive::Zip(archive) => {
+            let Some(zip_index) = archive_ref.zip_index else {
+                return Ok(None);
+            };
+            let mut guard = archive
+                .lock()
+                .map_err(|_| io::Error::other("zip mutex poisoned"))?;
+            let raw = guard
+                .by_index_raw(zip_index)
+                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+            Ok(Some(raw.size()))
+        }
+    }
+}
+
+/// Reads up to `dst.len()` bytes from `offset` of an entry stored without compression, straight
+/// from the archive: a TES3 BSA entry, or a ZIP entry with the `Stored` method. `Ok(None)` for
+/// any other entry, whose bytes only exist once the whole entry is decompressed. Returns the
+/// number of bytes read, short only at the entry's end.
+pub(super) fn read_stored_at(
+    archive_ref: &ArchiveReference,
+    offset: u64,
+    dst: &mut [u8],
+) -> io::Result<Option<usize>> {
+    match archive_ref.parent_archive.handle() {
+        #[cfg(feature = "beth-archives")]
+        TypedArchive::Bethesda(archive) => {
+            let dream_archive::Archive::Tes3Bsa(bsa) = archive else {
+                return Ok(None);
+            };
+            let reader = bsa
+                .open_file_required(&archive_ref.raw_path)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            read_from(reader, offset, dst).map(Some)
+        }
+        #[cfg(feature = "zip")]
+        TypedArchive::Zip(archive) => {
+            let Some(zip_index) = archive_ref.zip_index else {
+                return Ok(None);
+            };
+            let mut guard = archive
+                .lock()
+                .map_err(|_| io::Error::other("zip mutex poisoned"))?;
+            let raw = guard
+                .by_index_raw(zip_index)
+                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+            if raw.compression() != zip::CompressionMethod::Stored {
+                return Ok(None);
+            }
+            read_from(raw, offset, dst).map(Some)
+        }
+    }
+}
+
+/// Skips `offset` bytes of `reader` and fills `dst` from there, stopping at the end.
+fn read_from(mut reader: impl Read, offset: u64, dst: &mut [u8]) -> io::Result<usize> {
+    io::copy(&mut reader.by_ref().take(offset), &mut io::sink())?;
+    let mut filled = 0;
+    while filled < dst.len() {
+        match reader.read(&mut dst[filled..]) {
+            Ok(0) => break,
+            Ok(count) => filled += count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(filled)
+}

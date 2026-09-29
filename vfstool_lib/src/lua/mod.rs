@@ -53,6 +53,7 @@
 
 mod conflicts;
 mod handles;
+mod io;
 mod layer;
 mod reports;
 #[cfg(feature = "serialize")]
@@ -80,6 +81,7 @@ pub use handles::{
     ConflictIndexHandle, LayerIndexHandle, MetadataSnapshotHandle, SnapshotHandle, Vfs,
     VfsFileHandle, VfsLockHandle, VfsProviderHandle,
 };
+pub use io::VfsReader;
 pub use views::{Entries, KeyBlob, Keys, ProviderRecords, Providers, TreeWalk};
 
 use crate::{
@@ -157,6 +159,7 @@ impl Extension for VfsExtension {
         views::describe(d);
         vfs::describe(d);
         handles::describe_file(d);
+        io::describe_reader(d);
         handles::describe_provider(d);
         layer::describe(d);
         conflicts::describe(d);
