@@ -2,7 +2,7 @@
 //! The `@dream/vfs` Luau module: the promoted stable `vfstool_lib` API as an l3i extension.
 //!
 //! This module is available with the `lua` feature. It never creates a VM and never installs a
-//! global: the host composes [`VfsExtension`] (together with dream-path's `PathExtension`, which
+//! global: the host composes [`VfsExtension`](crate::lua::VfsExtension) (together with dream-path's `PathExtension`, which
 //! it requires) into an [`l3i::extension::RuntimePlan`], and every runtime made from that plan
 //! can `require("@dream/vfs")`. A host that still wants the historical `vfstool` global exposes
 //! the module as a compatibility global (`RuntimePolicy::compat_global(MODULE, MODULE_NAME)`).
