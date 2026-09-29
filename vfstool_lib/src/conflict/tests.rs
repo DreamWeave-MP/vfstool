@@ -559,3 +559,66 @@ fn diff_report_higher_priority_is_later_dir() {
         "d2 (later) should have higher priority"
     );
 }
+
+#[test]
+fn diff_report_finds_sources_spelled_in_another_case() {
+    let root = TempDir::new("ci_report_dr_case");
+    root.write("Crisp Textures/textures/a.dds", b"");
+    root.write("Crisp Textures/textures/only_crisp.dds", b"");
+    root.write("Lantern Glow/Textures/A.dds", b"");
+    let crisp = root.path().join("Crisp Textures");
+    let lantern = root.path().join("Lantern Glow");
+    let index = ConflictIndex::from_directories(vec![&crisp, &lantern]);
+
+    let report = index.diff_report(
+        &root.path().join("lantern glow"),
+        &root.path().join("CRISP TEXTURES"),
+    );
+
+    assert_eq!(report.source_a, lantern);
+    assert_eq!(report.source_b, crisp);
+    assert_eq!(report.higher_priority, lantern);
+    assert_eq!(report.shared, ["textures/a.dds"]);
+    assert!(report.only_in_a.is_empty());
+    assert_eq!(report.only_in_b, ["textures/only_crisp.dds"]);
+}
+
+#[test]
+fn diff_report_compares_what_the_index_holds() {
+    let index = ConflictIndex::from_file_lists(vec![
+        (
+            PathBuf::from("/nowhere/base"),
+            vec![
+                PathBuf::from("Textures/Rock.dds"),
+                PathBuf::from("meshes/rock.nif"),
+            ],
+        ),
+        (
+            PathBuf::from("/nowhere/patch"),
+            vec![PathBuf::from("textures/rock.dds")],
+        ),
+    ]);
+
+    let report = index.diff_report(Path::new("/nowhere/base"), Path::new("/nowhere/patch"));
+
+    assert_eq!(report.shared, ["textures/rock.dds"]);
+    assert_eq!(report.only_in_a, ["meshes/rock.nif"]);
+    assert!(report.only_in_b.is_empty());
+    assert_eq!(report.higher_priority, PathBuf::from("/nowhere/patch"));
+}
+
+#[test]
+fn diff_report_reads_a_directory_the_index_does_not_have_from_disk() {
+    let d1 = TempDir::new("ci_report_dr_outside_d1");
+    let outside = TempDir::new("ci_report_dr_outside_d2");
+    d1.write("f.txt", b"");
+    outside.write("F.TXT", b"");
+    outside.write("g.txt", b"");
+
+    let index = ConflictIndex::from_directories(vec![d1.path()]);
+    let report = index.diff_report(d1.path(), outside.path());
+
+    assert_eq!(report.shared, ["f.txt"]);
+    assert_eq!(report.only_in_b, ["g.txt"]);
+    assert_eq!(report.higher_priority, outside.path());
+}

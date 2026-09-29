@@ -156,10 +156,14 @@ and `serialize` leaves it out.
 
 {{ api_signature(value="fn diff_report(&self, source_a: &Path, source_b: &Path) -> DiffReport") }}
 
-Compares two data directories' keys. Both are read from disk again, each on its own and loose
-files only, so the result does not depend on what the index holds, and the directories need not be
-in it. `higher_priority` is whichever of the two comes later in `sources`, compared by exact path;
-when either is not in `sources`, it is `source_b`.
+Compares two sources' keys. Each path names the sources in `sources` spelled exactly like it, or,
+when there are none, those that equal it with ASCII case and `\` folded, as a file system that
+ignores case would find them. Their keys come from the index, so archives and indexes built from
+file lists compare by what they hold. A path that names no source is read from disk as a data
+directory, loose files only, so it need not be in the index. `source_a` and `source_b` in the
+report are the index's spelling, or the path as given for one it does not have.
+`higher_priority` is whichever of the two comes later in `sources`; when either is not in
+`sources`, it is `source_b`.
 
 ## SourceConflicts
 

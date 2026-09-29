@@ -143,9 +143,8 @@ only_in_b:
 - textures/tx_stone_01.dds
 ```
 
-Both must be data directories of the cfg, or vfstool exits with 8. Spell each exactly as its
-`data=` line does: the check ignores case, but the comparison reads the folder as you typed it,
-and on Linux a folder spelled in another case reads as empty.
+Both must be data directories of the cfg, or vfstool exits with 8. Case and `\` or `/` do not
+matter: each names the `data=` line it matches, and the report spells it as that line does.
 
 ## Archives
 

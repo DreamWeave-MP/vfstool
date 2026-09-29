@@ -272,10 +272,11 @@ shadowed source's files; `false` leaves the lists empty.
 
 {{ api_signature(value="conflicts:diffReport(sourceA: string, sourceB: string) -> DiffReport") }}
 
-The keys two sources share and the keys only one of them has, sorted. Both are read from disk
-again as directories, not taken from the index, so this is for data directories: an archive
-compares as empty, and so does a name from `fromFileLists` unless a directory by that name exists.
-`higherPriority` is whichever comes later in the index, or `sourceB` when either is not in it.
+The keys two sources share and the keys only one of them has, sorted, as the index holds them:
+archives and names from `fromFileLists` compare like data directories. A name matches a source
+spelled like it, or with ASCII case and `\` folded when none is; one that matches no source is
+read from disk as a data directory. `higherPriority` is whichever comes later in the index, or
+`sourceB` when either is not in it.
 
 ```lua
 local vfstool = require("@dream/vfs")

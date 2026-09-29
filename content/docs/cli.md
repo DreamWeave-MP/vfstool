@@ -154,8 +154,7 @@ vfstool diff [-f FORMAT] [-o FILE] <SOURCE_A> <SOURCE_B>
 ```
 
 The keys two data directories share and the keys only each has, and which of the two is later.
-Both must be data directories of the cfg, or vfstool exits with 8; spell them exactly as the cfg
-does.
+Both must be data directories of the cfg, in any case, or vfstool exits with 8.
 
 ### archives
 

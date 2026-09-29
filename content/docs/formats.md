@@ -133,7 +133,7 @@ lowercase key, which on Linux may differ from the file's real name, and an archi
 
 | Field | |
 |---|---|
-| `source_a`, `source_b` | The two directories, as given |
+| `source_a`, `source_b` | The two directories, as the cfg spells them |
 | `higher_priority` | The later of the two in load order |
 | `shared` | Keys both have, sorted |
 | `only_in_a`, `only_in_b` | Keys only one has, sorted |

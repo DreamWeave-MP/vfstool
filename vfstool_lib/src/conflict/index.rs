@@ -85,11 +85,11 @@ pub struct ConflictIndex {
     /// Count of unique normalized files per source.
     pub(super) source_file_counts: Vec<usize>,
 
-    /// Multi-map: normalized path → source indices (ascending = lower priority first).
-    /// Only paths present in two or more sources are included.
+    /// Multi-map: normalized path → source indices (ascending = lower priority first), for every
+    /// key, so a source's own keys can be read back ([`ConflictIndex::diff_report`]).
     ///
-    /// Use [`ConflictIndex::sources_containing`] for safe access.
-    path_to_sources: AHashMap<NormalizedPath, Vec<usize>>,
+    /// Use [`ConflictIndex::sources_containing`] for the conflicting ones.
+    pub(super) path_to_sources: AHashMap<NormalizedPath, Vec<usize>>,
 }
 
 impl ConflictIndex {
@@ -117,7 +117,7 @@ impl ConflictIndex {
             for &source_idx in &unique_sources {
                 source_file_counts[source_idx] += 1;
             }
-            if unique_sources.len() > 1 {
+            if !unique_sources.is_empty() {
                 path_to_sources.insert(key, unique_sources);
             }
         }
@@ -135,6 +135,9 @@ impl ConflictIndex {
             .collect();
 
         for (key, source_indices) in &path_to_sources {
+            if source_indices.len() < 2 {
+                continue;
+            }
             let path = key_to_path_buf(key);
             // source_indices is sorted ascending (low priority → high priority).
             // Any entry after the first overrides something earlier (green).
@@ -230,6 +233,7 @@ impl ConflictIndex {
         let normalized = path.to_vfs_key();
         self.path_to_sources
             .get(&normalized)
+            .filter(|sources| sources.len() > 1)
             .map_or(&[], Vec::as_slice)
     }
 

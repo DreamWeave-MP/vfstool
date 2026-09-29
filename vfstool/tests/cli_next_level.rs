@@ -1075,3 +1075,32 @@ fn archives_and_archive_list_write_toml_as_a_table_holding_the_list() {
     let json = fixture.run(&["archives", "-f", "json"]);
     assert!(stdout_json(&json).is_array(), "JSON stays a bare list");
 }
+
+#[test]
+fn diff_finds_data_directories_spelled_in_another_case() {
+    let fixture = Fixture::new("diff_case");
+    let high_upper = fixture.root.join("HIGH");
+    let low_upper = fixture.root.join("Low");
+
+    let output = fixture.run(&[
+        "diff",
+        high_upper.to_str().expect("path should be utf-8"),
+        low_upper.to_str().expect("path should be utf-8"),
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload = stdout_json(&output);
+    assert_eq!(
+        payload["higher_priority"],
+        Value::from(fixture.high.display().to_string())
+    );
+    assert!(
+        payload["shared"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|key| key == "textures/a.dds")
+    );
+}
