@@ -52,7 +52,8 @@ mod, and the mods themselves are as they were. Removing the tool's work is delet
 {% callout(kind="danger", title="Without --copy, the tool edits your mods") %}
 A hardlink is the mod's file under a second name. A tool that rewrites a file in place, instead of
 writing a new one, rewrites the original in the mod folder, and the changed copy is then captured
-into `data-local` too. Use `--copy` for any tool you are not sure about; it costs the space and
+into `data-local` too. A file that already lives in `data-local`, from an earlier run, is the
+changed file itself, and stays as the tool left it. Use `--copy` for any tool you are not sure about; it costs the space and
 time of copying the loose files once.
 {% end %}
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::vfs::VFS;
+use crate::{paths::is_same_file, vfs::VFS};
 use rayon::prelude::*;
 use std::{
     collections::HashMap,
@@ -96,19 +96,7 @@ pub fn run_finalize(
     baseline: &Snapshot,
     output_dir: &Path,
 ) -> io::Result<Vec<(PathBuf, PathBuf)>> {
-    let changed = changed_files(merged_dir, baseline)?;
-    let mut copied = Vec::new();
-
-    for rel in changed {
-        let dest = output_dir.join(&rel);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::copy(merged_dir.join(&rel), &dest)?;
-        copied.push((rel, dest));
-    }
-
-    Ok(copied)
+    capture(merged_dir, changed_files(merged_dir, baseline)?, output_dir)
 }
 
 /// Copy files changed since `baseline` from `merged_dir` into `output_dir`.
@@ -125,18 +113,33 @@ pub fn run_finalize_tracked(
     baseline: &MetadataSnapshot,
     output_dir: &Path,
 ) -> io::Result<Vec<(PathBuf, PathBuf)>> {
-    let changed = changed_files_metadata(merged_dir, baseline)?;
-    let mut copied = Vec::new();
+    capture(
+        merged_dir,
+        changed_files_metadata(merged_dir, baseline)?,
+        output_dir,
+    )
+}
 
+/// Copies each changed file from `merged_dir` to the same relative path under `output_dir`. A
+/// destination that already is the changed file, because the tool rewrote a hard link to it in
+/// place, already holds the new content: copying a file onto itself would truncate it to nothing.
+fn capture(
+    merged_dir: &Path,
+    changed: Vec<PathBuf>,
+    output_dir: &Path,
+) -> io::Result<Vec<(PathBuf, PathBuf)>> {
+    let mut copied = Vec::new();
     for rel in changed {
+        let source = merged_dir.join(&rel);
         let dest = output_dir.join(&rel);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::copy(merged_dir.join(&rel), &dest)?;
+        if !is_same_file(&source, &dest)? {
+            std::fs::copy(&source, &dest)?;
+        }
         copied.push((rel, dest));
     }
-
     Ok(copied)
 }
 
@@ -650,6 +653,32 @@ mod tests {
         let (rel, dest) = &copied[0];
         assert_eq!(rel, &PathBuf::from("file.txt"));
         assert_eq!(fs::read(dest).unwrap(), b"modified");
+    }
+
+    #[test]
+    fn run_finalize_keeps_an_output_file_the_tool_rewrote_through_its_hard_link() {
+        let output = TempDir::new("run_finalize_hardlinked_output");
+        let earlier = output.write("textures/a.dds", b"earlier output");
+        let vfs = VFS::from_directories(vec![output.path()], None);
+
+        let merged = TempDir::new("run_finalize_hardlinked_merged");
+        let (_, baseline) = run_setup(&vfs, merged.path(), true).unwrap();
+        fs::write(merged.path().join("textures/a.dds"), b"rewritten in place").unwrap();
+        let copied = run_finalize(merged.path(), &baseline, output.path()).unwrap();
+        assert_eq!(
+            copied,
+            vec![(PathBuf::from("textures/a.dds"), earlier.clone())]
+        );
+        assert_eq!(fs::read(&earlier).unwrap(), b"rewritten in place");
+
+        let (_, baseline) = run_setup_tracked(&vfs, merged.path(), true).unwrap();
+        fs::write(merged.path().join("textures/a.dds"), b"rewritten again").unwrap();
+        let copied = run_finalize_tracked(merged.path(), &baseline, output.path()).unwrap();
+        assert_eq!(
+            copied,
+            vec![(PathBuf::from("textures/a.dds"), earlier.clone())]
+        );
+        assert_eq!(fs::read(&earlier).unwrap(), b"rewritten again");
     }
 
     #[test]

@@ -224,7 +224,8 @@ error.
 
 Copies every file in `mergedDir` that is new or whose content differs from the snapshot into
 `outputDir`, at the same relative path, and returns one `{ relativePath, destinationPath }` row per
-file, sorted by path. Deleted files are not reported.
+file, sorted by path. Deleted files are not reported. A destination that already is the changed
+file, because the tool rewrote it in place through a hard link from `outputDir`, is left as it is.
 
 ```lua
 local vfstool = require("@dream/vfs")

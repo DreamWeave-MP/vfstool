@@ -2,7 +2,9 @@
 use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, VfsFile,
-    paths::{key_to_path_buf_bytes, key_to_string_lossy, normalized_safe_normalized_bytes},
+    paths::{
+        is_same_file, key_to_path_buf_bytes, key_to_string_lossy, normalized_safe_normalized_bytes,
+    },
 };
 use rayon::prelude::*;
 use std::{
@@ -76,7 +78,7 @@ impl VFS {
                         );
                         return Ok(false);
                     }
-                    if Self::destination_is_source(file.path(), &dest)? {
+                    if is_same_file(file.path(), &dest)? {
                         return Ok(true);
                     }
                     if use_hardlinks {
@@ -194,7 +196,7 @@ impl VFS {
             return Ok(());
         }
 
-        if Self::destination_is_source(file.path(), merged_path)? {
+        if is_same_file(file.path(), merged_path)? {
             return Ok(());
         }
 
@@ -330,7 +332,7 @@ impl VFS {
         Self::ensure_output_parent_safe(dest_dir, &dest)?;
 
         if file.is_loose() {
-            if !Self::destination_is_source(file.path(), &dest)? {
+            if !is_same_file(file.path(), &dest)? {
                 Self::copy_replacing_output(file.path(), &dest)?;
             }
         } else {
@@ -341,17 +343,6 @@ impl VFS {
         }
 
         Ok(Some(dest))
-    }
-
-    /// Whether `dest` already is the file at `source`: the same path, another spelling of it on a
-    /// case-insensitive file system, a hard link to it, or a symbolic link that resolves to it.
-    /// Replacing such a destination would delete the source before linking or copying from it.
-    fn destination_is_source(source: &Path, dest: &Path) -> io::Result<bool> {
-        match same_file::is_same_file(source, dest) {
-            Ok(same) => Ok(same),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(false),
-            Err(err) => Err(err),
-        }
     }
 
     fn copy_replacing_output(src: &Path, dest: &Path) -> io::Result<u64> {

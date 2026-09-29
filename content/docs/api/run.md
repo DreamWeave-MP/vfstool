@@ -109,7 +109,9 @@ one `vfstool run` uses.
 
 Finds what changed with `changed_files(merged_dir, baseline)`, and copies each of those files to
 the same relative path under `output_dir`, creating directories and replacing files already there.
-Returns `(relative path, destination)` for each copy, sorted by relative path. It does not remove
+A destination that already is the changed file, as when `output_dir` is a data directory and the
+tool rewrote its file in place through a hard link, holds the new content already and is left as
+it is. Returns `(relative path, destination)` for each file, sorted by relative path. It does not remove
 `merged_dir`. Call it only if the tool succeeded; `vfstool run` does not collect after a failure.
 
 {{ api_signature(value="fn run_finalize_tracked(merged_dir: &Path, baseline: &MetadataSnapshot, output_dir: &Path) -> io::Result<Vec<(PathBuf, PathBuf)>>") }}

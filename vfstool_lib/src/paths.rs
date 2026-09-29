@@ -188,6 +188,18 @@ pub(crate) fn key_to_string_lossy(key: &NormalizedPath) -> String {
     String::from_utf8_lossy(key.as_bytes()).into_owned()
 }
 
+/// Whether `destination` already is the file at `source`: the same path, another spelling of it
+/// on a case-insensitive file system, a hard link to it, or a symbolic link that resolves to it.
+/// Replacing such a destination, or copying onto it, destroys the source it would be written from.
+/// A destination that does not exist is not the source.
+pub(crate) fn is_same_file(source: &Path, destination: &Path) -> std::io::Result<bool> {
+    match same_file::is_same_file(source, destination) {
+        Ok(same) => Ok(same),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(err),
+    }
+}
+
 /// Serde helpers that write paths as text. JSON, YAML and TOML hold only UTF-8, and serde refuses
 /// a `PathBuf` that is not, which failed a whole report over one file name. A path that is not
 /// UTF-8 is written with U+FFFD in place of each invalid sequence, the spelling `NormalizedKey`
