@@ -112,6 +112,10 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
         "function getFile(self, path: string): dream_vfs_VfsFile?",
         "function readInto(self, buffer: buffer, offset: number?): number",
         "declare extern type dream_vfs_Keys with",
+        "    [number]: string?",
+        "    function toTable(self): { string }",
+        "    [number]: { key: string, file: dream_vfs_VfsFile }?",
+        "function __iter(self): (({}, number) -> (number?, { dir: string, file: dream_vfs_VfsFile }), {}, number)",
         "    VFS: { new: () -> dream_vfs_VFS,",
     ] {
         assert!(
@@ -145,20 +149,32 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
              print(bytes, written, file:path(), file:isLoose())\n\
          end\n\
          local keys: dream_vfs_Keys = vfs:keys()\n\
-         local table: { any } = keys:toTable()\n\
-         for _, entry in vfs:pathsWith('textures'):toTable() do print(entry) end\n\
+         local n: number = #keys\n\
+         local first: string? = keys[1]\n\
+         local joined: string = ''\n\
+         for _, key in keys do joined ..= key end\n\
+         local table: { string } = keys:toTable()\n\
+         local entries: dream_vfs_Entries = vfs:pathsWith('textures')\n\
+         local entry = entries[#entries]\n\
+         if entry then local name: string = entry.key print(name, entry.file:isLoose()) end\n\
+         for _, row in vfs:entries() do local key: string = row.key print(key, row.file:path()) end\n\
+         local providers: dream_vfs_Providers? = vfs:providersFor('textures/foo.dds')\n\
+         if providers then for _, p in providers do local kind: string = p.source.kind print(kind, p.file:path()) end end\n\
+         local records: dream_vfs_ProviderRecords = vfs:providerRecordsFor('textures/foo.dds')\n\
+         for _, record in records do local index: number = record.sourceIndex print(index, record.resolvedPath) end\n\
          local explain = vfs:explain('textures/foo.dds')\n\
-         if explain then print(explain.key, explain.winner.source, #explain.overridden) end\n\
+         if explain then local winner: string = explain.winner.source.path print(explain.key, winner, #explain.overridden) end\n\
          local layer: dream_vfs_LayerIndex = vfs:layerIndex()\n\
          local lock: dream_vfs_VfsLock = layer:lockManifest(vfs)\n\
          local drift = layer:diffAgainstLock(vfs, lock)\n\
          local provenance = layer:provenance(vfs, 'textures/foo.dds', true)\n\
          if provenance then local size: integer? = provenance.providers[1].size print(size) end\n\
          local tree: dream_vfs_Tree = vfs:tree()\n\
+         for _, row in tree do local dir: string = row.dir print(dir, row.file:fileName()) end\n\
          local nested: { [string]: any } = tree:toTable()\n\
-         local n, snapshot = vfstool.runSetup(vfs, 'merged', false)\n\
+         local written, snapshot = vfstool.runSetup(vfs, 'merged', false)\n\
          local copied = vfstool.runFinalize('merged', 'out', snapshot)\n\
-         print(count, table, nested, #drift.entries, vfs:contains('x'), n, #copied, tree:count(), vfstool.serialize(keys, 'json'))\n",
+         print(count, n, first, joined, table, nested, #drift.entries, vfs:contains('x'), written, #copied, tree:count(), vfstool.serialize(keys, 'json'))\n",
     );
 }
 

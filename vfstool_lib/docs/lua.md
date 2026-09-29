@@ -85,11 +85,16 @@ are sequence views (below).
 collection instead of copying it into a table: `#items`, `items[i]` (1-based, `nil` past the end),
 `for index, item in items do`, and `items:toTable()` for the plain table the previous binding
 returned. Only the item a script touches is pushed. They are userdata, so `ipairs`, `table.sort`,
-and friends want `items:toTable()`; `vfstool.serialize` accepts a view directly.
+and friends want `items:toTable()`; `vfstool.serialize` accepts a view directly. Each view is
+declared with its element type (`Keys` holds `string`, `Entries` holds
+`{ key: string, file: VfsFile }`, `Providers` holds `{ source, file }`, `ProviderRecords` holds
+provider record rows), so a strict script measures, indexes, and iterates a view without
+`toTable()`: `#keys`, `keys[i]` is `string?`, and `for _, entry in entries` types `entry`.
 
 `tree`, `findByRegex`, and `remaining` return a `Tree` stream: `for _, row in tree do` yields
-`{ dir = string, file = VfsFile }` rows in sorted, depth-first order, `tree:count()` is the number
-of rows, and `tree:toTable()` is the nested `{ [root] = { files = {...}, subdirs = {...} } }` shape.
+`{ dir = string, file = VfsFile }` rows (typed as such) in sorted, depth-first order,
+`tree:count()` is the number of rows, and `tree:toTable()` is the nested
+`{ [root] = { files = {...}, subdirs = {...} } }` shape.
 
 ## Top-level functions
 

@@ -277,11 +277,17 @@ fn describe_mutation(vfs: &mut UserdataBuilder<'_, Vfs>) {
         },
     )
     .signature(format!("(self, prefix: string): {}", types::REMOVED_FILES));
-    vfs.method("removeProvider", |v: &Vfs, call: &Call, key: &[u8], source: &[u8]| {
-        let removed = v.with_mut(|vfs| vfs.remove_provider(key, &host_path(source)))?;
-        reports::providers_list(call, &removed)
-    })
-    .signature("(self, key: string, sourcePath: string): { { source: { path: string, kind: string }, file: dream_vfs_VfsFile } }")
+    vfs.method(
+        "removeProvider",
+        |v: &Vfs, call: &Call, key: &[u8], source: &[u8]| {
+            let removed = v.with_mut(|vfs| vfs.remove_provider(key, &host_path(source)))?;
+            reports::providers_list(call, &removed)
+        },
+    )
+    .signature(format!(
+        "(self, key: string, sourcePath: string): {{ {} }}",
+        types::PROVIDER
+    ))
     .doc("Removes every provider of key whose source path equals sourcePath lexically.");
     vfs.method("removeSource", |v: &Vfs, call: &Call, source: &[u8]| {
         let removed = v.with_mut(|vfs| vfs.remove_source(&host_path(source)))?;

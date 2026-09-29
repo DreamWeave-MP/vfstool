@@ -100,11 +100,18 @@ pub const MODULE_NAME: &str = "vfstool";
 /// Luau type spellings shared by the declared signatures.
 mod types {
     pub const SOURCE: &str = "{ path: string, kind: string }";
+    /// One row of an `Entries` view.
+    pub const ENTRY: &str = "{ key: string, file: dream_vfs_VfsFile }";
+    /// One row of a `Providers` view, and of the provider lists mutation returns.
+    pub const PROVIDER: &str =
+        "{ source: { path: string, kind: string }, file: dream_vfs_VfsFile }";
+    /// One row of a `ProviderRecords` view, and the rows of explain and duplicates reports.
+    pub const PROVIDER_RECORD: &str = "{ sourceIndex: number, source: { path: string, kind: string }, key: string, originalPath: string, resolvedPath: string }";
+    /// One row of the `Tree` stream.
+    pub const TREE_ROW: &str = "{ dir: string, file: dream_vfs_VfsFile }";
     pub const LAYER_PROVIDER: &str = "{ sourceIndex: number, providerIndex: number, source: { path: string, kind: string }, key: string, originalPath: string }";
-    pub const EXPLAIN: &str =
-        "{ key: string, winner: { [string]: any }, overridden: { { [string]: any } } }";
-    pub const DUPLICATES: &str =
-        "{ entries: { { key: string, providers: { { [string]: any } }, winnerIndex: number } } }";
+    pub const EXPLAIN: &str = "{ key: string, winner: { sourceIndex: number, source: { path: string, kind: string }, key: string, originalPath: string, resolvedPath: string }, overridden: { { sourceIndex: number, source: { path: string, kind: string }, key: string, originalPath: string, resolvedPath: string } } }";
+    pub const DUPLICATES: &str = "{ entries: { { key: string, providers: { { sourceIndex: number, source: { path: string, kind: string }, key: string, originalPath: string, resolvedPath: string } }, winnerIndex: number } } }";
     pub const ARCHIVE_INFO: &str =
         "{ sourceIndex: number, path: string, entryCount: number, winningEntryCount: number }";
     pub const ARCHIVE_ENTRY: &str =

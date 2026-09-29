@@ -9,8 +9,7 @@
 use l3i::{
     Error, Result,
     bind::Call,
-    convert::Push,
-    sequence::{Sequence, SequenceSource},
+    sequence::{Sequence, SequenceItem, SequenceSource},
     stack::{Frame, Scope, Type, ValueView},
     userdata::receiver,
 };
@@ -51,8 +50,8 @@ fn sequence_items<S: SequenceSource>(
     for index in 0..sequence.0.len() {
         if let Some(item) = sequence.0.get(index) {
             let value = frame.with_frame(|step| {
-                let pushed = item.push_into(step)?;
-                convert(step, pushed, depth + 1)
+                item.push_item(step)?;
+                convert(step, step.top_value(), depth + 1)
             })?;
             items.push(value);
         }

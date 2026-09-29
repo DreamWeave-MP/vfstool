@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Sequence and stream views over the collections scripts iterate: keys, entries, providers,
-//! provider records, and the directory tree. The backing collection stays native; only the
-//! item a script touches is pushed.
+//! provider records, and the directory tree. The backing collection stays native and shared
+//! (`Rc`); an item is the collection plus an index, so serving one pushes it straight from the
+//! collection and clones nothing but the `VfsFile` a `VfsFile` userdata must own.
 
 use std::{cell::Cell, rc::Rc};
 
 use l3i::{
     Result,
     bind::Call,
-    convert::Push,
     extension::{ExtensionDescriptor, TagPolicy},
-    sequence::{Sequence, SequenceSource, Stream, StreamSource},
+    sequence::{Sequence, SequenceItem, SequenceSource, Stream, StreamSource},
     stack::{Frame, Scope, TableView, ValueView},
     userdata::push_owned,
     value::Table,
 };
 
-use super::{VfsFileHandle, path_bytes, reports};
+use super::{VfsFileHandle, path_bytes, reports, types};
 use crate::{DisplayTree, NormalizedPath, VfsFile, VfsProvider, VfsProviderRecord};
 
 /// Builds a small record table on `scope` with `fill` and leaves it as the pushed value.
@@ -35,13 +35,29 @@ pub(super) fn push_record<S: Scope>(
     Ok(scope.top_value())
 }
 
-/// A packed list of byte strings: one blob and one end offset per key, so a view over 5000
-/// keys is two allocations and an item is a slice of the blob.
-#[derive(Clone, Debug, Default)]
-pub struct KeyBlob {
-    bytes: Rc<[u8]>,
-    ends: Rc<[u32]>,
+/// The packed keys behind a [`KeyBlob`]: one blob and one end offset per key.
+#[derive(Debug, Default)]
+struct KeyBlobData {
+    bytes: Box<[u8]>,
+    ends: Box<[u32]>,
 }
+
+impl KeyBlobData {
+    fn get(&self, index: usize) -> Option<&[u8]> {
+        let end = *self.ends.get(index)? as usize;
+        let start = if index == 0 {
+            0
+        } else {
+            self.ends[index - 1] as usize
+        };
+        Some(&self.bytes[start..end])
+    }
+}
+
+/// A packed list of byte strings: one blob and one end offset per key, so a view over 5000
+/// keys is one allocation behind one `Rc` and an item is a slice of the blob.
+#[derive(Clone, Debug, Default)]
+pub struct KeyBlob(Rc<KeyBlobData>);
 
 impl KeyBlob {
     /// Packs `keys` in the order given.
@@ -52,10 +68,10 @@ impl KeyBlob {
             bytes.extend_from_slice(key);
             ends.push(u32::try_from(bytes.len()).expect("a key list under 4 GiB"));
         }
-        KeyBlob {
+        KeyBlob(Rc::new(KeyBlobData {
             bytes: bytes.into(),
             ends: ends.into(),
-        }
+        }))
     }
 
     /// Sorted keys of a VFS or an index.
@@ -67,29 +83,22 @@ impl KeyBlob {
 
     /// Number of keys.
     pub fn len(&self) -> usize {
-        self.ends.len()
+        self.0.ends.len()
     }
 
     /// Whether there are no keys.
     pub fn is_empty(&self) -> bool {
-        self.ends.is_empty()
+        self.0.ends.is_empty()
     }
 
     /// The bytes of key `index` (0-based).
     pub fn get(&self, index: usize) -> Option<&[u8]> {
-        let end = *self.ends.get(index)? as usize;
-        let start = if index == 0 {
-            0
-        } else {
-            self.ends[index - 1] as usize
-        };
-        Some(&self.bytes[start..end])
+        self.0.get(index)
     }
 
     fn item(&self, index: usize) -> Option<KeyItem> {
-        self.get(index).map(|_| KeyItem {
-            blob: Rc::clone(&self.bytes),
-            ends: Rc::clone(&self.ends),
+        (index < self.len()).then(|| KeyItem {
+            keys: Rc::clone(&self.0),
             index,
         })
     }
@@ -97,26 +106,14 @@ impl KeyBlob {
 
 /// One key of a [`KeyBlob`], pushed as a Lua string straight from the blob.
 pub struct KeyItem {
-    blob: Rc<[u8]>,
-    ends: Rc<[u32]>,
+    keys: Rc<KeyBlobData>,
     index: usize,
 }
 
-impl KeyItem {
-    fn bytes(&self) -> &[u8] {
-        let end = self.ends[self.index] as usize;
-        let start = if self.index == 0 {
-            0
-        } else {
-            self.ends[self.index - 1] as usize
-        };
-        &self.blob[start..end]
-    }
-}
-
-impl Push for KeyItem {
-    fn push_into<'s, S: Scope>(&self, scope: &'s S) -> Result<ValueView<'s>> {
-        self.bytes().push_into(scope)
+impl SequenceItem for KeyItem {
+    fn push_item<S: Scope>(self, scope: &S) -> Result<()> {
+        let key = self.keys.get(self.index).expect("an item names a key");
+        scope.push(key).map(drop)
     }
 }
 
@@ -135,21 +132,25 @@ impl SequenceSource for Keys {
     }
 }
 
+/// The rows behind an [`Entries`] view: parallel keys and files.
+#[derive(Debug, Default)]
+struct EntriesData {
+    keys: KeyBlob,
+    files: Box<[VfsFile]>,
+}
+
 /// `dream.vfs.Entries`: `(key, file)` pairs, each pushed as `{ key = string, file = VfsFile }`.
 #[derive(Clone, Debug, Default)]
-pub struct Entries {
-    keys: KeyBlob,
-    files: Rc<[VfsFile]>,
-}
+pub struct Entries(Rc<EntriesData>);
 
 impl Entries {
     /// Entries in the order given.
     pub fn new(entries: impl IntoIterator<Item = (NormalizedPath, VfsFile)>) -> Self {
         let (keys, files): (Vec<NormalizedPath>, Vec<VfsFile>) = entries.into_iter().unzip();
-        Entries {
+        Entries(Rc::new(EntriesData {
             keys: KeyBlob::new(keys.iter().map(NormalizedPath::as_bytes)),
             files: files.into(),
-        }
+        }))
     }
 
     /// Entries sorted by key.
@@ -171,20 +172,27 @@ impl Entries {
     }
 }
 
-/// One entry row: `{ key = string, file = VfsFile }`.
+/// One entry row: `{ key = string, file = VfsFile }`, served from the shared rows.
 pub struct EntryRow {
-    key: KeyItem,
-    file: VfsFile,
+    entries: Rc<EntriesData>,
+    index: usize,
 }
 
-impl Push for EntryRow {
-    fn push_into<'s, S: Scope>(&self, scope: &'s S) -> Result<ValueView<'s>> {
+impl SequenceItem for EntryRow {
+    fn push_item<S: Scope>(self, scope: &S) -> Result<()> {
+        let key = self
+            .entries
+            .keys
+            .get(self.index)
+            .expect("a row names an entry");
+        let file = &self.entries.files[self.index];
         push_record(scope, 2, |frame, table| {
-            self.key.push_into(frame)?;
+            frame.push(key)?;
             table.raw_set(frame, "key")?;
-            push_owned(frame, VfsFileHandle(self.file.clone()))?;
+            push_owned(frame, VfsFileHandle(file.clone()))?;
             table.raw_set(frame, "file")
         })
+        .map(drop)
     }
 }
 
@@ -192,13 +200,32 @@ impl SequenceSource for Entries {
     const NAME: &'static str = "dream.vfs.Entries";
     type Item = EntryRow;
     fn len(&self) -> usize {
-        self.files.len()
+        self.0.files.len()
     }
     fn get(&self, index: usize) -> Option<EntryRow> {
-        Some(EntryRow {
-            key: self.keys.item(index)?,
-            file: self.files.get(index)?.clone(),
+        (index < self.0.files.len()).then(|| EntryRow {
+            entries: Rc::clone(&self.0),
+            index,
         })
+    }
+}
+
+/// One element of a shared slice, served without cloning the slice's row.
+pub struct Slot<T> {
+    rows: Rc<[T]>,
+    index: usize,
+}
+
+impl<T> Slot<T> {
+    fn of(rows: &Rc<[T]>, index: usize) -> Option<Self> {
+        (index < rows.len()).then(|| Slot {
+            rows: Rc::clone(rows),
+            index,
+        })
+    }
+
+    fn row(&self) -> &T {
+        &self.rows[self.index]
     }
 }
 
@@ -207,28 +234,20 @@ impl SequenceSource for Entries {
 #[derive(Clone, Debug)]
 pub struct Providers(pub Rc<[VfsProvider]>);
 
-/// One provider row.
-pub struct ProviderRow(VfsProvider);
-
-impl Push for ProviderRow {
-    fn push_into<'s, S: Scope>(&self, scope: &'s S) -> Result<ValueView<'s>> {
-        push_record(scope, 2, |frame, table| {
-            reports::push_source_meta(frame, &self.0.source)?;
-            table.raw_set(frame, "source")?;
-            push_owned(frame, VfsFileHandle(self.0.file.clone()))?;
-            table.raw_set(frame, "file")
-        })
+impl SequenceItem for Slot<VfsProvider> {
+    fn push_item<S: Scope>(self, scope: &S) -> Result<()> {
+        reports::push_provider(scope, self.row()).map(drop)
     }
 }
 
 impl SequenceSource for Providers {
     const NAME: &'static str = "dream.vfs.Providers";
-    type Item = ProviderRow;
+    type Item = Slot<VfsProvider>;
     fn len(&self) -> usize {
         self.0.len()
     }
-    fn get(&self, index: usize) -> Option<ProviderRow> {
-        self.0.get(index).cloned().map(ProviderRow)
+    fn get(&self, index: usize) -> Option<Slot<VfsProvider>> {
+        Slot::of(&self.0, index)
     }
 }
 
@@ -236,23 +255,20 @@ impl SequenceSource for Providers {
 #[derive(Clone, Debug)]
 pub struct ProviderRecords(pub Rc<[VfsProviderRecord]>);
 
-/// One provider record row.
-pub struct ProviderRecordRow(VfsProviderRecord);
-
-impl Push for ProviderRecordRow {
-    fn push_into<'s, S: Scope>(&self, scope: &'s S) -> Result<ValueView<'s>> {
-        reports::push_provider_record(scope, &self.0)
+impl SequenceItem for Slot<VfsProviderRecord> {
+    fn push_item<S: Scope>(self, scope: &S) -> Result<()> {
+        reports::push_provider_record(scope, self.row()).map(drop)
     }
 }
 
 impl SequenceSource for ProviderRecords {
     const NAME: &'static str = "dream.vfs.ProviderRecords";
-    type Item = ProviderRecordRow;
+    type Item = Slot<VfsProviderRecord>;
     fn len(&self) -> usize {
         self.0.len()
     }
-    fn get(&self, index: usize) -> Option<ProviderRecordRow> {
-        self.0.get(index).cloned().map(ProviderRecordRow)
+    fn get(&self, index: usize) -> Option<Slot<VfsProviderRecord>> {
+        Slot::of(&self.0, index)
     }
 }
 
@@ -264,7 +280,6 @@ pub struct TreeWalk {
 }
 
 /// One file of the walk: the directory it sits in (as displayed) and the file.
-#[derive(Clone)]
 pub struct TreeRow {
     dir: Rc<str>,
     file: VfsFile,
@@ -304,14 +319,16 @@ fn walk(dir: &std::path::Path, node: &crate::DirectoryNode, rows: &mut Vec<TreeR
     }
 }
 
-impl Push for TreeRow {
-    fn push_into<'s, S: Scope>(&self, scope: &'s S) -> Result<ValueView<'s>> {
+impl SequenceItem for Slot<TreeRow> {
+    fn push_item<S: Scope>(self, scope: &S) -> Result<()> {
+        let row = self.row();
         push_record(scope, 2, |frame, table| {
-            frame.push(&*self.dir)?;
+            frame.push(&*row.dir)?;
             table.raw_set(frame, "dir")?;
-            push_owned(frame, VfsFileHandle(self.file.clone()))?;
+            push_owned(frame, VfsFileHandle(row.file.clone()))?;
             table.raw_set(frame, "file")
         })
+        .map(drop)
     }
 }
 
@@ -323,7 +340,7 @@ pub struct TreeCursor {
 
 impl StreamSource for TreeWalk {
     const NAME: &'static str = "dream.vfs.Tree";
-    type Item = TreeRow;
+    type Item = Slot<TreeRow>;
     type Cursor = TreeCursor;
     fn open(&self) -> TreeCursor {
         TreeCursor {
@@ -331,9 +348,9 @@ impl StreamSource for TreeWalk {
             index: Cell::new(0),
         }
     }
-    fn next(cursor: &TreeCursor) -> Option<TreeRow> {
+    fn next(cursor: &TreeCursor) -> Option<Slot<TreeRow>> {
         let index = cursor.index.get();
-        let row = cursor.rows.get(index)?.clone();
+        let row = Slot::of(&cursor.rows, index)?;
         cursor.index.set(index + 1);
         Some(row)
     }
@@ -372,19 +389,24 @@ fn node_table(scope: &impl Scope, node: &crate::DirectoryNode) -> Result<Table> 
 
 pub(super) fn describe(d: &mut ExtensionDescriptor) {
     d.sequence::<Keys>(Keys::NAME)
+        .item_type("string")
         .tag(TagPolicy::Preferred)
         .doc("Sorted VFS keys: #keys, keys[i], for _, key in keys, keys:toTable().");
     d.sequence::<Entries>(Entries::NAME)
+        .item_type(types::ENTRY)
         .tag(TagPolicy::Preferred)
         .doc("Resolved entries sorted by key, each { key = string, file = VfsFile }.");
     d.sequence::<Providers>(Providers::NAME)
+        .item_type(types::PROVIDER)
         .tag(TagPolicy::Never)
         .doc("A key's providers low to high priority, each { source = { path, kind }, file = VfsFile }.");
     d.sequence::<ProviderRecords>(ProviderRecords::NAME)
+        .item_type(types::PROVIDER_RECORD)
         .tag(TagPolicy::Never)
         .doc("Provider report rows for a key, low to high priority.");
     let mut tree = d.stream::<TreeWalk>(TreeWalk::NAME);
-    tree.tag(TagPolicy::Never)
+    tree.item_type(types::TREE_ROW)
+        .tag(TagPolicy::Never)
         .doc("A sorted directory tree: for _, row in tree yields { dir = string, file = VfsFile }; toTable() is the nested { files, subdirs } shape.");
     tree.method("toTable", |walk: &Stream<TreeWalk>, call: &Call| {
         tree_table(call, &walk.0.tree)
