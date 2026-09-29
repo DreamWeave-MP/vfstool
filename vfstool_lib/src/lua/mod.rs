@@ -53,6 +53,8 @@
 
 mod conflicts;
 mod handles;
+#[cfg(feature = "lua-host")]
+mod host;
 mod io;
 mod layer;
 mod reports;
@@ -84,6 +86,8 @@ pub use handles::{
     ConflictIndexHandle, LayerIndexHandle, MetadataSnapshotHandle, SnapshotHandle, Vfs,
     VfsFileHandle, VfsLockHandle, VfsProviderHandle,
 };
+#[cfg(feature = "lua-host")]
+pub use host::{HostEntries, HostEntry};
 pub use io::VfsReader;
 pub use require::{TemplateCache, VfsRequireNavigator};
 pub use views::{Entries, KeyBlob, Keys, ProviderRecords, Providers, TreeWalk};
@@ -149,6 +153,9 @@ mod types {
     pub const COPIED: &str = "{ { relativePath: string, destinationPath: string } }";
     pub const COLLAPSE_OPTIONS: &str =
         "{ allowCopying: boolean?, extractArchives: boolean?, useSymlinks: boolean? }?";
+    /// One row of a `HostEntries` view.
+    #[cfg(feature = "lua-host")]
+    pub const HOST_ENTRY: &str = "{ path: string, isDir: boolean, size: number }";
 }
 
 /// The `dream.vfs` extension: provides `@dream/vfs` and requires `dream.path`.
@@ -168,6 +175,8 @@ impl Extension for VfsExtension {
         io::describe_reader(d);
         #[cfg(any(feature = "lua-write", feature = "lua-host"))]
         write::describe_writer(d);
+        #[cfg(feature = "lua-host")]
+        host::describe(d);
         handles::describe_provider(d);
         layer::describe(d);
         conflicts::describe(d);
@@ -186,6 +195,8 @@ impl Extension for VfsExtension {
         module.set("VfsProvider", &handles::provider_class_table(runtime)?)?;
         module.set("LayerIndex", &layer::class_table(runtime)?)?;
         module.set("ConflictIndex", &conflicts::class_table(runtime)?)?;
+        #[cfg(feature = "lua-host")]
+        module.set("host", &host::table(runtime)?)?;
         Ok(())
     }
 }
@@ -272,6 +283,11 @@ fn describe_module(d: &mut ExtensionDescriptor) {
         .signature("{ fromFileLists: (sources: { { source: { path: string, kind: string }, files: { string } } }) -> dream_vfs_LayerIndex }")
         .installed("ConflictIndex")
         .signature(conflicts::CLASS_TYPE);
+    #[cfg(feature = "lua-host")]
+    module
+        .installed("host")
+        .signature(host::TABLE_TYPE)
+        .doc("Files and directories on host paths, with no VFS in between (the lua-host feature).");
 }
 
 fn normalize_host_path(bytes: &[u8]) -> Vec<u8> {

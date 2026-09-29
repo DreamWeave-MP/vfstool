@@ -226,14 +226,14 @@ pub struct Slot<T> {
 }
 
 impl<T> Slot<T> {
-    fn of(rows: &Rc<[T]>, index: usize) -> Option<Self> {
+    pub(super) fn of(rows: &Rc<[T]>, index: usize) -> Option<Self> {
         (index < rows.len()).then(|| Slot {
             rows: Rc::clone(rows),
             index,
         })
     }
 
-    fn row(&self) -> &T {
+    pub(super) fn row(&self) -> &T {
         &self.rows[self.index]
     }
 }

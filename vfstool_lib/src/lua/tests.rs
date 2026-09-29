@@ -121,6 +121,10 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
         "function writeFile(self, key: string, data: buffer | string, options: { offset: number?, append: boolean?, create: boolean? }?): dream_vfs_VfsFile",
         #[cfg(any(feature = "lua-write", feature = "lua-host"))]
         "declare extern type dream_vfs_Writer with",
+        #[cfg(feature = "lua-host")]
+        "declare extern type dream_vfs_HostEntries with",
+        #[cfg(feature = "lua-host")]
+        "    host: { readFile: (path: string) -> buffer,",
         #[cfg(feature = "lua-write")]
         "fromDirectories: (dirs: { string }, options: { archives: { string }?, writeRoot: string? }?) -> dream_vfs_VFS",
         "function readInto(self, buffer: buffer, bufferOffset: number?, length: number?): number",
@@ -221,6 +225,23 @@ fn strict_script() -> String {
             } else {
                 ""
             }
+        + if cfg!(feature = "lua-host") {
+            "local host = vfstool.host\n\
+             local blob: buffer = host.readFile('a.bin')\n\
+             local text: string = host.readFileString('a.txt')\n\
+             local part: buffer = host.readAt('a.bin', 0, 4)\n\
+             local wrote: number = host.writeFile('b.txt', blob, { append = true })\n\
+             local hr: dream_vfs_Reader = host.open('a.bin')\n\
+             local hw: dream_vfs_Writer = host.openWrite('c.txt', { append = false })\n\
+             local st = host.stat('a.bin')\n\
+             if st then local sz: number = st.size print(sz, st.isFile, st.isDir, st.modified, st.readonly) end\n\
+             local rows: dream_vfs_HostEntries = host.list('.', { recursive = true })\n\
+             for _, row in rows do local p: string = row.path print(p, row.isDir, row.size) end\n\
+             host.mkdir('d', { recursive = true }) host.rename('d', 'e') host.remove('e', { recursive = true })\n\
+             print(text, part, wrote, hr:size(), hw:tell(), host.exists('x'), host.copy('a.txt', 'b.txt'), host.canonicalize('.'), #rows)\n"
+        } else {
+            ""
+        }
 }
 
 /// Type checks `script` in strict mode against the plan's definitions and module stubs.
@@ -1132,4 +1153,103 @@ fn a_runtime_without_lua_write_has_no_write_methods() {
             ",
         )
         .unwrap();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Host-path I/O (lua-host)
+// ---------------------------------------------------------------------------------------------
+
+#[cfg(feature = "lua-host")]
+#[test]
+fn host_io_reads_writes_lists_and_moves_host_paths() {
+    let dir = TempDir::new("host");
+    let payload: Vec<u8> = (0..=255u8).cycle().take(1000).collect();
+    dir.write("in/big.bin", &payload);
+    dir.write("in/sub/small.txt", b"small");
+    let runtime = runtime();
+    runtime.exec(&format!("dir = {:?}", dir.lua())).unwrap();
+    runtime
+        .exec(
+            r"
+            local host = vfstool.host
+            local whole = host.readFile(dir .. '/in/big.bin')
+            assert(buffer.len(whole) == 1000 and buffer.readu8(whole, 999) == 231)
+            assert(host.readFileString(dir .. '/in/sub/small.txt') == 'small')
+            local part = host.readAt(dir .. '/in/big.bin', 256, 8)
+            assert(buffer.len(part) == 8 and buffer.readu8(part, 0) == 0 and buffer.readu8(part, 7) == 7)
+            assert(buffer.len(host.readAt(dir .. '/in/big.bin', 996, 100)) == 4, 'short at the end')
+            local ok, err = pcall(host.readAt, dir .. '/in/big.bin', 1001, 1)
+            assert(not ok and err:find('dream.vfs: host.readAt: offset 1001 past the end (size 1000)', 1, true), err)
+            ok, err = pcall(host.readFile, dir .. '/nope.bin')
+            assert(not ok and err:find('dream.vfs: ', 1, true), err)
+            assert(host.writeFile(dir .. '/out.txt', 'abc') == 3)
+            assert(host.writeFile(dir .. '/out.txt', buffer.fromstring('def'), { append = true }) == 3)
+            assert(host.readFileString(dir .. '/out.txt') == 'abcdef')
+            ok, err = pcall(host.writeFile, dir .. '/out.txt', 'x', { offset = 1 })
+            assert(not ok and err:find([[host.writeFile: unknown option 'offset']], 1, true), err)
+            local st = host.stat(dir .. '/out.txt')
+            assert(st.size == 6 and st.isFile and not st.isDir and st.readonly == false and type(st.modified) == 'number', tostring(st.size))
+            assert(host.stat(dir .. '/in').isDir and host.stat(dir .. '/in').size == 0)
+            assert(host.stat(dir .. '/nope') == nil)
+            assert(host.exists(dir .. '/out.txt') and not host.exists(dir .. '/nope'))
+            local rows = host.list(dir .. '/in')
+            assert(#rows == 2 and rows[1].path == dir .. '/in/big.bin' and rows[1].size == 1000 and not rows[1].isDir, rows[1].path)
+            assert(rows[2].path == dir .. '/in/sub' and rows[2].isDir and rows[2].size == 0)
+            local deep = host.list(dir .. '/in', { recursive = true })
+            assert(#deep == 3 and deep[3].path == dir .. '/in/sub/small.txt' and deep[3].size == 5, deep[3].path)
+            local names = {}
+            for _, row in deep do names[#names + 1] = row.path end
+            assert(#names == 3 and #deep:toTable() == 3)
+            ok, err = pcall(host.list, dir .. '/in', { deep = true })
+            assert(not ok and err:find([[host.list: unknown option 'deep']], 1, true), err)
+            host.mkdir(dir .. '/a/b/c', { recursive = true })
+            assert(host.stat(dir .. '/a/b/c').isDir)
+            ok, err = pcall(host.mkdir, dir .. '/x/y')
+            assert(not ok, 'mkdir without recursive needs the parent')
+            host.mkdir(dir .. '/x')
+            host.rename(dir .. '/out.txt', dir .. '/x/out.txt')
+            assert(not host.exists(dir .. '/out.txt') and host.readFileString(dir .. '/x/out.txt') == 'abcdef')
+            assert(host.copy(dir .. '/x/out.txt', dir .. '/x/copy.txt') == 6)
+            assert(host.readFileString(dir .. '/x/copy.txt') == 'abcdef')
+            host.remove(dir .. '/x/copy.txt')
+            assert(not host.exists(dir .. '/x/copy.txt'))
+            ok, err = pcall(host.remove, dir .. '/x')
+            assert(not ok, 'a directory with content needs recursive')
+            host.remove(dir .. '/x', { recursive = true })
+            assert(not host.exists(dir .. '/x'))
+            assert(host.canonicalize(dir .. '/in/sub/../big.bin') == host.canonicalize(dir) .. '/in/big.bin')
+            local reader = host.open(dir .. '/in/big.bin')
+            assert(reader:size() == 1000)
+            reader:seek(500)
+            assert(buffer.readu8(reader:read(1), 0) == 500 % 256 and reader:tell() == 501)
+            reader:close()
+            local w = host.openWrite(dir .. '/written.bin')
+            assert(w:write(buffer.fromstring('0123456789')) == 10)
+            w:writeAt(0, 'AB')
+            w:truncate(4)
+            assert(w:close() == nil, 'a host writer registers nothing')
+            assert(host.readFileString(dir .. '/written.bin') == 'AB23')
+            local a = host.openWrite(dir .. '/written.bin', { append = true })
+            a:write('!') a:close()
+            assert(host.readFileString(dir .. '/written.bin') == 'AB23!')
+            ",
+        )
+        .unwrap();
+    #[cfg(unix)]
+    runtime
+        .exec(
+            r"
+            local host = vfstool.host
+            host.writeFile(dir .. '/\255.bin', 'odd')
+            assert(host.readFileString(dir .. '/\255.bin') == 'odd', 'a host path that is not UTF-8')
+            assert(host.stat(dir .. '/\255.bin').size == 3)
+            ",
+        )
+        .unwrap();
+}
+
+#[cfg(not(feature = "lua-host"))]
+#[test]
+fn a_runtime_without_lua_host_has_no_host_table() {
+    runtime().exec("assert(vfstool.host == nil)").unwrap();
 }
