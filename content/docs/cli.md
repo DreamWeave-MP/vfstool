@@ -105,7 +105,7 @@ regular expression over keys, ignoring case, narrows the list; a bad one exits w
 ### remaining
 
 ```sh
-vfstool remaining [-r] [-f FORMAT] [-o FILE] <DATA_DIR>
+vfstool remaining [--replacements-only] [-f FORMAT] [-o FILE] <DATA_DIR>
 ```
 
 The files `DATA_DIR` still provides, as a tree. `DATA_DIR` must be one of the cfg's data
@@ -113,9 +113,9 @@ directories, compared ignoring ASCII case and slash direction, or vfstool exits 
 
 | Option | Does |
 |---|---|
-| `-r`, `--replacements-only` | Instead, the files `DATA_DIR` has that a later source provides |
+| `--replacements-only` | Instead, the files `DATA_DIR` has that a later source provides |
 
-This `-r` goes after the command; the global `-r` before it.
+It has no short form: `-r` is the global `--use-relative`.
 
 ## Load order
 

@@ -177,11 +177,11 @@ Data Files:
       - Light_Com_Lantern_01.NIF
 ```
 
-With its own `-r` (`--replacements-only`, after the command), it prints the opposite: files the
-directory has but a later one provides instead. The global `-r` goes before the command:
+With `--replacements-only`, it prints the opposite: files the directory has but a later one
+provides instead:
 
 ```sh
-$ vfstool -c openmw -r remaining -r '/tmp/mw/mods/Lantern Glow'
+$ vfstool -c openmw -r remaining --replacements-only '/tmp/mw/mods/Lantern Glow'
 Data Files:
   textures:
     .:

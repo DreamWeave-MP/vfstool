@@ -113,8 +113,9 @@ pub enum Commands {
     Remaining {
         filter_path: PathBuf,
 
-        /// If used, show only files replacing contents of this path, instead of ones still in it
-        #[arg(short, long)]
+        /// If used, show only files replacing contents of this path, instead of ones still in it.
+        /// It has no short form: `-r` is the global `--use-relative`
+        #[arg(long)]
         replacements_only: bool,
 
         /// Output format when serializing as text.

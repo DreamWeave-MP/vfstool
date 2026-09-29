@@ -1194,3 +1194,23 @@ fn a_command_line_that_does_not_parse_exits_with_invalid_input_not_two() {
         assert_eq!(output.status.code(), Some(0), "{args:?}");
     }
 }
+
+#[test]
+fn remaining_spells_replacements_only_in_full_so_r_means_one_thing() {
+    let fixture = Fixture::new("remaining_short_r");
+    let help = fixture.run(&["remaining", "--help"]);
+    let text = String::from_utf8_lossy(&help.stdout);
+    assert!(text.contains("--replacements-only"), "{text}");
+    assert!(!text.contains("-r, --replacements-only"), "{text}");
+
+    let low = fixture.low.to_str().expect("path should be utf-8");
+    let output = fixture.run(&["remaining", low, "--replacements-only", "-f", "json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload = stdout_json(&output);
+    assert!(payload.to_string().contains("a.dds"), "{payload}");
+}

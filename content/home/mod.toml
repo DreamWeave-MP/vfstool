@@ -194,6 +194,9 @@ version = "1.0.0"
 date = 2026-09-29
 summary = "First stable release: the commands, their options, their reports and their exit codes are now under semver."
 added = ["`--version` prints the version."]
+breaking = [
+    "`remaining --replacements-only` has no short form: its `-r` is gone, so `-r` means `--use-relative` everywhere.",
+]
 changed = [
     "A command line that does not parse exits with 8, invalid input, instead of clap's 2, which `find-file -p` uses for a file only an archive has. Help and `--version` still exit with 0.",
     "No command or option was removed or renamed since 0.10.4. Built on vfstool_lib 1.0.0: looking up a path that is already normalized allocates nothing.",
