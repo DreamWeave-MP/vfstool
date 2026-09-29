@@ -8,27 +8,21 @@ on:
     tags: ["*"]
 
 jobs:
-  build-lib:
+  build:
     permissions:
+      actions: write
       contents: write
       pages: write
       id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/libGlobalBuild.yml@v43
-    secrets: inherit
-    with:
-      crate_names: '["vfstool_lib"]'
-      dependent_repo_names: '["DreamWeave-MP/Morrobroom"]'
-      generate_benchmarks: false
-
-  build-app:
-    needs: build-lib
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v43
+    uses: DreamWeave-MP/StroggForge/.github/workflows/rustGlobalBuild.yml@v51
     secrets: inherit
     with:
       binary_names: '["vfstool"]'
-      publish_docs: false
+      # A bare version tag publishes vfstool_lib, then vfstool, to crates.io, dependencies first.
+      cargo_publish_workspace: true
       generate_benchmarks: true
+      dependent_repo_names: '["DreamWeave-MP/Morrobroom"]'
+      # StroggForge records each release of the program in content/home/mod.lock and, once the
+      # workspace is published, the library's version in content/lib/mod.lock, then deploys the
+      # site in content/.
+      mod_template: true
