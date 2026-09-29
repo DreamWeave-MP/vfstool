@@ -128,11 +128,11 @@ impl VFS {
         }
     }
 
-    pub(crate) fn winner_source_index(&self, key: &NormalizedPath) -> Option<usize> {
+    pub(crate) fn winner_source(&self, key: &NormalizedPath) -> Option<&SourceMeta> {
         self.providers
             .get(key)
             .and_then(|providers| providers.last())
-            .map(|entry| entry.source_index)
+            .map(|entry| &entry.provider.source)
     }
 
     pub(crate) fn provider_file_for_key_index(

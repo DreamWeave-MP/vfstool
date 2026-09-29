@@ -39,7 +39,7 @@ impl LayerIndex {
                 continue;
             }
 
-            let before_idx = Self::current_winner_source_idx(vfs, &key, providers);
+            let before_idx = self.current_winner_source_idx(vfs, &key, providers);
             let Some(after_idx) = Self::winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
@@ -197,13 +197,24 @@ impl LayerIndex {
         ranks
     }
 
+    /// The position in this index's `sources` of the source `vfs` resolves `key` to, given the
+    /// key's providers here. The VFS numbers every source it was ever given and this index only
+    /// those that provide a key, so the two numbers differ after a source that provides nothing:
+    /// the winner is found by its place in the key's provider stack, which both keep in the same
+    /// order, and checked against the source it names.
     pub(super) fn current_winner_source_idx(
+        &self,
         vfs: &VFS,
         key: &NormalizedPath,
         providers: &[usize],
     ) -> Option<usize> {
-        let winner = vfs.winner_source_index(key)?;
-        providers.iter().copied().find(|idx| *idx == winner)
+        let winner = vfs.winner_source(key)?;
+        let is_winner = |idx: &usize| self.sources.get(*idx) == Some(winner);
+        vfs.winner_provider_index(key)
+            .and_then(|position| providers.get(position))
+            .copied()
+            .filter(is_winner)
+            .or_else(|| providers.iter().rev().copied().find(is_winner))
     }
 
     pub(super) fn winner_after_reorder(

@@ -63,6 +63,37 @@ fn simulate_move_after_changes_winner() {
 }
 
 #[test]
+fn simulate_counts_current_winners_when_a_source_provides_nothing() {
+    let empty = TempDir::new("analysis_sim_idle_empty");
+    let a = TempDir::new("analysis_sim_idle_a");
+    let b = TempDir::new("analysis_sim_idle_b");
+    let c = TempDir::new("analysis_sim_idle_c");
+    a.write("textures/a.dds", b"a");
+    b.write("textures/a.dds", b"b");
+    b.write("meshes/b.nif", b"b");
+    c.write("meshes/b.nif", b"c");
+
+    let (vfs, index) =
+        VFS::from_directories_with_layer_index([empty.path(), a.path(), b.path(), c.path()], None);
+    let assert_unchanged = |vfs: &VFS, index: &LayerIndex| {
+        let order = index.sources.iter().map(|s| s.path.clone()).collect();
+        let delta = index
+            .simulate(vfs, ReorderOp::FullOrder(order))
+            .expect("the current order should simulate");
+        assert_eq!(delta.changed_winners, 0);
+        assert_eq!(delta.unchanged_winners, 2);
+        for row in &delta.by_source_gain_loss {
+            assert_eq!(row.wins_before, row.wins_after, "{}", row.source.display());
+        }
+    };
+    assert_unchanged(&vfs, &index);
+
+    let mut vfs = vfs;
+    assert_eq!(vfs.remove_source(a.path()).len(), 1);
+    assert_unchanged(&vfs, &vfs.layer_index().clone());
+}
+
+#[test]
 fn simulate_full_order_rejects_duplicate_sources() {
     let a = TempDir::new("analysis_sim_full_dup_a");
     let b = TempDir::new("analysis_sim_full_dup_b");

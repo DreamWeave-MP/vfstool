@@ -19,20 +19,17 @@ what the crate root re-exports, and `solve_order` takes its request and returns 
 [`experimental::solve`](@/docs/api/experimental.md) types. The command line uses none of it.
 {% end %}
 
-{% callout(kind="warning", title="Known problems in 1.0.0") %}
-Two things make `simulate`, `simulate_with_opts` and `simulate_impact` report changes that would
-not happen:
-
-- **Archives are ranked like directories.** The winner after a reorder is the key's source ranked
-  highest in the new order, whatever its kind. A VFS never lets an archive beat a loose file, and
-  `solve_order` does not either; a simulation that moves an archive above a data directory
-  reports the archive winning.
-- **Sources that provide nothing shift the count.** The current winner is looked up by comparing
-  the VFS's source position with the index's, and an index built from a VFS leaves out sources
-  that provide nothing. With an empty data directory before the others, keys are counted as
-  changed that are not, and `wins_before` is wrong. `plan_candidate_directory` then leaves
-  `current_winner_source` empty.
+{% callout(kind="warning", title="Known problem in 1.0.0") %}
+**Archives are ranked like directories.** The winner after a reorder is the key's source ranked
+highest in the new order, whatever its kind. A VFS never lets an archive beat a loose file, and
+`solve_order` does not either; a simulation that moves an archive above a data directory reports
+the archive winning, so `simulate`, `simulate_with_opts` and `simulate_impact` report a change
+that would not happen.
 {% end %}
+
+The current winner of each key is the provider the VFS resolves it to, found by its place in the
+key's provider stack, so a source that provides nothing, or that `remove_source` emptied, does not
+throw the count off.
 
 ## Reordering
 

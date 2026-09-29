@@ -27,6 +27,22 @@ fn candidate_plan_reports_additions_and_conflicts() {
 }
 
 #[test]
+fn candidate_plan_names_the_current_winner_after_a_source_that_provides_nothing() {
+    let empty = TempDir::new("analysis_plan_idle_empty");
+    let base = TempDir::new("analysis_plan_idle_base");
+    let candidate = TempDir::new("analysis_plan_idle_candidate");
+    base.write("textures/a.dds", b"base");
+    candidate.write("textures/a.dds", b"candidate");
+
+    let (vfs, index) = VFS::from_directories_with_layer_index([empty.path(), base.path()], None);
+    let plan = index
+        .plan_candidate_directory(&vfs, candidate.path(), CandidatePlanOpts::default())
+        .expect("candidate plan should succeed");
+
+    assert_eq!(plan.conflicts[0].current_winner_source, base.path());
+}
+
+#[test]
 fn candidate_plan_semantic_can_be_disabled() {
     let base = TempDir::new("analysis_plan_semantic_base");
     let candidate = TempDir::new("analysis_plan_semantic_candidate");
