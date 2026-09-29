@@ -59,8 +59,8 @@ impl DirectoryNode {
     ///
     /// # Arguments
     ///
-    /// * `file_filter` - A function that takes a reference to `Arc<VfsFile>`
-    ///   and returns `true` if the file should be kept, or `false` otherwise.
+    /// * `file_filter` - A function that takes a `&VfsFile` and returns `true` if the file
+    ///   should be kept, or `false` otherwise.
     ///
     /// # Examples
     ///

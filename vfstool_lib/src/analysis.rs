@@ -32,7 +32,7 @@ pub enum SourceKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SourceMeta {
-    /// Absolute path to the source.
+    /// Path to the source, as it was given when the source was added.
     #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// Source type.
@@ -115,7 +115,8 @@ pub struct ProviderRecord {
     pub source: SourceMeta,
     /// Absolute loose path or archive-entry display path.
     pub resolved_path: String,
-    /// Optional content hash (unavailable for some archive providers).
+    /// BLAKE3 hash of the provider's content, when hashes were asked for; `None` without them,
+    /// or for a loose file that no longer exists.
     pub hash_blake3: Option<String>,
     /// Optional byte size.
     pub size: Option<u64>,
@@ -371,7 +372,8 @@ pub enum RiskLevel {
 /// Candidate planning options.
 #[derive(Debug, Clone, Copy)]
 pub struct CandidatePlanOpts {
-    /// Include semantic equality checks for conflicting files.
+    /// Compare each conflicting candidate file's content with the current winner's, by BLAKE3
+    /// hash of the raw bytes (not the semantic analysis).
     pub include_semantic: bool,
 }
 
@@ -396,9 +398,10 @@ pub struct CandidateConflict {
     /// Candidate file path.
     #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub candidate_file: PathBuf,
-    /// Whether candidate content differs from current winner.
+    /// Whether the candidate's bytes differ from the current winner's, by BLAKE3 hash; `None`
+    /// without `include_semantic`.
     pub semantic_differs: Option<bool>,
-    /// Optional risk level placeholder.
+    /// Always `None`: reserved for a risk level the planner does not compute.
     pub risk: Option<RiskLevel>,
 }
 

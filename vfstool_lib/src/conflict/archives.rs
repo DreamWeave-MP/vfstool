@@ -4,7 +4,7 @@ use crate::{LayerIndex, SourceKind, SourceMeta};
 use std::path::{Path, PathBuf};
 
 impl ConflictIndex {
-    /// Extract normalized VFS paths from an archive (BSA, BA2, ZIP, or PK3).
+    /// Extract normalized VFS paths from an archive (BSA, BA2, ZIP, PK3, or JPK).
     ///
     /// Returns an empty list on any failure (missing file, unknown format, read
     /// error), consistent with how `VFS::from_directories` treats bad archives.
@@ -25,9 +25,9 @@ impl ConflictIndex {
     /// # Arguments
     ///
     /// * `dirs` — Data directories in load order (lowest priority first).
-    /// * `archive_paths` — Absolute paths to BSA/BA2 archive files, in priority
-    ///   order (lowest first). Typically these are resolved from the
-    ///   `fallback-archive=` entries in `openmw.cfg`.
+    /// * `archive_paths` — Paths to archive files, in priority order (lowest first): BSA and BA2
+    ///   with `beth-archives`, ZIP, PK3 and JPK with `zip`. Typically these are resolved from
+    ///   the `fallback-archive=` entries in `openmw.cfg`.
     pub fn from_directories_with_archives(
         dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         archive_paths: impl IntoIterator<Item = impl AsRef<Path>>,

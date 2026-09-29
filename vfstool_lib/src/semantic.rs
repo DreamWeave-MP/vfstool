@@ -86,7 +86,8 @@ pub struct SemanticConflict {
     pub winner: SourceMeta,
     /// Providers in low -> high priority order.
     pub providers: Vec<SemanticProvider>,
-    /// Inferred asset class.
+    /// Asset class inferred from the key and the contents compared; stays `Unknown` unless
+    /// `include_semantic_deltas` is set.
     pub asset_class: AssetClass,
     /// True if every available hash equals the winner hash.
     pub all_identical: bool,

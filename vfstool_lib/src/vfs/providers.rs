@@ -127,7 +127,8 @@ pub enum MaterializationAction {
         #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
-    /// Copy a loose file.
+    /// Copy a loose file. Never planned: collapsing copies only where a link fails, which a
+    /// plan cannot know in advance, so a plan names the link.
     Copy {
         /// Normalized VFS key to materialize.
         #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
@@ -176,7 +177,8 @@ pub enum MaterializationIssue {
         #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         source: PathBuf,
     },
-    /// Planned destination has a file/directory conflict.
+    /// Planned destination has a file/directory conflict. Never planned: no VFS holds a key that
+    /// is both a file and a directory.
     FileDirectoryConflict {
         /// Normalized VFS key that cannot be materialized safely.
         #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
@@ -185,11 +187,8 @@ pub enum MaterializationIssue {
         #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
-    /// Planned destination would escape the output root or hit an unsafe path.
-    ///
-    /// The current dry-run planner only receives a destination root and normalized VFS keys, so this
-    /// variant is reserved for destination-aware safety checks added without changing the report
-    /// shape. Execution paths still perform their own root/parent safety checks before writing.
+    /// The destination cannot be written safely: the output root, or a folder already on the way
+    /// to the destination, is a symbolic link, or the key cannot be a path on this platform.
     UnsafeDestination {
         /// Normalized VFS key with an unsafe destination.
         #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]

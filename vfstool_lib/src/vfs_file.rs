@@ -25,7 +25,7 @@ mod tests;
 /// Backing storage for a [`VfsFile`]: either a loose path on disk or an archive entry.
 #[derive(Debug, Clone)]
 pub enum FileType {
-    /// File stored inside a BSA, BA2, ZIP, PK3, JPK, or JPK archive.
+    /// File stored inside a BSA, BA2, ZIP, PK3, or JPK archive.
     #[cfg(any(feature = "beth-archives", feature = "zip"))]
     Archive(ArchiveReference),
     /// Loose file on the real filesystem, stored exactly as the caller or scanner provided it.
@@ -133,7 +133,7 @@ impl VfsFile {
         }
     }
 
-    /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, PK3, JPK, or JPK archive.
+    /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, PK3, or JPK archive.
     #[must_use]
     pub fn is_archive(&self) -> bool {
         match self.file {
@@ -241,11 +241,12 @@ impl VfsFile {
         }
     }
 
-    /// Retrieves the file name (i.e., the last component of the path).
+    /// Retrieves the file name (i.e., the last component of the path). An archive entry's path
+    /// ends its folders at `\` as well as `/`, on every platform.
     ///
     /// # Returns
     ///
-    /// * `Some(&str)` - If the path contains a valid file name.
+    /// * `Some(&OsStr)` - If the path contains a valid file name.
     /// * `None` - If the path does not have a file name. This should be a rare exception as any
     ///   files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
     ///   binaries)
@@ -256,8 +257,10 @@ impl VfsFile {
     /// use std::path::PathBuf;
     /// use vfstool_lib::VfsFile;
     ///
-    /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
-    /// Files").join("Morrowind.esm");
+    /// let morrowind_esm = PathBuf::from("C:")
+    ///     .join("Morrowind")
+    ///     .join("Data Files")
+    ///     .join("Morrowind.esm");
     ///
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_name(), Some(std::ffi::OsStr::new("Morrowind.esm")));
@@ -283,7 +286,7 @@ impl VfsFile {
     ///
     /// # Returns
     ///
-    /// * `Some(&str)` - If the path contains a valid file name.
+    /// * `Some(&OsStr)` - If the path contains a valid file name.
     /// * `None` - If the path does not have a file name. This should be a rare exception as any
     ///   files typically used *will* have extensions, but it is not necessarily mandatory (eg unix
     ///   binaries)
@@ -294,8 +297,10 @@ impl VfsFile {
     /// use std::path::PathBuf;
     /// use vfstool_lib::VfsFile;
     ///
-    /// let morrowind_esm = PathBuf::from("C:").join("Morrowind").join("Data
-    /// Files").join("Morrowind.esm");
+    /// let morrowind_esm = PathBuf::from("C:")
+    ///     .join("Morrowind")
+    ///     .join("Data Files")
+    ///     .join("Morrowind.esm");
     ///
     /// let file = VfsFile::from(morrowind_esm);
     /// assert_eq!(file.file_stem(), Some(std::ffi::OsStr::new("Morrowind")));

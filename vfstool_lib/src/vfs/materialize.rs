@@ -22,8 +22,8 @@ impl VFS {
     /// A loose file whose destination already is that file (the same path, a hard
     /// link to it, or a symbolic link to it) is left in place and counted, so
     /// dumping into one of the VFS's own data directories keeps its files.
-    /// The destination directory must already exist. Returns the number of
-    /// files successfully written.
+    /// Directories, `dir` included, are created as the files need them. Returns
+    /// the number of files successfully written.
     ///
     /// # Errors
     ///

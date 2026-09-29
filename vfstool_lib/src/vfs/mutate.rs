@@ -282,7 +282,8 @@ impl VFS {
         self.remove_matching_provider(|_, provider| provider.source.path == source)
     }
 
-    /// Remove every provider under `prefix`, revealing lower-priority providers where available.
+    /// Remove every provider of every key at or under `prefix`. Nothing is revealed: every
+    /// provider of a matching key is removed, so the key leaves the VFS.
     pub fn remove_provider_prefix<K: VfsKeyInput + ?Sized>(
         &mut self,
         prefix: &K,

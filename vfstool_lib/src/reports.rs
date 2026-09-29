@@ -31,7 +31,7 @@ pub struct ConflictsReport {
 /// Conflict information for a single source directory or archive.
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ConflictSourceEntry {
-    /// Absolute path to the source directory or archive.
+    /// The source directory or archive, as the index has its path.
     #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// VFS paths where this source overrides at least one earlier (lower-priority) source.
@@ -54,7 +54,7 @@ pub struct ShadowedReport {
 /// A single source whose files are all shadowed by higher-priority sources.
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ShadowedSource {
-    /// Absolute path to the source directory or archive.
+    /// The source directory or archive, as the index has its path.
     #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// VFS paths of all files in this source, each overridden by a later source.
@@ -70,10 +70,10 @@ pub struct ShadowedSource {
 /// Comparison report between two source directories.
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct DiffReport {
-    /// Absolute path to the first source directory.
+    /// The first source, as the index spells it, or as given when the index does not have it.
     #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub source_a: PathBuf,
-    /// Absolute path to the second source directory.
+    /// The second source, as the index spells it, or as given when the index does not have it.
     #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub source_b: PathBuf,
     /// Whichever of `source_a` or `source_b` has higher load-order priority.

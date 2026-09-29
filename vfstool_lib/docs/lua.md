@@ -26,7 +26,7 @@ runtime.exec(r#"local vfstool = require("@dream/vfs") print(vfstool.VFS.new():le
 Enable the binding layer with:
 
 ```toml
-vfstool_lib = { version = "0.11", features = ["lua"] }
+vfstool_lib = { version = "1", features = ["lua"] }
 ```
 
 A host that built a `VFS` in Rust hands it to scripts with `vfstool_lib::lua::Vfs::push`. The
@@ -124,9 +124,12 @@ copied = vfstool.runFinalize(mergedDir, outputDir, snapshot)   -- { { relativePa
 copied = vfstool.runFinalizeTracked(mergedDir, outputDir, metadataSnapshot)
 ```
 
-`runSetup` may hardlink loose files into the merged directory. Child tools that edit files in place
-can mutate the original source files through those hardlinks. Use `false` for `useHardlinks` if the
-child tool is not hardlink-safe. This warning is part of the API, not decorative prose.
+`runSetup` and `runSetupTracked` delete `mergedDir` recursively, whatever it holds, before they
+write into it; the command line refuses a folder that is not empty, the library does not. Pass a
+scratch directory of its own, never a data directory. They may also hardlink loose files into the
+merged directory. Child tools that edit files in place can mutate the original source files
+through those hardlinks. Use `false` for `useHardlinks` if the child tool is not hardlink-safe.
+These warnings are part of the API, not decorative prose.
 
 With `serialize` enabled:
 
