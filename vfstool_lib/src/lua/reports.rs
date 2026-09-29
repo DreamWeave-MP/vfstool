@@ -16,10 +16,10 @@ use super::{VfsFileHandle, index_to_lua, path_bytes, source_kind_name, views::pu
 use crate::{
     ArchiveEntry, ArchiveInfo, AssetClass, ConflictSourceEntry, ConflictsReport, DiffReport,
     DirectoryDiff, DriftKind, DriftReport, DuplicateReport, ExplainReport, LayerProvider,
-    MaterializationAction, MaterializationIssue, MaterializationPlan, SemanticConflictReport,
-    SemanticDelta, SemanticProvider, SemanticRelation, ShadowedReport, SourceContributionReport,
-    SourceMeta, VfsFile, VfsLock, VfsLockEntry, VfsProvider, VfsProviderRecord,
-    analysis::ProvenanceChain,
+    MaterializationAction, MaterializationIssue, MaterializationPlan, MaterializationSkip,
+    SemanticConflictReport, SemanticDelta, SemanticProvider, SemanticRelation, ShadowedReport,
+    SourceContributionReport, SourceMeta, VfsFile, VfsLock, VfsLockEntry, VfsProvider,
+    VfsProviderRecord, analysis::ProvenanceChain,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -320,6 +320,50 @@ pub(super) fn materialization_plan(
     Ok(table)
 }
 
+/// `{ { kind, key, archive?, source?, error? } }`: the winners a write-out left out.
+pub(super) fn materialization_skips(
+    scope: &impl Scope,
+    skipped: &[MaterializationSkip],
+) -> Result<Table> {
+    array(scope, skipped.len(), |frame, i| {
+        let (kind, key, archive, source, error) = match &skipped[i] {
+            MaterializationSkip::ArchiveEntry { key, archive } => {
+                ("archiveEntry", key, Some(archive), None, None)
+            }
+            MaterializationSkip::ArchiveFile { key, archive } => {
+                ("archiveFile", key, Some(archive), None, None)
+            }
+            MaterializationSkip::MissingLooseSource { key, source } => {
+                ("missingLooseSource", key, None, Some(source), None)
+            }
+            MaterializationSkip::UnreadableArchiveEntry {
+                key,
+                archive,
+                error,
+            } => (
+                "unreadableArchiveEntry",
+                key,
+                Some(archive),
+                None,
+                Some(error.as_str()),
+            ),
+        };
+        push_record(frame, 5, |frame, table| {
+            frame.push(kind)?;
+            table.raw_set(frame, "kind")?;
+            frame.push(path_bytes(key))?;
+            table.raw_set(frame, "key")?;
+            for (name, path) in [("archive", archive), ("source", source)] {
+                frame.push(&path.map(|path| path_bytes(path).to_vec()))?;
+                table.raw_set(frame, name)?;
+            }
+            frame.push(&error)?;
+            table.raw_set(frame, "error")
+        })
+        .map(drop)
+    })
+}
+
 pub(super) fn directory_diff(scope: &impl Scope, diff: &DirectoryDiff<'_>) -> Result<Table> {
     let conflicts = array(scope, diff.conflicts.len(), |frame, i| {
         let (key, incoming, current) = &diff.conflicts[i];
@@ -343,9 +387,20 @@ pub(super) fn directory_diff(scope: &impl Scope, diff: &DirectoryDiff<'_>) -> Re
         })
         .map(drop)
     })?;
-    let table = Table::new(scope, 0, 2)?;
+    let unreadable = array(scope, diff.unreadable.len(), |frame, i| {
+        let (path, error) = &diff.unreadable[i];
+        push_record(frame, 2, |frame, table| {
+            frame.push(path_bytes(path))?;
+            table.raw_set(frame, "path")?;
+            frame.push(error.to_string().as_str())?;
+            table.raw_set(frame, "error")
+        })
+        .map(drop)
+    })?;
+    let table = Table::new(scope, 0, 3)?;
     table.set(scope, "conflicts", &conflicts)?;
     table.set(scope, "additions", &additions)?;
+    table.set(scope, "unreadable", &unreadable)?;
     Ok(table)
 }
 

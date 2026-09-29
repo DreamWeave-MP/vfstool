@@ -253,8 +253,9 @@ relative path is a safe key into one of two lists: a conflict when the key alrea
 VFS, an addition when it does not. Two files in `dir` with the same key are both listed. Nothing is
 read but the directory listing, and the VFS is not changed.
 
-The walk runs in parallel, so the lists are in no particular order. An entry that cannot be read is
-skipped, with `vfstool: warning: failed to walk 'DIR': ERROR` on standard error.
+The walk runs in parallel, so the lists are in no particular order. An entry that cannot be read,
+such as a folder without read permission, goes in `unreadable` with its error, and nothing beneath
+it is listed.
 [`LayerIndex::plan_candidate_directory`](@/docs/api/planning.md) builds a sorted plan from it.
 
 ```rust
@@ -294,3 +295,4 @@ What `diff_directory` returns, borrowing the VFS. No derived traits.
 |---|---|
 | `conflicts: Vec<(PathBuf, VfsFile, &'vfs VfsFile)>` | The key, the file in the directory, and the VFS's current winner for it |
 | `additions: Vec<(PathBuf, VfsFile)>` | The key and the file in the directory |
+| `unreadable: Vec<(PathBuf, io::Error)>` | Each path the walk could not read, sorted, with the error |

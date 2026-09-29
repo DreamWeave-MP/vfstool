@@ -15,6 +15,33 @@ fn diff_empty_dir_against_populated_vfs_yields_no_results() {
 }
 
 #[test]
+#[cfg(unix)]
+fn diff_reports_what_its_walk_cannot_read() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let vfs_dir = TempDir::new("vfsdiff_unreadable_base");
+    vfs_dir.write("textures/foo.dds", b"");
+    let vfs = VFS::from_directories(vec![vfs_dir.path()], None);
+
+    let mod_dir = TempDir::new("vfsdiff_unreadable_mod");
+    mod_dir.write("textures/foo.dds", b"");
+    mod_dir.write("locked/secret.dds", b"");
+    let locked = mod_dir.path().join("locked");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let diff = vfs.diff_directory(mod_dir.path());
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(diff.conflicts.len(), 1);
+    assert!(diff.additions.is_empty());
+    assert_eq!(diff.unreadable.len(), 1, "{:?}", diff.unreadable);
+    assert_eq!(diff.unreadable[0].0, locked);
+    assert_eq!(
+        diff.unreadable[0].1.kind(),
+        std::io::ErrorKind::PermissionDenied
+    );
+}
+
+#[test]
 fn diff_dir_with_only_new_files_yields_only_additions() {
     let vfs_dir = TempDir::new("vfsdiff_newfiles_base");
     vfs_dir.write("textures/vanilla.dds", b"");

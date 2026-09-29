@@ -275,7 +275,7 @@ fn zip_entries_with_unsafe_paths_are_skipped() {
     let out = TempDir::new("vfszip_unsafe_paths_out");
 
     let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.zip"]));
-    let dumped = vfs.dump_to_directory(out.path(), false).unwrap();
+    let dumped = vfs.dump_to_directory(out.path(), false).unwrap().written;
 
     assert!(vfs.get_file("../outside.txt").is_none());
     assert!(vfs.get_file("/absolute.txt").is_none());

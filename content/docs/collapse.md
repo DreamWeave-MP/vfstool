@@ -35,8 +35,8 @@ with no `fallback-archive=` lines. It takes the space of everything extracted:
 
 ```sh
 $ vfstool -c openmw collapse -e /tmp/mw/merged
-vfstool: skipping archive Tribunal.bsa
 vfstool: skipping archive Morrowind.bsa
+vfstool: skipping archive Tribunal.bsa
 ```
 
 ```text
@@ -59,8 +59,9 @@ The folder is created if it is missing. A file already at a destination is repla
 already is the file that belongs there: collapsing into one of the cfg's data directories leaves
 that directory's own files where they are. A folder at a destination, or a symbolic link on the
 way to it, stops the collapse. A link that fails without `-a`, or an archive entry that cannot be
-read, stops it too, with exit code 9, and leaves what was written so far. Files are written in
-parallel, so the messages come in no fixed order.
+read, stops it too, with exit code 9, and leaves what was written so far. The messages about
+files left out come once the collapse is done, sorted by path; a collapse that stops prints only
+its error.
 
 {% callout(kind="warning", title="Collapsing into a data directory changes that mod") %}
 Every file the VFS takes from elsewhere is added to the folder, and with `-e` every file from

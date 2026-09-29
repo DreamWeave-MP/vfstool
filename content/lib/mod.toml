@@ -136,6 +136,7 @@ breaking = [
     "In Luau: key lists are sequence views and trees are streams (`:toTable()` gives the old tables), indices are 1-based, sizes are integers, unknown option keys are errors, and paths are bytes.",
     "Building with `lua` needs l3i's toolchain: clang, lld and cross-language thin LTO.",
     "dream-path 1.0.",
+    "The library writes nothing to standard output or error. `collapse_into` and `dump_to_directory` return a `MaterializationReport`, the files written and each winner left out as a `MaterializationSkip`, instead of `()` and a count, and `DirectoryDiff` gains `unreadable`, what `diff_directory`'s walk could not read. In Luau, `collapseInto` returns the skipped files and `dumpToDirectory` returns them after the count.",
 ]
 added = [
     "`VFS::len` and `VFS::is_empty`, in constant time, and `get_file_normalized`, `contains_normalized` and `paths_matching_bytes` for keys already normalized.",

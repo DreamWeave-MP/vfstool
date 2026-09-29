@@ -93,7 +93,12 @@ fn materialization_preserves_non_utf8_key_bytes() {
     let vfs = VFS::from_directories(vec![src.path()], None);
 
     let dump_dest = TempDir::new("dump_non_utf8_dest");
-    assert_eq!(vfs.dump_to_directory(dump_dest.path(), false).unwrap(), 1);
+    assert_eq!(
+        vfs.dump_to_directory(dump_dest.path(), false)
+            .unwrap()
+            .written,
+        1
+    );
     assert_eq!(
         fs::read(dump_dest.path().join(&file_name)).unwrap(),
         b"bytes"
@@ -132,7 +137,7 @@ fn dump_count_accurate() {
     let vfs = VFS::from_directories(vec![src.path()], None);
 
     let dest = TempDir::new("dump_count_dest");
-    let count = vfs.dump_to_directory(dest.path(), false).unwrap();
+    let count = vfs.dump_to_directory(dest.path(), false).unwrap().written;
     assert_eq!(count, 3);
 }
 
@@ -260,7 +265,9 @@ fn dump_into_one_of_its_own_data_directories_keeps_the_files_there() {
 
     for use_hardlinks in [true, false] {
         assert_eq!(
-            vfs.dump_to_directory(data.path(), use_hardlinks).unwrap(),
+            vfs.dump_to_directory(data.path(), use_hardlinks)
+                .unwrap()
+                .written,
             1
         );
         assert_eq!(fs::read(&own).unwrap(), b"texture");
@@ -290,6 +297,60 @@ fn collapse_extract_archives_skips_loose_archive_without_deleting_existing_outpu
     assert_eq!(
         fs::read(dest.path().join("data.zip")).unwrap(),
         b"existing output"
+    );
+}
+
+#[test]
+#[cfg(feature = "zip")]
+fn collapse_reports_a_loose_archive_it_leaves_out() {
+    let src = TempDir::new("collapse_report_loose_archive_src");
+    let archive = src.write("data.zip", b"source archive");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let dest = TempDir::new("collapse_report_loose_archive_dest");
+    let report = vfs
+        .collapse_into(
+            dest.path(),
+            &CollapseOptions {
+                allow_copying: true,
+                extract_archives: true,
+                use_symlinks: false,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(report.written, 0);
+    assert!(
+        matches!(
+            report.skipped.as_slice(),
+            [crate::MaterializationSkip::ArchiveFile { key, archive: path }]
+                if key == Path::new("data.zip") && *path == archive
+        ),
+        "{:?}",
+        report.skipped
+    );
+}
+
+#[test]
+fn dump_reports_a_missing_loose_source_it_leaves_out() {
+    let src = TempDir::new("dump_report_missing_src");
+    let gone = src.write("gone.txt", b"x");
+    src.write("kept.txt", b"y");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+    fs::remove_file(&gone).unwrap();
+
+    let dest = TempDir::new("dump_report_missing_dest");
+    let report = vfs.dump_to_directory(dest.path(), false).unwrap();
+
+    assert_eq!(report.written, 1);
+    assert!(
+        matches!(
+            report.skipped.as_slice(),
+            [crate::MaterializationSkip::MissingLooseSource { key, source }]
+                if key == Path::new("gone.txt") && *source == gone
+        ),
+        "{:?}",
+        report.skipped
     );
 }
 
@@ -357,7 +418,7 @@ fn dump_skips_missing_source() {
     fs::remove_file(&gone).unwrap();
 
     let dest = TempDir::new("dump_missing_dest");
-    let count = vfs.dump_to_directory(dest.path(), false).unwrap();
+    let count = vfs.dump_to_directory(dest.path(), false).unwrap().written;
     assert_eq!(count, 0);
     assert!(!dest.path().join("gone.txt").exists());
 }

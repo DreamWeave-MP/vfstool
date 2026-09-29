@@ -209,6 +209,76 @@ pub struct MaterializationPlan {
     pub issues: Vec<MaterializationIssue>,
 }
 
+/// A winner that [`VFS::collapse_into`] or [`VFS::dump_to_directory`] left out, and why.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+#[cfg_attr(feature = "serialize", serde(rename_all = "snake_case"))]
+#[non_exhaustive]
+pub enum MaterializationSkip {
+    /// `collapse_into` without `extract_archives`: the winner is inside an archive.
+    ArchiveEntry {
+        /// Normalized VFS key that was not written.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        key: PathBuf,
+        /// Archive the winner is in.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        archive: PathBuf,
+    },
+    /// `collapse_into` with `extract_archives`: the winner is an archive file, whose entries are
+    /// extracted instead of it.
+    ArchiveFile {
+        /// Normalized VFS key that was not written.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        key: PathBuf,
+        /// The loose archive file.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        archive: PathBuf,
+    },
+    /// `dump_to_directory`: the loose winner no longer exists.
+    MissingLooseSource {
+        /// Normalized VFS key that was not written.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        key: PathBuf,
+        /// The loose file that is gone.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        source: PathBuf,
+    },
+    /// `dump_to_directory`: the archive entry could not be opened.
+    UnreadableArchiveEntry {
+        /// Normalized VFS key that was not written.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        key: PathBuf,
+        /// Archive the entry is in.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
+        archive: PathBuf,
+        /// Why it could not be opened.
+        error: String,
+    },
+}
+
+impl MaterializationSkip {
+    /// The key that was not written.
+    #[must_use]
+    pub fn key(&self) -> &Path {
+        match self {
+            Self::ArchiveEntry { key, .. }
+            | Self::ArchiveFile { key, .. }
+            | Self::MissingLooseSource { key, .. }
+            | Self::UnreadableArchiveEntry { key, .. } => key,
+        }
+    }
+}
+
+/// What [`VFS::collapse_into`] or [`VFS::dump_to_directory`] wrote, and what it left out.
+#[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize))]
+pub struct MaterializationReport {
+    /// Files written, or found already in place.
+    pub written: usize,
+    /// Winners left out, sorted by key.
+    pub skipped: Vec<MaterializationSkip>,
+}
+
 impl VFS {
     fn provider_record_from_entry(
         key: &NormalizedPath,

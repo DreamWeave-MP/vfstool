@@ -176,8 +176,8 @@ vfs:removeResolvedMatchingGlob(glob) -> { { key = string, file = VfsFile } }
 
 vfs:tree(relative?) -> Tree
 vfs:display(relative?) -> string
-vfs:dumpToDirectory(dir, useHardlinks) -> number
-vfs:collapseInto(dest, opts) -> nil
+vfs:dumpToDirectory(dir, useHardlinks) -> number, { skipped }
+vfs:collapseInto(dest, opts) -> { skipped }        -- { kind, key, archive?, source?, error? }
 vfs:extractFile(vfsPath, destDir) -> string | nil
 vfs:diffDirectory(dir) -> { conflicts = { { key, incoming, current } }, additions = { { key, file } } }
 

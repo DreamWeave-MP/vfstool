@@ -308,3 +308,32 @@ fn a_host_can_fill_a_keys_view() {
     assert_eq!(keys.0.len(), 2);
     assert_eq!(keys.0.get(1), Some(&b"b\xff.txt"[..]));
 }
+
+#[test]
+fn lua_write_outs_return_what_they_leave_out() {
+    let dir = TempDir::new("lua_write_out_skips");
+    dir.write("kept.txt", b"kept");
+    let gone = dir.write("gone.txt", b"gone");
+    let out = TempDir::new("lua_write_out_skips_out");
+    let runtime = runtime_with(&[("dir", &dir.lua()), ("out", &out.lua())]);
+    runtime
+        .exec("vfs = vfstool.VFS.fromDirectories({ dir })")
+        .unwrap();
+    fs::remove_file(gone).unwrap();
+    runtime
+        .exec(
+            r#"
+        local written, skipped = vfs:dumpToDirectory(out .. "/dump", false)
+        assert(written == 1 and #skipped == 1, tostring(written))
+        assert(skipped[1].kind == "missingLooseSource" and skipped[1].key == "gone.txt")
+        assert(skipped[1].source == dir .. "/gone.txt" and skipped[1].archive == nil)
+        local ok, err = pcall(vfs.collapseInto, vfs, out .. "/collapse")
+        assert(not ok and tostring(err):find("no longer exists", 1, true), tostring(err))
+        vfs:removeResolvedFile("gone.txt")
+        assert(#vfs:collapseInto(out .. "/collapse") == 0)
+        local diff = vfs:diffDirectory(dir)
+        assert(#diff.unreadable == 0 and #diff.conflicts == 1)
+    "#,
+        )
+        .unwrap();
+}

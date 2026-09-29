@@ -15,7 +15,8 @@ mod tree;
 pub use self::diff::DirectoryDiff;
 pub use self::providers::{
     ArchiveEntry, ArchiveInfo, DuplicateEntry, DuplicateReport, ExplainReport,
-    MaterializationAction, MaterializationIssue, MaterializationPlan, VfsProviderRecord,
+    MaterializationAction, MaterializationIssue, MaterializationPlan, MaterializationReport,
+    MaterializationSkip, VfsProviderRecord,
 };
 
 use crate::{LayerIndex, NormalizedPath, SourceMeta, VfsFile};

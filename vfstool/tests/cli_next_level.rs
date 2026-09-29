@@ -1141,3 +1141,32 @@ fn messages_to_a_pipe_carry_no_color_codes() {
         assert!(!text.contains('\x1b'), "{text:?}");
     }
 }
+
+#[test]
+fn collapse_prints_the_archive_entries_it_leaves_out() {
+    let fixture = Fixture::new("collapse_skips");
+    create_tes3_bsa_archive(&fixture.low, "Morrowind.bsa", &["Meshes/Only.NIF"]);
+    write_text(
+        &fixture.config_dir.join("openmw.cfg"),
+        &format!(
+            "data=\"{}\"\ndata=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Morrowind.bsa\n",
+            fixture.low.display(),
+            fixture.high.display(),
+            fixture.data_local.display()
+        ),
+    );
+    let merged = fixture.path("merged");
+
+    let output = fixture.run(&["collapse", merged.to_str().expect("path should be utf-8")]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "vfstool: skipping meshes/only.nif, loaded from archive: {}",
+            fixture.low.join("Morrowind.bsa").display()
+        )),
+        "{stderr}"
+    );
+    assert!(merged.join("textures/a.dds").exists());
+}

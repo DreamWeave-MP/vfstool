@@ -161,10 +161,12 @@ declare extern type dream_vfs_VFS with
     -- The sorted directory tree as a stream of { dir, file } rows; tree:toTable() is the nested shape.
     function tree(self, relative: boolean?): dream_vfs_Tree
     function display(self, relative: boolean?): string
-    function dumpToDirectory(self, dir: string, useHardlinks: boolean): number
-    function collapseInto(self, dest: string, options: { allowCopying: boolean?, extractArchives: boolean?, useSymlinks: boolean? }?)
+    -- Writes every winner into dir; returns how many were written and the ones left out.
+    function dumpToDirectory(self, dir: string, useHardlinks: boolean): (number, { { kind: string, key: string, archive: string?, source: string?, error: string? } })
+    -- Writes the VFS into dest as one directory; returns the winners left out.
+    function collapseInto(self, dest: string, options: { allowCopying: boolean?, extractArchives: boolean?, useSymlinks: boolean? }?): { { kind: string, key: string, archive: string?, source: string?, error: string? } }
     function extractFile(self, vfsPath: string, destDir: string): string?
-    function diffDirectory(self, dir: string): { conflicts: { { key: string, incoming: dream_vfs_VfsFile, current: dream_vfs_VfsFile } }, additions: { { key: string, file: dream_vfs_VfsFile } } }
+    function diffDirectory(self, dir: string): { conflicts: { { key: string, incoming: dream_vfs_VfsFile, current: dream_vfs_VfsFile } }, additions: { { key: string, file: dream_vfs_VfsFile } }, unreadable: { { path: string, error: string } } }
     -- Provider report rows for a key, low to high priority, as a sequence view.
     function providerRecordsFor(self, path: string): dream_vfs_ProviderRecords
     -- Why a path resolves to its winner: the winner and the providers it overrides.

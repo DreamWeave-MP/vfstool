@@ -120,7 +120,10 @@ mod types {
     pub const CONTRIBUTIONS: &str = "{ sources: { { [string]: any } } }";
     pub const PLAN: &str =
         "{ actions: { { [string]: string? } }, issues: { { [string]: string? } } }";
-    pub const DIRECTORY_DIFF: &str = "{ conflicts: { { key: string, incoming: dream_vfs_VfsFile, current: dream_vfs_VfsFile } }, additions: { { key: string, file: dream_vfs_VfsFile } } }";
+    pub const DIRECTORY_DIFF: &str = "{ conflicts: { { key: string, incoming: dream_vfs_VfsFile, current: dream_vfs_VfsFile } }, additions: { { key: string, file: dream_vfs_VfsFile } }, unreadable: { { path: string, error: string } } }";
+    /// The winners `dumpToDirectory` and `collapseInto` left out.
+    pub const SKIPPED: &str =
+        "{ { kind: string, key: string, archive: string?, source: string?, error: string? } }";
     pub const REMOVED_PROVIDERS: &str = "{ { key: string, provider: { source: { path: string, kind: string }, file: dream_vfs_VfsFile } } }";
     pub const REMOVED_FILES: &str = "{ { key: string, file: dream_vfs_VfsFile } }";
     pub const PROVENANCE: &str = "{ key: string, winner: { path: string, kind: string }, providers: { { source: { path: string, kind: string }, resolvedPath: string, hashBlake3: string?, size: integer? } } }";

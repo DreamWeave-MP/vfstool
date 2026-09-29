@@ -203,6 +203,37 @@ fn collapse_extracts_fallout3_bsa_archive_entry() {
 }
 
 #[test]
+fn collapse_reports_the_archive_entries_it_leaves_out() {
+    let dir = TempDir::new("vfs_collapse_report_archive_entries");
+    let archive = create_fallout3_bsa_archive(dir.path(), "Fallout - Meshes.bsa");
+    let out = TempDir::new("vfs_collapse_report_archive_entries_out");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["Fallout - Meshes.bsa"]));
+    let report = vfs
+        .collapse_into(
+            out.path(),
+            &CollapseOptions {
+                allow_copying: true,
+                extract_archives: false,
+                use_symlinks: false,
+            },
+        )
+        .unwrap();
+
+    assert_eq!(report.written, 1, "the archive file itself is linked");
+    assert!(
+        matches!(
+            report.skipped.as_slice(),
+            [crate::MaterializationSkip::ArchiveEntry { key, archive: path }]
+                if key == Path::new("meshes/test.nif") && *path == archive
+        ),
+        "{:?}",
+        report.skipped
+    );
+    assert!(!out.path().join("meshes/test.nif").exists());
+}
+
+#[test]
 fn collapse_prefers_loose_file_over_fallout3_bsa_archive_entry() {
     let dir = TempDir::new("vfs_fallout3_collapse_loose_priority");
     create_fallout3_bsa_archive(dir.path(), "Fallout - Meshes.bsa");

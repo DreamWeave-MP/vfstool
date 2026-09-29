@@ -317,25 +317,37 @@ fn describe_materialization(vfs: &mut UserdataBuilder<'_, Vfs>) {
     .signature("(self, relative: boolean?): string");
     vfs.method(
         "dumpToDirectory",
-        |v: &Vfs, dir: &[u8], use_hardlinks: bool| {
-            v.with(|vfs| vfs.dump_to_directory(&host_path(dir), use_hardlinks))?
-                .map(|count| count as f64)
-                .map_err(io_error)
+        |v: &Vfs, call: &Call, dir: &[u8], use_hardlinks: bool| {
+            let report = v
+                .with(|vfs| vfs.dump_to_directory(&host_path(dir), use_hardlinks))?
+                .map_err(io_error)?;
+            let skipped = reports::materialization_skips(call, &report.skipped)?;
+            call.push(&(report.written as f64))?;
+            call.push(&skipped)?;
+            Ok::<_, Error>(StackResults)
         },
     )
-    .signature("(self, dir: string, useHardlinks: boolean): number");
+    .signature(format!(
+        "(self, dir: string, useHardlinks: boolean): (number, {})",
+        types::SKIPPED
+    ))
+    .doc("Writes every winner into dir; returns how many were written and the ones left out.");
     vfs.method(
         "collapseInto",
         |v: &Vfs, call: &Call, dest: &[u8], options: Option<ValueView>| {
             let options = collapse_options(call, options, "vfs:collapseInto")?;
-            v.with(|vfs| vfs.collapse_into(&host_path(dest), &options))?
-                .map_err(io_error)
+            let report = v
+                .with(|vfs| vfs.collapse_into(&host_path(dest), &options))?
+                .map_err(io_error)?;
+            reports::materialization_skips(call, &report.skipped)
         },
     )
     .signature(format!(
-        "(self, dest: string, options: {})",
-        types::COLLAPSE_OPTIONS
-    ));
+        "(self, dest: string, options: {}): {}",
+        types::COLLAPSE_OPTIONS,
+        types::SKIPPED
+    ))
+    .doc("Writes the VFS into dest as one directory; returns the winners left out.");
     vfs.method("extractFile", |v: &Vfs, path: &[u8], dest: &[u8]| {
         v.with(|vfs| vfs.extract_file(&host_path(path), &host_path(dest)))?
             .map(|written| written.map(|path| super::handles::path_string(&path)))

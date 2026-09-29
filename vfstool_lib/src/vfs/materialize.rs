@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::VFS;
 use crate::{
-    CollapseOptions, NormalizedPath, VfsFile,
+    CollapseOptions, MaterializationReport, MaterializationSkip, NormalizedPath, VfsFile,
     paths::{
-        is_same_file, key_to_path_buf_bytes, key_to_string_lossy, normalized_safe_normalized_bytes,
+        is_same_file, key_to_path_buf, key_to_path_buf_bytes, key_to_string_lossy,
+        normalized_safe_normalized_bytes,
     },
 };
 use rayon::prelude::*;
@@ -22,14 +23,20 @@ impl VFS {
     /// A loose file whose destination already is that file (the same path, a hard
     /// link to it, or a symbolic link to it) is left in place and counted, so
     /// dumping into one of the VFS's own data directories keeps its files.
-    /// Directories, `dir` included, are created as the files need them. Returns
-    /// the number of files successfully written.
+    /// Directories, `dir` included, are created as the files need them.
+    ///
+    /// A loose winner that no longer exists, or an archive entry that cannot be opened, is left
+    /// out and listed in the report's `skipped`; `written` counts the rest.
     ///
     /// # Errors
     ///
     /// Returns an error for hardlink/copy/write failures not explicitly handled
     /// as skippable cases.
-    pub fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize> {
+    pub fn dump_to_directory(
+        &self,
+        dir: &Path,
+        use_hardlinks: bool,
+    ) -> io::Result<MaterializationReport> {
         self.dump_to_directory_impl(dir, use_hardlinks, false)
     }
 
@@ -37,8 +44,9 @@ impl VFS {
         &self,
         dir: &Path,
         use_hardlinks: bool,
-    ) -> std::io::Result<usize> {
+    ) -> io::Result<usize> {
         self.dump_to_directory_impl(dir, use_hardlinks, true)
+            .map(|report| report.written)
     }
 
     fn dump_to_directory_impl(
@@ -46,79 +54,94 @@ impl VFS {
         dir: &Path,
         use_hardlinks: bool,
         strict: bool,
-    ) -> std::io::Result<usize> {
+    ) -> io::Result<MaterializationReport> {
         self.validate_materialization_paths()?;
 
-        let written: std::io::Result<Vec<bool>> = self
+        let outcomes = self
             .file_map
             .par_iter()
-            .map(|(relative_path, file)| -> std::io::Result<bool> {
-                let relative_path_buf = Self::materialization_path(relative_path)?;
-                let dest = dir.join(&relative_path_buf);
-                Self::ensure_output_parent_safe(dir, &dest)?;
-                if let Some(parent) = dest.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                if file.is_loose() {
-                    if !file.path().exists() {
-                        if strict {
-                            return Err(io::Error::new(
-                                io::ErrorKind::NotFound,
-                                format!(
-                                    "source for VFS key '{}' no longer exists at {}",
-                                    key_to_string_lossy(relative_path),
-                                    file.path().display()
-                                ),
-                            ));
-                        }
-                        eprintln!(
-                            "vfstool: skipping {}: source no longer exists at {}",
-                            key_to_string_lossy(relative_path),
-                            file.path().display()
-                        );
-                        return Ok(false);
+            .map(
+                |(relative_path, file)| -> io::Result<Option<MaterializationSkip>> {
+                    let relative_path_buf = Self::materialization_path(relative_path)?;
+                    let dest = dir.join(&relative_path_buf);
+                    Self::ensure_output_parent_safe(dir, &dest)?;
+                    if let Some(parent) = dest.parent() {
+                        std::fs::create_dir_all(parent)?;
                     }
-                    if is_same_file(file.path(), &dest)? {
-                        return Ok(true);
-                    }
-                    if use_hardlinks {
-                        if dest.exists() {
-                            std::fs::remove_file(&dest)?;
-                        }
-                        match std::fs::hard_link(file.path(), &dest) {
-                            Ok(()) => {}
-                            Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
-                                std::fs::copy(file.path(), &dest)?;
+                    if file.is_loose() {
+                        if !file.path().exists() {
+                            if strict {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    format!(
+                                        "source for VFS key '{}' no longer exists at {}",
+                                        key_to_string_lossy(relative_path),
+                                        file.path().display()
+                                    ),
+                                ));
                             }
-                            Err(e) => return Err(e),
+                            return Ok(Some(MaterializationSkip::MissingLooseSource {
+                                key: key_to_path_buf(relative_path),
+                                source: file.path().to_path_buf(),
+                            }));
+                        }
+                        if is_same_file(file.path(), &dest)? {
+                            return Ok(None);
+                        }
+                        if use_hardlinks {
+                            if dest.exists() {
+                                std::fs::remove_file(&dest)?;
+                            }
+                            match std::fs::hard_link(file.path(), &dest) {
+                                Ok(()) => {}
+                                Err(e) if e.kind() == io::ErrorKind::CrossesDevices => {
+                                    std::fs::copy(file.path(), &dest)?;
+                                }
+                                Err(e) => return Err(e),
+                            }
+                        } else {
+                            Self::remove_existing_output_file(&dest)?;
+                            std::fs::copy(file.path(), &dest)?;
                         }
                     } else {
-                        Self::remove_existing_output_file(&dest)?;
-                        std::fs::copy(file.path(), &dest)?;
-                    }
-                } else {
-                    match file.open() {
-                        Ok(mut reader) => {
-                            Self::remove_existing_output_file(&dest)?;
-                            let mut out = std::fs::File::create(&dest)?;
-                            std::io::copy(&mut reader, &mut out)?;
-                        }
-                        Err(e) => {
-                            if strict {
-                                return Err(e);
+                        match file.open() {
+                            Ok(mut reader) => {
+                                Self::remove_existing_output_file(&dest)?;
+                                let mut out = std::fs::File::create(&dest)?;
+                                std::io::copy(&mut reader, &mut out)?;
                             }
-                            eprintln!(
-                                "vfstool: skipping {}: {e}",
-                                key_to_string_lossy(relative_path)
-                            );
-                            return Ok(false);
+                            Err(e) => {
+                                if strict {
+                                    return Err(e);
+                                }
+                                return Ok(Some(MaterializationSkip::UnreadableArchiveEntry {
+                                    key: key_to_path_buf(relative_path),
+                                    archive: PathBuf::from(
+                                        file.parent_archive_path().unwrap_or_default(),
+                                    ),
+                                    error: e.to_string(),
+                                }));
+                            }
                         }
                     }
-                }
-                Ok(true)
-            })
-            .collect();
-        Ok(written?.into_iter().filter(|&ok| ok).count())
+                    Ok(None)
+                },
+            )
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(Self::materialization_report(outcomes))
+    }
+
+    /// One outcome per winner, `None` for one that was written, as a report.
+    fn materialization_report(outcomes: Vec<Option<MaterializationSkip>>) -> MaterializationReport {
+        let written = outcomes.iter().filter(|outcome| outcome.is_none()).count();
+        let mut skipped: Vec<MaterializationSkip> = outcomes.into_iter().flatten().collect();
+        skipped.sort_by(|a, b| {
+            a.key()
+                .as_os_str()
+                .as_encoded_bytes()
+                .cmp(b.key().as_os_str().as_encoded_bytes())
+        });
+        MaterializationReport { written, skipped }
     }
 
     /// Collapse the entire VFS into `dest`, creating hardlinks, symlinks, or copies.
@@ -129,56 +152,67 @@ impl VFS {
     /// links point at the file's absolute path, whether or not the VFS was built from relative
     /// directories.
     ///
+    /// Without `extract_archives`, winners inside archives are left out; with it, archive files
+    /// themselves are. Either way the report's `skipped` lists them, and `written` counts the
+    /// rest.
+    ///
     /// # Errors
     ///
     /// Returns an error if creating the destination root directory fails or any selected file cannot
     /// be materialized.
-    pub fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()> {
+    pub fn collapse_into(
+        &self,
+        dest: &Path,
+        opts: &CollapseOptions,
+    ) -> io::Result<MaterializationReport> {
         self.validate_materialization_paths()?;
         std::fs::create_dir_all(dest)?;
 
-        self.file_map
+        let outcomes = self
+            .file_map
             .par_iter()
-            .map(|(relative_path, file)| -> io::Result<()> {
-                let relative_path_buf = Self::materialization_path(relative_path)?;
-                let merged_path = dest.join(&relative_path_buf);
-                Self::ensure_output_parent_safe(dest, &merged_path)?;
-                let Some(merged_dir) = merged_path.parent() else {
-                    return Err(io::Error::other(format!(
-                        "failed to resolve parent dir for {}",
-                        merged_path.display()
-                    )));
-                };
+            .map(
+                |(relative_path, file)| -> io::Result<Option<MaterializationSkip>> {
+                    let relative_path_buf = Self::materialization_path(relative_path)?;
+                    let merged_path = dest.join(&relative_path_buf);
+                    Self::ensure_output_parent_safe(dest, &merged_path)?;
+                    let Some(merged_dir) = merged_path.parent() else {
+                        return Err(io::Error::other(format!(
+                            "failed to resolve parent dir for {}",
+                            merged_path.display()
+                        )));
+                    };
 
-                std::fs::create_dir_all(merged_dir).map_err(|e| {
-                    io::Error::new(
-                        e.kind(),
-                        format!("failed to create directory {}: {e}", merged_dir.display()),
-                    )
-                })?;
+                    std::fs::create_dir_all(merged_dir).map_err(|e| {
+                        io::Error::new(
+                            e.kind(),
+                            format!("failed to create directory {}: {e}", merged_dir.display()),
+                        )
+                    })?;
 
-                if file.is_loose() {
-                    Self::collapse_loose_file(file, &merged_path, opts)?;
-                } else if opts.extract_archives {
-                    Self::collapse_archive_file(file, relative_path, &merged_path)?;
-                } else {
-                    eprintln!(
-                        "vfstool: skipping {}, loaded from archive: {}",
-                        key_to_string_lossy(relative_path),
-                        file.parent_archive_path().unwrap_or_default()
-                    );
-                }
-
-                Ok(())
-            })
-            .collect()
+                    if file.is_loose() {
+                        Self::collapse_loose_file(relative_path, file, &merged_path, opts)
+                    } else if opts.extract_archives {
+                        Self::collapse_archive_file(file, relative_path, &merged_path)
+                            .map(|()| None)
+                    } else {
+                        Ok(Some(MaterializationSkip::ArchiveEntry {
+                            key: key_to_path_buf(relative_path),
+                            archive: PathBuf::from(file.parent_archive_path().unwrap_or_default()),
+                        }))
+                    }
+                },
+            )
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(Self::materialization_report(outcomes))
     }
 
     fn collapse_loose_file(
+        key: &NormalizedPath,
         file: &VfsFile,
         merged_path: &Path,
         opts: &CollapseOptions,
-    ) -> io::Result<()> {
+    ) -> io::Result<Option<MaterializationSkip>> {
         if !file.path().exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -191,15 +225,14 @@ impl VFS {
         }
 
         if Self::is_archive_file(file) && opts.extract_archives {
-            eprintln!(
-                "vfstool: skipping archive {}",
-                file.file_name().unwrap_or_default().to_string_lossy()
-            );
-            return Ok(());
+            return Ok(Some(MaterializationSkip::ArchiveFile {
+                key: key_to_path_buf(key),
+                archive: file.path().to_path_buf(),
+            }));
         }
 
         if is_same_file(file.path(), merged_path)? {
-            return Ok(());
+            return Ok(None);
         }
 
         match std::fs::remove_file(merged_path) {
@@ -225,9 +258,9 @@ impl VFS {
         };
 
         match link_result {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(None),
             Err(_) if opts.allow_copying => Self::copy_replacing_output(file.path(), merged_path)
-                .map(|_| ())
+                .map(|_| None)
                 .map_err(|copy_err| {
                     io::Error::new(
                         copy_err.kind(),

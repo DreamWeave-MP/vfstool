@@ -65,20 +65,21 @@ VFS's own data directories therefore keeps that directory's files and adds the r
 and extracting a file into the folder it lives in leaves it there. Files are written in parallel, so when a call fails, some
 others may already be written.
 
-{{ api_signature(value="fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<()>") }}
+{{ api_signature(value="fn collapse_into(&self, dest: &Path, opts: &CollapseOptions) -> io::Result<MaterializationReport>") }}
 
-Writes the whole VFS into `dest`, which is created if needed, the way `vfstool collapse` does.
+Writes the whole VFS into `dest`, which is created if needed, the way `vfstool collapse` does, and
+returns what it wrote and what it left out.
 
 - **Loose files** are hard-linked, or symbolically linked with `use_symlinks`. When linking fails,
   for example across file systems, the file is copied with `allow_copying` and the call fails
   without it.
 - **Archive entries** are extracted with `extract_archives`, read through
-  [`VfsFile::open`](@/docs/api/files.md#reading-it). Without it they are left out, and each is reported
-  on standard error: `vfstool: skipping KEY, loaded from archive: ARCHIVE`.
+  [`VfsFile::open`](@/docs/api/files.md#reading-it). Without it they are left out, each an
+  `ArchiveEntry` in the report.
 - **Archives that are loose files**, a `.bsa` or `.ba2` with `beth-archives` or a `.zip` or `.pk3`
   with `zip`, are left out with `extract_archives`, so the result does not hold both an archive and
-  its contents. `ArchiveInvalidationInvalidated!.bsa` is not treated as an archive. Without
-  `extract_archives`, they are linked like any file.
+  its contents, each an `ArchiveFile` in the report. `ArchiveInvalidationInvalidated!.bsa` is not
+  treated as an archive. Without `extract_archives`, they are linked like any file.
 
 A loose file that no longer exists is an error. A symbolic link points at the file's absolute path,
 so a VFS built from relative directories makes links that resolve wherever they are.
@@ -96,21 +97,42 @@ Three public fields and no derives, not even `Default`: set all three.
 | `extract_archives: bool` | Extract archive entries, and leave out loose archive files | `--extract-archives` |
 | `use_symlinks: bool` | Symbolic links instead of hard links | `--symbolic` |
 
-{{ api_signature(value="fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> std::io::Result<usize>") }}
+{{ api_signature(value="fn dump_to_directory(&self, dir: &Path, use_hardlinks: bool) -> io::Result<MaterializationReport>") }}
 
-Writes every winner into `dir` and returns how many files were written.
+Writes every winner into `dir` and returns what it wrote and what it left out.
 [`run_setup`](@/docs/api/run.md) writes the same way, except that a missing file is an error there.
 It differs from `collapse_into` in three ways:
 
 - **Archive entries are always extracted.** There is no option to leave them out.
 - **Loose files are hard-linked with `use_hardlinks`, copied without it**, and a hard link that
   fails because it would cross file systems falls back to a copy. Other link errors fail the call.
-- **Missing files are skipped, not errors.** A loose file that no longer exists, or an archive
-  entry that does not open, is left out and reported on standard error, as
-  `vfstool: skipping KEY: source no longer exists at PATH` or `vfstool: skipping KEY: ERROR`, and
-  not counted.
+- **Missing files are skipped, not errors.** A loose file that no longer exists is a
+  `MissingLooseSource` in the report, and an archive entry that does not open an
+  `UnreadableArchiveEntry`; neither is counted in `written`.
 
 `dir` is created if it does not exist.
+
+{{ api_signature(value="struct MaterializationReport") }}
+
+What `collapse_into` or `dump_to_directory` did. `Debug`, `Clone`, `Default`; `Serialize` with
+`serialize`.
+
+| Field | Meaning |
+|---|---|
+| `written: usize` | Files written, or found already in place |
+| `skipped: Vec<MaterializationSkip>` | The winners left out, sorted by key |
+
+{{ api_signature(value="enum MaterializationSkip") }}
+
+A winner left out, and why. `Debug`, `Clone`, `#[non_exhaustive]`; `Serialize` with `serialize`,
+tagged in `snake_case` like the plan. `key()` returns the key of any of them.
+
+| Variant | Left out by | Because |
+|---|---|---|
+| `ArchiveEntry { key: PathBuf, archive: PathBuf }` | `collapse_into` | The winner is inside `archive` and `extract_archives` is off |
+| `ArchiveFile { key: PathBuf, archive: PathBuf }` | `collapse_into` | The winner is the archive file `archive`, whose entries `extract_archives` writes instead |
+| `MissingLooseSource { key: PathBuf, source: PathBuf }` | `dump_to_directory` | The loose file `source` no longer exists |
+| `UnreadableArchiveEntry { key: PathBuf, archive: PathBuf, error: String }` | `dump_to_directory` | The entry in `archive` did not open, with the reason |
 
 {{ api_signature(value="fn extract_file(&self, vfs_path: &Path, dest_dir: &Path) -> io::Result<Option<PathBuf>>") }}
 

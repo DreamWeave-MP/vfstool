@@ -132,10 +132,11 @@ Every `PathBuf` in a report type serializes as a string. serde refuses a path th
 these write one with U+FFFD in place of each invalid sequence, as `NormalizedKey` does, while the
 report in memory keeps the exact bytes.
 
-## Standard error
+## Standard output and error
 
-Three methods write to standard error, one line per thing they leave out:
-[`collapse_into`](@/docs/api/materializing.md#writing-files-out) for each archive entry or
-archive, [`dump_to_directory`](@/docs/api/materializing.md#writing-files-out) for each file it
-skips, and [`diff_directory`](@/docs/api/conflicts.md) for each entry its walk cannot read. Every
-line starts with `vfstool:`. Everything else reports through return values.
+The library writes nothing to the process's streams: they belong to the program. What a call
+leaves out comes back in its result, for the caller to print or not.
+[`collapse_into`](@/docs/api/materializing.md#writing-files-out) and
+[`dump_to_directory`](@/docs/api/materializing.md#writing-files-out) return a
+`MaterializationReport` listing each winner they skipped, and
+[`diff_directory`](@/docs/api/conflicts.md) lists what its walk could not read in `unreadable`.

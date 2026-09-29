@@ -11,7 +11,8 @@ use std::{
 };
 
 use vfstool_lib::{
-    CollapseOptions, VFS, VfsKeyInput, normalize_host_path, run_finalize_tracked, run_setup_tracked,
+    CollapseOptions, MaterializationSkip, VFS, VfsKeyInput, normalize_host_path,
+    run_finalize_tracked, run_setup_tracked,
 };
 
 use crate::{
@@ -35,7 +36,25 @@ fn handle_collapse(vfs: &VFS, params: CollapseParams) -> Result<()> {
         let plan = vfs.materialization_plan(&params.collapse_into, &params.options);
         write_serialized(params.output, params.format, &plan)
     } else {
-        vfs.collapse_into(&params.collapse_into, &params.options)
+        let report = vfs.collapse_into(&params.collapse_into, &params.options)?;
+        for skip in &report.skipped {
+            match skip {
+                MaterializationSkip::ArchiveEntry { key, archive } => eprintln!(
+                    "vfstool: skipping {}, loaded from archive: {}",
+                    key.display(),
+                    archive.display()
+                ),
+                MaterializationSkip::ArchiveFile { archive, .. } => eprintln!(
+                    "vfstool: skipping archive {}",
+                    archive
+                        .file_name()
+                        .unwrap_or(archive.as_os_str())
+                        .to_string_lossy()
+                ),
+                other => eprintln!("vfstool: skipping {}", other.key().display()),
+            }
+        }
+        Ok(())
     }
 }
 

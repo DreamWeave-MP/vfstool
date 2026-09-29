@@ -16,6 +16,9 @@ use walkdir::WalkDir;
 ///
 /// - **`additions`** — the file exists only in the directory; it would be a
 ///   net-new entry in the VFS.
+///
+/// What the walk could not read is in **`unreadable`**, so a partial result is never mistaken
+/// for a whole one.
 pub struct DirectoryDiff<'vfs> {
     /// Files present in both the directory and the VFS.
     /// `(normalized_key, incoming_file, current_vfs_entry)`.
@@ -23,6 +26,10 @@ pub struct DirectoryDiff<'vfs> {
 
     /// Files in the directory that are not in the VFS.
     pub additions: Vec<(PathBuf, VfsFile)>,
+
+    /// Paths under the directory the walk could not read, such as a folder without read
+    /// permission, each with the error; nothing beneath them is in the other lists.
+    pub unreadable: Vec<(PathBuf, std::io::Error)>,
 }
 
 impl VFS {
@@ -42,6 +49,7 @@ impl VFS {
     /// installs, overrides, and adds.
     pub fn diff_directory<P: AsRef<Path> + Sync>(&self, dir: P) -> DirectoryDiff<'_> {
         let dir = dir.as_ref().to_path_buf();
+        let mut unreadable = Vec::new();
 
         // Walk the directory in parallel — I/O is the bottleneck here.
         let entries: Vec<(NormalizedPath, PathBuf, VfsFile)> = WalkDir::new(&dir)
@@ -51,10 +59,8 @@ impl VFS {
                 Ok(entry) if entry.file_type().is_file() => Some(entry),
                 Ok(_) => None,
                 Err(err) => {
-                    eprintln!(
-                        "vfstool: warning: failed to walk '{}': {err}",
-                        dir.display()
-                    );
+                    let path = err.path().unwrap_or(&dir).to_path_buf();
+                    unreadable.push((path, std::io::Error::from(err)));
                     None
                 }
             })
@@ -84,9 +90,12 @@ impl VFS {
             }
         }
 
+        unreadable.sort_by(|(a, _), (b, _)| a.cmp(b));
+
         DirectoryDiff {
             conflicts,
             additions,
+            unreadable,
         }
     }
 }

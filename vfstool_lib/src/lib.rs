@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #![deny(missing_docs)]
+// A library reports through its return values; the process's streams belong to the host.
+#![cfg_attr(not(test), deny(clippy::print_stdout, clippy::print_stderr))]
 //! Virtual file system library for `OpenMW` modding tools.
 //!
 //! `vfstool_lib` builds a resolved view of an `OpenMW`-style virtual file system from ordered
@@ -210,8 +212,8 @@ pub use semantic::{
 };
 pub use vfs::{
     ArchiveEntry, ArchiveInfo, DirectoryDiff, DuplicateEntry, DuplicateReport, ExplainReport,
-    MaterializationAction, MaterializationIssue, MaterializationPlan, VFS, VfsProvider,
-    VfsProviderRecord,
+    MaterializationAction, MaterializationIssue, MaterializationPlan, MaterializationReport,
+    MaterializationSkip, VFS, VfsProvider, VfsProviderRecord,
 };
 pub use vfs_file::VfsFile;
 

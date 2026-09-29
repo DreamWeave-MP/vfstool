@@ -306,9 +306,9 @@ later changes; the copy a script holds does not follow them.
 {{ api_signature(value="vfs:diffDirectory(dir: string) -> DirectoryDiff") }}
 
 What adding a directory on top would do, without adding it: the keys where it would replace the
-current winner, with both files, and the keys it would add, in no particular order. The directory
-is walked like a data directory and nothing is changed; one that cannot be walked gives two empty
-lists and a warning on standard error.
+current winner, with both files, and the keys it would add, in no particular order, and
+`unreadable`, a `{ path, error }` row for each place the walk could not read. The directory is
+walked like a data directory and nothing is changed.
 
 ```lua
 local vfstool = require("@dream/vfs")
@@ -440,32 +440,43 @@ assert(vfs:len() == 1)
 
 ### dumpToDirectory
 
-{{ api_signature(value="vfs:dumpToDirectory(dir: string, useHardlinks: boolean) -> number") }}
+{{ api_signature(value="vfs:dumpToDirectory(dir: string, useHardlinks: boolean) -> (number, Skipped)") }}
 
-Writes every file the VFS resolves into `dir`, at its key, and returns how many it wrote. Files
+Writes every file the VFS resolves into `dir`, at its key, and returns how many it wrote and the
+[files it left out](#skipped-files). Files
 from archives are extracted. Loose files are copied, or hard-linked with `useHardlinks`, copied
 after all when the link would cross devices. Existing files in the way are replaced, except the
 loose file itself when `dir` is the directory it comes from, which stays where it is. A loose
-source that has disappeared, or an archive entry that cannot be read, is skipped with a line on
-standard error. The [run workflow](@/docs/luau/module.md#the-run-workflow) uses this.
+source that has disappeared is skipped as `"missingLooseSource"`, and an archive entry that cannot
+be read as `"unreadableArchiveEntry"`. The [run workflow](@/docs/luau/module.md#the-run-workflow)
+uses this.
 
 ### collapseInto
 
-{{ api_signature(value="vfs:collapseInto(dest: string, options: { allowCopying: boolean?, extractArchives: boolean?, useSymlinks: boolean? }?)") }}
+{{ api_signature(value="vfs:collapseInto(dest: string, options: { allowCopying: boolean?, extractArchives: boolean?, useSymlinks: boolean? }?) -> Skipped") }}
 
-Writes the VFS into `dest` as one directory, like the command line's `collapse`. All three options
-default to `false`:
+Writes the VFS into `dest` as one directory, like the command line's `collapse`, and returns the
+[files it left out](#skipped-files). All three options default to `false`:
 
 | Option | Effect |
 |---|---|
 | `useSymlinks` | Symbolic links to loose files instead of hard links |
 | `allowCopying` | Copy a loose file when the link fails, for example across devices |
-| `extractArchives` | Extract files that live in archives, and leave the archive files themselves out, each with a line on standard error |
+| `extractArchives` | Extract files that live in archives, and leave the archive files themselves out, each skipped as `"archiveFile"` |
 
-Without `extractArchives`, files from archives are left out, each with a line on standard error.
+Without `extractArchives`, files from archives are left out, each skipped as `"archiveEntry"`.
 A loose source that no longer exists, or a link that fails without `allowCopying`, raises an error.
 A loose file whose destination already is that file, because `dest` is the data directory it
 comes from, is left where it is.
+
+### Skipped files
+
+`dumpToDirectory` and `collapseInto` return the winners they left out, sorted by key, as
+`{ kind, key, archive?, source?, error? }` rows. `kind` says why: `"archiveEntry"`, the file is in
+`archive` and archives are not extracted; `"archiveFile"`, it is the archive file `archive`, whose
+contents are extracted instead; `"missingLooseSource"`, the loose file `source` is gone;
+`"unreadableArchiveEntry"`, the entry in `archive` did not open, for the reason in `error`. The
+module prints nothing; what to do with the list is the script's call.
 
 ### materializationPlan
 
