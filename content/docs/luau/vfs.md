@@ -25,7 +25,7 @@ An empty VFS, for building one up with `pushDirectory`, `pushArchive` and `pushP
 
 ### VFS.fromDirectories
 
-{{ api_signature(value="VFS.fromDirectories(dirs: { string }, options: { archives: { string }? }?) -> VFS") }}
+{{ api_signature(value="VFS.fromDirectories(dirs: { string }, options: { archives: { string }?, writeRoot: string? }?) -> VFS") }}
 
 Builds the VFS OpenMW would. `dirs` are data directories, lowest priority first: a file in a later
 directory wins over the same key in an earlier one. Each directory is walked in full, following
@@ -40,6 +40,9 @@ loose file in the VFS, as it does in OpenMW.
 Building never fails. A directory that does not exist adds nothing, an archive that cannot be
 found or opened is left out, and so is a file whose key would be unsafe or would put a file where
 another key needs a directory. What is left can always be written out.
+
+`writeRoot` exists with the `lua-write` feature: the directory `vfs:writeFile` and the other
+[writes](@/docs/luau/io.md) go under. Without the feature it is an unknown option.
 
 ```lua
 local vfstool = require("@dream/vfs")
@@ -56,14 +59,14 @@ assert(vfs:contains("extras.zip"))
 
 ### VFS.fromDirectoriesWithConflictIndex
 
-{{ api_signature(value="VFS.fromDirectoriesWithConflictIndex(dirs: { string }, options: { archives: { string }? }?) -> (VFS, ConflictIndex)") }}
+{{ api_signature(value="VFS.fromDirectoriesWithConflictIndex(dirs: { string }, options: { archives: { string }?, writeRoot: string? }?) -> (VFS, ConflictIndex)") }}
 
 The same VFS and its [`ConflictIndex`](@/docs/luau/indexes.md#conflictindex), from one walk of
 the directories.
 
 ### VFS.fromDirectoriesWithLayerIndex
 
-{{ api_signature(value="VFS.fromDirectoriesWithLayerIndex(dirs: { string }, options: { archives: { string }? }?) -> (VFS, LayerIndex)") }}
+{{ api_signature(value="VFS.fromDirectoriesWithLayerIndex(dirs: { string }, options: { archives: { string }?, writeRoot: string? }?) -> (VFS, LayerIndex)") }}
 
 The same VFS and its [`LayerIndex`](@/docs/luau/indexes.md#layerindex), built up front.
 

@@ -29,9 +29,14 @@ metatable lookup:
 
 | Type | Tagged |
 |---|---|
-| `dream.vfs.VFS`, `dream.vfs.VfsFile` | Yes, when the plan has tags to spare |
+| `dream.vfs.VFS`, `dream.vfs.VfsFile`, `dream.vfs.Reader` | Yes, when the plan has tags to spare |
 | `dream.vfs.Keys`, `dream.vfs.Entries` | Yes, when the plan has tags to spare |
-| `dream.vfs.VfsProvider`, `dream.vfs.LayerIndex`, `dream.vfs.ConflictIndex`, `dream.vfs.VfsLock`, `dream.vfs.Snapshot`, `dream.vfs.MetadataSnapshot`, `dream.vfs.Providers`, `dream.vfs.ProviderRecords`, `dream.vfs.Tree` | Never |
+| `dream.vfs.VfsProvider`, `dream.vfs.LayerIndex`, `dream.vfs.ConflictIndex`, `dream.vfs.VfsLock`, `dream.vfs.Snapshot`, `dream.vfs.MetadataSnapshot`, `dream.vfs.Providers`, `dream.vfs.ProviderRecords`, `dream.vfs.Tree`, `dream.vfs.Writer`, `dream.vfs.HostEntries` | Never |
+
+With the `lua-write` feature the extension adds the write methods to `dream.vfs.VFS` and the
+`writeRoot` constructor option; with `lua-host` it fills the module's `host` table at install.
+[Writing files and host I/O](@/docs/luau/io.md) describes both. It never installs a `require`
+navigator; [require over the VFS](@/docs/luau/require.md) is the host's call.
 
 ## Constants
 
@@ -53,12 +58,21 @@ The conventional global, for a host that wants one:
 {{ api_signature(value="struct Vfs") }}
 
 A `VFS` as scripts see it, userdata `dream.vfs.VFS`. It holds the VFS behind a `RefCell`, because
-script methods change it through a shared handle, and the sorted key list `keys()` last built,
-dropped at the next change.
+script methods change it through a shared handle, the sorted key list `keys()` last built,
+dropped at the next change, and with `lua-write` the write root.
+
+The handle is shared: it is `Clone`, and a clone is the same VFS. A host keeps one clone for a
+[`VfsRequireNavigator`](@/docs/luau/require.md) or a callback and pushes another to scripts with
+`l3i::userdata::push_owned(scope, handle.clone())`; a change a script makes is visible through
+both, and a writer a script opened registers its file through the same VFS on `close`.
 
 {{ api_signature(value="fn new(vfs: VFS) -> Vfs") }}
 
 Wraps a VFS the host built.
+
+{{ api_signature(value="fn shares(&self, other: &Vfs) -> bool") }}
+
+Whether `other` is a clone of this handle.
 
 {{ api_signature(value="fn push(scope: &impl Scope, vfs: VFS) -> Result<ValueView<'_>>") }}
 
@@ -80,6 +94,12 @@ Runs `body` with the VFS borrowed mutably, and drops the cached key list. Fails 
 
 Takes the VFS out and leaves an empty one behind: how a host reclaims a VFS a script built or
 changed.
+
+{{ api_signature(value="fn write_root(&self) -> Option<PathBuf>") }}
+
+{{ api_signature(value="fn set_write_root(&self, root: Option<PathBuf>)") }}
+
+With `lua-write`: the directory writes go under, and how a host grants or withdraws it.
 
 These borrows can only overlap when host code runs Luau from inside `with` or `with_mut`; the
 module's own methods never do.
@@ -130,7 +150,9 @@ Each wraps a `vfstool_lib` value in a public field, so a host can push its own w
 
 | Handle | Userdata | Wraps | Derives |
 |---|---|---|---|
-| `VfsFileHandle` | `dream.vfs.VfsFile` | `pub VfsFile` | `Debug`, `Clone` |
+| `VfsFileHandle` | `dream.vfs.VfsFile` | `pub file: VfsFile`, made with `VfsFileHandle::new(file)`, plus the backing its positional reads keep | `Debug`, `Clone` |
+| `VfsReader` | `dream.vfs.Reader` | A position over a file's backing; only `file:open()` and `host.open` make one | `Debug` |
+| `VfsWriter` | `dream.vfs.Writer` | A buffered file writer (`lua-write` or `lua-host`); only `vfs:openWrite` and `host.openWrite` make one | `Debug` |
 | `VfsProviderHandle` | `dream.vfs.VfsProvider` | `pub VfsProvider` | `Debug`, `Clone` |
 | `LayerIndexHandle` | `dream.vfs.LayerIndex` | `pub LayerIndex` | `Debug`, `Clone` |
 | `ConflictIndexHandle` | `dream.vfs.ConflictIndex` | `pub ConflictIndex` | none |
@@ -192,6 +214,11 @@ key.
 {{ api_signature(value="struct ProviderRecords(pub Rc<[VfsProviderRecord]>)") }}
 
 `dream.vfs.ProviderRecords`, items provider records. `Clone`, `Debug`.
+
+{{ api_signature(value="struct HostEntries(pub Rc<[HostEntry]>)") }}
+
+With `lua-host`: `dream.vfs.HostEntries`, items `{ path, isDir, size }`, the rows of
+`host.list`; `HostEntry { path: PathBuf, is_dir: bool, size: u64 }`. `Clone`, `Debug`.
 
 {{ api_signature(value="struct TreeWalk") }}
 

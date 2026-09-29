@@ -24,7 +24,9 @@ l3i = "1.0"
 
 `lua` is the binding. The others are optional and add to it: `beth-archives` reads BSA and BA2
 archives and `zip` ZIP archives, the renamed PK3 and JPK included, and either one adds `vfs:pushArchive`; `serialize` adds
-`serialize` and `vfs:serializeTree`. dream-path is a direct dependency because the host adds its
+`serialize` and `vfs:serializeTree`; `lua-write` lets scripts write under a VFS's write root and
+`lua-host` gives them the `host` table over any host path ([Writing files and host
+I/O](@/docs/luau/io.md)). dream-path is a direct dependency because the host adds its
 `PathExtension` to the plan.
 
 l3i builds Luau itself, and only with clang, lld and cross-language thin LTO: its build script
@@ -135,6 +137,14 @@ fn main() -> l3i::Result<()> {
 `take` leaves an empty VFS in the script's handle. To look without taking, use `with`; a host
 function that takes a `&Vfs` argument gets the script's VFS the same way. The
 [extension page](@/docs/luau/extension.md) has both, and the other handle types.
+
+## require over the VFS
+
+Scripts in the VFS can `require` each other through it: the host installs a
+`VfsRequireNavigator` over the same `Vfs` handle it hands scripts, and `require("./util")`,
+`require("../lib/x")` and `require("@alias/x")` resolve as VFS keys, with each module compiled
+once per runtime and cloned per instance. [require over the VFS](@/docs/luau/require.md) has the
+rules, the template cache, and the code.
 
 ## The vfstool global
 

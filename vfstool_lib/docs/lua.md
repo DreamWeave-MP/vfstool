@@ -215,13 +215,63 @@ file:fileName() -> string | nil
 file:fileStem() -> string | nil
 file:parentArchivePath() -> string | nil
 file:parentArchiveName() -> string | nil
+file:size() -> number                 -- metadata, or the archive index's uncompressed size
 file:readAll() -> string
+file:readAllBuffer() -> buffer
 file:readInto(buffer, offset?) -> number   -- bytes written, at most the space after offset
+file:readAt(buffer, fileOffset, length?, bufferOffset?) -> number   -- positional, no handle state
+file:readRange(fileOffset, length) -> buffer
+file:open() -> Reader
+reader:read(length) -> buffer
+reader:readInto(buffer, bufferOffset?, length?) -> number
+reader:seek(position)  reader:skip(count)  reader:tell() -> number  reader:size() -> number
+reader:close()
 ```
 
 `readInto` streams the file straight into a Luau buffer and returns how many bytes it wrote; a
 file larger than the space left is truncated to it, so compare the result with the space to detect
-that. `readAll` is the convenient form and copies once more.
+that. `readAll` is the convenient form and copies once more. The positional reads and the reader
+copy from a backing the handle keeps after its first positional read: a memory map of a loose
+file, the decompressed bytes of an archive entry (a stored entry is read straight from the
+archive), so a sequential parse allocates nothing per call. Every offset and length is checked
+against the file and the buffer, with an error naming the argument
+(`dream.vfs: readAt: fileOffset 10 past the end (size 8)`).
+
+## Writes and host paths (`lua-write`, `lua-host`)
+
+```lua
+vfs = vfstool.VFS.fromDirectories(dirs, { archives?, writeRoot = dir })   -- lua-write
+vfs:writeRoot() -> string | nil          vfs:setWriteRoot(dir)
+vfs:writeFile(key, data, { offset?, append?, create? }?) -> VfsFile   -- registers the winner
+vfs:openWrite(key, { append?, truncate? }?) -> Writer                  -- registers on close
+vfs:mkdir(key)  vfs:remove(key)  vfs:rename(from, to)                  -- only under the root
+writer:write(data, offset?, length?) -> number   writer:writeAt(position, data, offset?, length?) -> number
+writer:seek(position)  writer:tell()  writer:flush()  writer:truncate(length)  writer:close() -> VfsFile | nil
+
+vfstool.host.readFile(path) -> buffer             -- lua-host
+vfstool.host.readFileString(path) -> string
+vfstool.host.readAt(path, offset, length) -> buffer
+vfstool.host.writeFile(path, data, { append? }?) -> number
+vfstool.host.open(path) -> Reader                 vfstool.host.openWrite(path, { append?, truncate? }?) -> Writer
+vfstool.host.stat(path) -> { size, isFile, isDir, modified?, readonly } | nil
+vfstool.host.exists(path) -> boolean              vfstool.host.list(path, { recursive? }?) -> HostEntries
+vfstool.host.mkdir(path, { recursive? }?)         vfstool.host.remove(path, { recursive? }?)
+vfstool.host.rename(from, to)                     vfstool.host.copy(from, to) -> number
+vfstool.host.canonicalize(path) -> string
+```
+
+A key that could leave the write root (`..`, absolute, a drive letter, NUL) is refused before the
+disk is touched. Neither feature is on by default; without them the members do not exist.
+
+## `require` over the VFS
+
+`vfstool_lib::lua::VfsRequireNavigator` is an `l3i::require::RequireNavigator` over a shared
+`Vfs` handle: `require("./x")` and `require("../x")` resolve relative to the requirer's key
+(`x.luau`, `x.lua`, `x/init.luau`), `.luaurc` aliases are read through the VFS, host aliases come
+from `alias(name, key)`, and modules are compiled once per runtime into a template cache
+(OpenMW's `ScriptTemplateCache`) and cloned per instance. The host installs it:
+`runtime.install_require(VfsRequireNavigator::new(vfs.clone(), sandbox, &runtime))`. The site's
+[require page](https://dreamweave-mp.github.io/vfstool/docs/luau/require/) has the rules.
 
 ## `VfsProvider`
 
