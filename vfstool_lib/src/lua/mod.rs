@@ -82,6 +82,8 @@ use l3i::{
     value::{Function, Table},
 };
 
+#[cfg(feature = "lua-write")]
+pub use handles::WriteRootGrant;
 pub use handles::{
     ConflictIndexHandle, LayerIndexHandle, MetadataSnapshotHandle, SnapshotHandle, Vfs,
     VfsFileHandle, VfsLockHandle, VfsProviderHandle,
@@ -109,6 +111,17 @@ pub const MODULE: &str = "@dream/vfs";
 /// The conventional compatibility global name, for hosts that expose the module as a global
 /// (`RuntimePolicy::compat_global(MODULE, MODULE_NAME)`). The module itself never installs it.
 pub const MODULE_NAME: &str = "vfstool";
+
+/// The capability that lets scripts use the `host` table (`lua-host`): files and directories on
+/// any host path. A runtime whose policy does not grant it still has the table, but every
+/// function in it raises. Granted with `RuntimePolicy::new().capability(HOST_CAPABILITY)`.
+pub const HOST_CAPABILITY: &str = "filesystem.host";
+
+/// The capability that lets scripts give a VFS a write root (`lua-write`): the `writeRoot`
+/// constructor option and `vfs:setWriteRoot`. Without it, a VFS a script builds never has a
+/// write root, so every write method fails; a VFS the host pushes from Rust keeps the write root
+/// the host set. Granted with `RuntimePolicy::new().capability(WRITE_CAPABILITY)`.
+pub const WRITE_CAPABILITY: &str = "filesystem.write";
 
 /// Luau type spellings shared by the declared signatures.
 mod types {
@@ -182,21 +195,41 @@ impl Extension for VfsExtension {
         conflicts::describe(d);
         handles::describe_snapshots(d);
         describe_module(d);
+        #[cfg(feature = "lua-host")]
+        d.optional_capability(HOST_CAPABILITY);
+        #[cfg(feature = "lua-write")]
+        d.optional_capability(WRITE_CAPABILITY);
         Ok(())
     }
 
     /// The class tables (`VFS.new`, `VfsFile.from`, ...) are nested tables of bound functions,
-    /// which only a live VM can hold, so they are filled here.
+    /// which only a live VM can hold, so they are filled here; the `VFS` constructors and the
+    /// `host` table also capture which capabilities the runtime's policy grants.
     fn install(&self, cx: &mut InstallContext<'_>) -> Result<()> {
+        #[cfg(feature = "lua-write")]
+        let write_root_grant = if cx.has_capability(WRITE_CAPABILITY)? {
+            handles::WriteRootGrant::Scripts
+        } else {
+            handles::WriteRootGrant::Refused
+        };
+        #[cfg(feature = "lua-host")]
+        let host_granted = cx.has_capability(HOST_CAPABILITY)?;
         let runtime = cx.runtime();
         let module = cx.module(MODULE)?;
-        module.set("VFS", &vfs::class_table(runtime)?)?;
+        module.set(
+            "VFS",
+            &vfs::class_table(
+                runtime,
+                #[cfg(feature = "lua-write")]
+                write_root_grant,
+            )?,
+        )?;
         module.set("VfsFile", &handles::file_class_table(runtime)?)?;
         module.set("VfsProvider", &handles::provider_class_table(runtime)?)?;
         module.set("LayerIndex", &layer::class_table(runtime)?)?;
         module.set("ConflictIndex", &conflicts::class_table(runtime)?)?;
         #[cfg(feature = "lua-host")]
-        module.set("host", &host::table(runtime)?)?;
+        module.set("host", &host::table(runtime, host_granted)?)?;
         Ok(())
     }
 }
@@ -287,7 +320,7 @@ fn describe_module(d: &mut ExtensionDescriptor) {
     module
         .installed("host")
         .signature(host::TABLE_TYPE)
-        .doc("Files and directories on host paths, with no VFS in between (the lua-host feature).");
+        .doc("Files and directories on host paths, with no VFS in between (the lua-host feature); every function needs the filesystem.host capability.");
 }
 
 fn normalize_host_path(bytes: &[u8]) -> Vec<u8> {

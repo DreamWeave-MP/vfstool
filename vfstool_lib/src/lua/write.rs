@@ -477,10 +477,12 @@ pub(super) fn describe_vfs_writes(vfs: &mut l3i::extension::UserdataBuilder<'_, 
     .signature("(self): string?")
     .doc("The directory writes go under, or nil when this VFS refuses writes.");
     vfs.method("setWriteRoot", |v: &Vfs, dir: &[u8]| {
+        v.check_write_root_grant("setWriteRoot")?;
         v.set_write_root(Some(host_path(dir)));
+        Ok::<_, Error>(())
     })
     .signature("(self, dir: string)")
-    .doc("Makes dir the write root; it is created when the first write needs it.");
+    .doc("Makes dir the write root; it is created when the first write needs it. Needs the filesystem.write capability.");
     vfs.method(
         "writeFile",
         |v: &Vfs, call: &Call, key: &[u8], data: BytesView, options: Option<ValueView>| {

@@ -46,9 +46,20 @@ impl Drop for TempDir {
     }
 }
 
+/// A plan whose policy grants both filesystem capabilities: what the tests of the writes and
+/// the host table need.
 fn plan() -> Rc<RuntimePlan> {
+    plan_with(
+        RuntimePolicy::new()
+            .capability(super::WRITE_CAPABILITY)
+            .capability(super::HOST_CAPABILITY),
+    )
+}
+
+/// A plan with `policy`, plus the `vfstool` global.
+fn plan_with(policy: RuntimePolicy) -> Rc<RuntimePlan> {
     RuntimePlan::builder()
-        .policy(RuntimePolicy::new().compat_global(MODULE, MODULE_NAME))
+        .policy(policy.compat_global(MODULE, MODULE_NAME))
         .extension(dream_path::lua::PathExtension)
         .extension(VfsExtension)
         .finalize()
@@ -57,6 +68,11 @@ fn plan() -> Rc<RuntimePlan> {
 
 fn runtime() -> Runtime {
     Runtime::from_plan(&plan()).expect("a runtime from the plan")
+}
+
+/// A runtime whose policy grants no capability: reads only.
+fn ungranted_runtime() -> Runtime {
+    Runtime::from_plan(&plan_with(RuntimePolicy::new())).expect("a runtime from the plan")
 }
 
 #[test]
@@ -947,6 +963,7 @@ fn the_template_cache_reports_native_code_status_under_jit() {
     let vfs = super::Vfs::new(crate::VFS::from_directories([&dir.0], None));
     let cache = Rc::new(super::TemplateCache::new());
     let policy = RuntimePolicy::new()
+        .capability(super::WRITE_CAPABILITY)
         .compat_global(MODULE, MODULE_NAME)
         .native_code(NativeCodePolicy {
             mode: NativeCodeMode::Eager,
@@ -1231,6 +1248,82 @@ fn directory_writes_stay_under_the_root_and_move_the_winners() {
     assert!(!out.0.join("tmp").exists() && !out.0.join("d1").exists());
 }
 
+#[cfg(feature = "lua-write")]
+#[test]
+fn without_the_write_capability_a_script_vfs_gets_no_write_root() {
+    let data = TempDir::new("ungranted_write_data");
+    data.write("textures/a.dds", b"old");
+    let runtime = ungranted_runtime();
+    runtime.exec(&format!("data = {:?}", data.lua())).unwrap();
+    runtime
+        .exec(
+            r#"
+            local refused = "requires the 'filesystem.write' capability, which this runtime does not grant"
+            for _, make in { 'fromDirectories', 'fromDirectoriesWithConflictIndex', 'fromDirectoriesWithLayerIndex' } do
+                local ok, err = pcall(vfstool.VFS[make], { data }, { writeRoot = data .. '/out' })
+                assert(not ok and err:find('dream.vfs: VFS.' .. make .. '.writeRoot ' .. refused, 1, true), make .. ': ' .. tostring(err))
+                local vfs = vfstool.VFS[make]({ data })
+                assert(vfs:writeRoot() == nil)
+                ok, err = pcall(vfs.setWriteRoot, vfs, data .. '/out')
+                assert(not ok and err:find('dream.vfs: setWriteRoot ' .. refused, 1, true), make .. ': ' .. tostring(err))
+                assert(vfs:writeRoot() == nil, 'the refusal sets nothing')
+                -- Reads keep working, and every write fails for want of a root.
+                assert(vfs:getFile('textures/a.dds'):readAll() == 'old')
+                for name, args in { writeFile = { 'a', 'b' }, openWrite = { 'a' }, mkdir = { 'a' }, remove = { 'a' }, rename = { 'a', 'b' } } do
+                    ok, err = pcall(vfs[name], vfs, table.unpack(args))
+                    assert(not ok and err:find('dream.vfs: ' .. name .. ': this VFS has no write root', 1, true), name .. ': ' .. tostring(err))
+                end
+            end
+            local empty = vfstool.VFS.new()
+            local ok, err = pcall(empty.setWriteRoot, empty, data .. '/out')
+            assert(not ok and err:find('dream.vfs: setWriteRoot ' .. refused, 1, true), err)
+            "#,
+        )
+        .unwrap();
+    assert!(
+        !data.0.join("out").exists(),
+        "the refused root was not created"
+    );
+}
+
+#[cfg(feature = "lua-write")]
+#[test]
+fn a_vfs_from_the_host_keeps_the_write_root_the_host_set() {
+    use super::WriteRootGrant;
+    let data = TempDir::new("host_vfs_data");
+    data.write("a.txt", b"old");
+    let out = TempDir::new("host_vfs_root");
+    let vfs = super::Vfs::new(crate::VFS::from_directories([&data.0], None));
+    assert_eq!(vfs.write_root_grant(), WriteRootGrant::Host);
+    vfs.set_write_root(Some(out.0.clone()));
+    // Even a runtime that grants nothing writes through the root the host set, and cannot
+    // move it.
+    let runtime = ungranted_runtime();
+    {
+        let stack = runtime.stack();
+        let frame = stack.frame();
+        l3i::userdata::push_owned(&frame, vfs.clone()).unwrap();
+        frame.set_global("hosted").unwrap();
+    }
+    runtime
+        .exec(
+            r"
+            assert(hosted:writeFile('a.txt', 'new'):readAll() == 'new')
+            local ok, err = pcall(hosted.setWriteRoot, hosted, '/elsewhere')
+            assert(not ok and err:find('dream.vfs: setWriteRoot: the host made this VFS in Rust and keeps its write root; only the host sets it', 1, true), err)
+            ",
+        )
+        .unwrap();
+    assert_eq!(fs::read(out.0.join("a.txt")).unwrap(), b"new");
+    assert_eq!(vfs.write_root(), Some(out.0.clone()));
+    // The host may hand the root over to scripts.
+    vfs.set_write_root_grant(WriteRootGrant::Scripts);
+    runtime
+        .exec("hosted:setWriteRoot(hosted:writeRoot() .. '/moved') hosted:writeFile('b.txt', 'b')")
+        .unwrap();
+    assert_eq!(fs::read(out.0.join("moved/b.txt")).unwrap(), b"b");
+}
+
 #[cfg(not(feature = "lua-write"))]
 #[test]
 fn a_runtime_without_lua_write_has_no_write_methods() {
@@ -1342,6 +1435,35 @@ fn host_io_reads_writes_lists_and_moves_host_paths() {
             ",
         )
         .unwrap();
+}
+
+#[cfg(feature = "lua-host")]
+#[test]
+fn without_the_host_capability_every_host_function_raises() {
+    let dir = TempDir::new("ungranted_host");
+    dir.write("in.txt", b"secret");
+    let runtime = ungranted_runtime();
+    runtime.exec(&format!("dir = {:?}", dir.lua())).unwrap();
+    runtime
+        .exec(
+            r#"
+            local host = vfstool.host
+            assert(type(host) == 'table')
+            local names = { 'readFile', 'readFileString', 'readAt', 'writeFile', 'open', 'openWrite', 'stat', 'exists', 'list', 'mkdir', 'remove', 'rename', 'copy', 'canonicalize' }
+            for _, name in names do
+                local ok, err = pcall(host[name], dir .. '/in.txt', dir .. '/out.txt')
+                assert(not ok and err == "dream.vfs: host." .. name .. " requires the 'filesystem.host' capability, which this runtime does not grant", name .. ': ' .. tostring(err))
+            end
+            local count = 0
+            for name in host do assert(table.find(names, name), name) count += 1 end
+            assert(count == #names, 'the same shape as the granted table')
+            assert(not pcall(function() host.extra = 1 end), 'frozen')
+            -- The VFS reads the file as ever.
+            assert(vfstool.VfsFile.from(dir .. '/in.txt'):readAll() == 'secret')
+            "#,
+        )
+        .unwrap();
+    assert!(!dir.0.join("out.txt").exists());
 }
 
 #[cfg(not(feature = "lua-host"))]

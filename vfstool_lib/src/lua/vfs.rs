@@ -14,6 +14,8 @@ use l3i::{
     value::Table,
 };
 
+#[cfg(feature = "lua-write")]
+use super::WriteRootGrant;
 use super::{
     ConflictIndexHandle, LayerIndexHandle, Vfs, VfsFileHandle, VfsProviderHandle, class_function,
     frozen_class_table, host_path, io_error, paths_from_array, paths_from_table, regex_error,
@@ -75,13 +77,35 @@ impl Constructor {
             .map(|list| list.iter().map(String::as_str).collect())
     }
 
-    /// The handle over `vfs`, with the write root when one was given.
-    fn handle(self, vfs: VFS) -> Vfs {
-        let handle = Vfs::new(vfs);
+    /// The handle over `vfs`, with the write root when one was given and the grant allows it.
+    fn handle(
+        self,
+        vfs: VFS,
+        context: &str,
+        #[cfg(feature = "lua-write")] grant: WriteRootGrant,
+    ) -> Result<Vfs> {
+        let handle = script_vfs(
+            vfs,
+            #[cfg(feature = "lua-write")]
+            grant,
+        );
         #[cfg(feature = "lua-write")]
-        handle.set_write_root(self.write_root);
-        handle
+        if let Some(root) = self.write_root {
+            handle.check_write_root_grant(&format!("{context}.writeRoot"))?;
+            handle.set_write_root(Some(root));
+        }
+        #[cfg(not(feature = "lua-write"))]
+        let _ = context;
+        Ok(handle)
     }
+}
+
+/// A handle over a VFS a script built, carrying the runtime's write root grant.
+fn script_vfs(vfs: VFS, #[cfg(feature = "lua-write")] grant: WriteRootGrant) -> Vfs {
+    let handle = Vfs::new(vfs);
+    #[cfg(feature = "lua-write")]
+    handle.set_write_root_grant(grant);
+    handle
 }
 
 /// `{ allowCopying, extractArchives, useSymlinks }?`.
@@ -107,19 +131,37 @@ fn collapse_options(
     Ok(collapse)
 }
 
-pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
+/// The `VFS` constructors of one runtime. With `lua-write` they carry `grant`, what the
+/// runtime's policy says about scripts giving a VFS a write root.
+pub(super) fn class_table(
+    runtime: &l3i::Runtime,
+    #[cfg(feature = "lua-write")] grant: WriteRootGrant,
+) -> Result<Table> {
     frozen_class_table(runtime, |table| {
-        class_function(runtime, table, "VFS", "new", || Owned(Vfs::new(VFS::new())))?;
+        class_function(runtime, table, "VFS", "new", move || {
+            Owned(script_vfs(
+                VFS::new(),
+                #[cfg(feature = "lua-write")]
+                grant,
+            ))
+        })?;
         class_function(
             runtime,
             table,
             "VFS",
             "fromDirectories",
-            |call: &Call, dirs: ValueView, options: Option<ValueView>| {
+            move |call: &Call, dirs: ValueView, options: Option<ValueView>| {
+                const CONTEXT: &str = "VFS.fromDirectories";
                 let dirs = paths_from_array(call, dirs, "dirs")?;
-                let options = Constructor::read(call, options, "VFS.fromDirectories")?;
+                let options = Constructor::read(call, options, CONTEXT)?;
                 let vfs = VFS::from_directories(dirs.iter(), options.archives());
-                Ok::<_, Error>(Owned(options.handle(vfs)))
+                let handle = options.handle(
+                    vfs,
+                    CONTEXT,
+                    #[cfg(feature = "lua-write")]
+                    grant,
+                )?;
+                Ok::<_, Error>(Owned(handle))
             },
         )?;
         class_function(
@@ -127,13 +169,19 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             table,
             "VFS",
             "fromDirectoriesWithConflictIndex",
-            |call: &Call, dirs: ValueView, options: Option<ValueView>| {
+            move |call: &Call, dirs: ValueView, options: Option<ValueView>| {
+                const CONTEXT: &str = "VFS.fromDirectoriesWithConflictIndex";
                 let dirs = paths_from_array(call, dirs, "dirs")?;
-                let options =
-                    Constructor::read(call, options, "VFS.fromDirectoriesWithConflictIndex")?;
+                let options = Constructor::read(call, options, CONTEXT)?;
                 let (vfs, conflicts) =
                     VFS::from_directories_with_conflict_index(dirs.iter(), options.archives());
-                push_owned(call, options.handle(vfs))?;
+                let handle = options.handle(
+                    vfs,
+                    CONTEXT,
+                    #[cfg(feature = "lua-write")]
+                    grant,
+                )?;
+                push_owned(call, handle)?;
                 push_owned(call, ConflictIndexHandle(conflicts))?;
                 Ok::<_, Error>(StackResults)
             },
@@ -143,13 +191,19 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             table,
             "VFS",
             "fromDirectoriesWithLayerIndex",
-            |call: &Call, dirs: ValueView, options: Option<ValueView>| {
+            move |call: &Call, dirs: ValueView, options: Option<ValueView>| {
+                const CONTEXT: &str = "VFS.fromDirectoriesWithLayerIndex";
                 let dirs = paths_from_array(call, dirs, "dirs")?;
-                let options =
-                    Constructor::read(call, options, "VFS.fromDirectoriesWithLayerIndex")?;
+                let options = Constructor::read(call, options, CONTEXT)?;
                 let (vfs, layer) =
                     VFS::from_directories_with_layer_index(dirs.iter(), options.archives());
-                push_owned(call, options.handle(vfs))?;
+                let handle = options.handle(
+                    vfs,
+                    CONTEXT,
+                    #[cfg(feature = "lua-write")]
+                    grant,
+                )?;
+                push_owned(call, handle)?;
                 push_owned(call, LayerIndexHandle(layer))?;
                 Ok::<_, Error>(StackResults)
             },

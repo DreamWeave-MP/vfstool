@@ -10,7 +10,7 @@ use std::{
 
 use l3i::{
     Error, Result,
-    bind::{Call, StackResults},
+    bind::{ArgView, Call, StackResults},
     convert::{BytesView, Exact, new_buffer},
     extension::{ExtensionDescriptor, TagPolicy},
     options::Options,
@@ -228,8 +228,47 @@ pub(super) fn describe(d: &mut ExtensionDescriptor) {
         .doc("The entries of a host directory, sorted by path, each { path, isDir, size }.");
 }
 
-/// The frozen `host` table.
-pub(super) fn table(runtime: &l3i::Runtime) -> Result<Table> {
+/// The names of the `host` table's functions, in the order of [`TABLE_TYPE`].
+const FUNCTIONS: [&str; 14] = [
+    "readFile",
+    "readFileString",
+    "readAt",
+    "writeFile",
+    "open",
+    "openWrite",
+    "stat",
+    "exists",
+    "list",
+    "mkdir",
+    "remove",
+    "rename",
+    "copy",
+    "canonicalize",
+];
+
+/// The frozen `host` table: the functions when the runtime grants `filesystem.host`, else a
+/// table of the same shape whose every function raises.
+pub(super) fn table(runtime: &l3i::Runtime, granted: bool) -> Result<Table> {
+    if granted {
+        return granted_table(runtime);
+    }
+    frozen_class_table(runtime, |table| {
+        for name in FUNCTIONS {
+            let message = format!(
+                "dream.vfs: host.{name} requires the '{}' capability, which this runtime does not grant",
+                super::HOST_CAPABILITY
+            );
+            // The stub takes whatever the real function would have, and raises.
+            class_function(runtime, table, "host", name, move |_: ArgView| {
+                Err::<(), Error>(Error::permission(message.clone()))
+            })?;
+        }
+        Ok(())
+    })
+}
+
+/// The `host` table of a runtime that grants `filesystem.host`.
+fn granted_table(runtime: &l3i::Runtime) -> Result<Table> {
     frozen_class_table(runtime, |table| {
         class_function(runtime, table, "host", "readFile", read_file)?;
         class_function(runtime, table, "host", "readFileString", |path: &[u8]| {

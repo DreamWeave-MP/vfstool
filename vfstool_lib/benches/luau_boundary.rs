@@ -274,7 +274,12 @@ const IO_SCRIPTS: &[(&str, u64, &str)] = &[
 fn bench_io(c: &mut Criterion) {
     let fixture = make_io_fixture();
     let plan = RuntimePlan::builder()
-        .policy(RuntimePolicy::new().compat_global(MODULE, MODULE_NAME))
+        .policy(
+            RuntimePolicy::new()
+                .capability(vfstool_lib::lua::WRITE_CAPABILITY)
+                .capability(vfstool_lib::lua::HOST_CAPABILITY)
+                .compat_global(MODULE, MODULE_NAME),
+        )
         .extension(dream_path::lua::PathExtension)
         .extension(VfsExtension)
         .finalize()

@@ -41,6 +41,25 @@ struct VfsState {
     keys: RefCell<Option<KeyBlob>>,
     #[cfg(feature = "lua-write")]
     write_root: RefCell<Option<std::path::PathBuf>>,
+    #[cfg(feature = "lua-write")]
+    write_root_grant: std::cell::Cell<WriteRootGrant>,
+}
+
+/// Who may give a [`Vfs`] its write root (`lua-write`). The module's constructors record
+/// whether the runtime's policy grants the `filesystem.write` capability
+/// ([`WRITE_CAPABILITY`](crate::lua::WRITE_CAPABILITY)); a VFS the host makes in Rust is the
+/// host's to configure.
+#[cfg(feature = "lua-write")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WriteRootGrant {
+    /// Scripts may set it: the runtime grants `filesystem.write`.
+    Scripts,
+    /// The runtime does not grant `filesystem.write`: the `writeRoot` option and
+    /// `setWriteRoot` raise, and the VFS never has a write root.
+    Refused,
+    /// The host sets it from Rust ([`Vfs::set_write_root`]); `setWriteRoot` raises. What
+    /// [`Vfs::new`] starts with.
+    Host,
 }
 
 // SAFETY: plain Rust data (maps, paths, archive handles) behind an `Rc` that only the VM's
@@ -58,6 +77,8 @@ impl Vfs {
             keys: RefCell::new(None),
             #[cfg(feature = "lua-write")]
             write_root: RefCell::new(None),
+            #[cfg(feature = "lua-write")]
+            write_root_grant: std::cell::Cell::new(WriteRootGrant::Host),
         }))
     }
 
@@ -137,6 +158,37 @@ impl Vfs {
     #[cfg(feature = "lua-write")]
     pub fn set_write_root(&self, root: Option<std::path::PathBuf>) {
         *self.0.write_root.borrow_mut() = root;
+    }
+
+    /// Who may give this VFS its write root from a script.
+    #[cfg(feature = "lua-write")]
+    #[must_use]
+    pub fn write_root_grant(&self) -> WriteRootGrant {
+        self.0.write_root_grant.get()
+    }
+
+    /// Decides who may give this VFS its write root from a script: how a host lets scripts of a
+    /// runtime that grants `filesystem.write` move the root of a VFS it pushed from Rust
+    /// (`WriteRootGrant::Scripts`), or withdraws that.
+    #[cfg(feature = "lua-write")]
+    pub fn set_write_root_grant(&self, grant: WriteRootGrant) {
+        self.0.write_root_grant.set(grant);
+    }
+
+    /// The error `setWriteRoot` and the `writeRoot` option raise when `what` may not set the
+    /// root, or `Ok` when scripts may.
+    #[cfg(feature = "lua-write")]
+    pub(super) fn check_write_root_grant(&self, what: &str) -> Result<()> {
+        match self.write_root_grant() {
+            WriteRootGrant::Scripts => Ok(()),
+            WriteRootGrant::Refused => Err(Error::permission(format!(
+                "dream.vfs: {what} requires the '{}' capability, which this runtime does not grant",
+                super::WRITE_CAPABILITY
+            ))),
+            WriteRootGrant::Host => Err(Error::permission(format!(
+                "dream.vfs: {what}: the host made this VFS in Rust and keeps its write root; only the host sets it"
+            ))),
+        }
     }
 }
 
