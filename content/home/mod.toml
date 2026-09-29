@@ -1,0 +1,201 @@
+# vfstool, the program. Structured facts only: the name and summary are `title` and `description`
+# in index.md. The library it is built on, vfstool_lib, is its own project in content/lib/. Every
+# key is explained at https://dreamweave-mp.github.io/DreamWeave-Mod-Template/guide/mod-toml/
+
+# Permanent identity. Never changes, whatever the program is called or wherever it is hosted.
+id = "34fc442a-5060-4b77-8c64-ca5ea9861a10"
+
+# The slug names the project on this site. Release tags are bare versions, like Cargo's: 1.0.0.
+slug = "vfstool"
+type = "tool"
+status = "active"
+license = "MIT OR Apache-2.0"
+
+[[maintainers]]
+name = "DreamWeave"
+url = "https://github.com/DreamWeave-MP"
+
+[links]
+documentation = "@/docs/_index.md"
+donate = "https://ko-fi.com/magicaldave"
+
+# A program: StroggForge's Rust workflow (.github/workflows/release.yaml) builds it once per
+# [[platforms]] entry and publishes each release. It is also on crates.io, so the page offers
+# cargo install.
+[package]
+format = "binary"
+binary = "vfstool"
+crate = "vfstool"
+
+[[platforms]]
+os = "windows"
+arch = "x86_64"
+
+[[platforms]]
+os = "macos"
+arch = "aarch64"
+
+[[platforms]]
+os = "macos"
+arch = "x86_64"
+
+[[platforms]]
+os = "linux"
+arch = "x86_64"
+
+[install]
+notes = """
+Unzip the archive anywhere and run `vfstool` from a terminal. It reads the `openmw.cfg` in
+OpenMW's default location, or the one in the folder you name with `--config`.
+
+[Start here](@/docs/start-here.md) walks through the first commands.
+"""
+
+[[media]]
+file = "media/vfstool.webp"
+alt = "vfstool's icon: two crossed wrenches on the DreamWeave disc."
+featured = true
+
+[[credits]]
+name = "OpenMW"
+role = "The virtual file system vfstool reimplements: data directory order, archives, and loose files over archives"
+url = "https://openmw.org"
+
+[[credits]]
+name = "Benjamin Winger"
+role = "Case-insensitive find"
+url = "https://github.com/benjaminwinger"
+
+# Every published version, oldest first: the GitHub releases, each dated the day it was published.
+# To release, add the next one here with the day you publish it, set the same version in both
+# Cargo.toml files, commit, and push its tag: git tag 1.0.0. StroggForge builds and publishes the
+# program and vfstool_lib, records this release in mod.lock beside this file, and records the
+# library's version in content/lib/mod.lock.
+#
+# Left out: 0.1.0, on crates.io since April 2025 with no tag and no GitHub release; v0.1.2 to
+# v0.1.6, GitHub drafts never published; and the tag 0.2.1, which released only vfstool_lib.
+
+[[releases]]
+version = "0.1.7"
+date = 2025-06-17
+summary = "First release on GitHub: find, extract and collapse OpenMW's virtual file system from the command line."
+added = [
+    "`find-file` prints where one VFS path comes from: the loose file, or the archive that holds it. `--simple` prints the bare path for pipes.",
+    "`find --path` lists the files whose name, stem, extension, folder or path matches, in the mode `--type` picks, as JSON, YAML or TOML.",
+    "`extract` copies one file out of the VFS, from a data directory or a BSA.",
+    "`collapse` builds the whole VFS in one folder with hardlinks, with symbolic links (`--symbolic`), or with copies where linking fails (`--allow-copying`); `--extract-archives` unpacks BSA and BA2 contents too.",
+    "`remaining` shows what a data directory still provides, or with `--replacements-only`, what overrides it.",
+    "`--config` names the folder that holds `openmw.cfg`; `OPENMW_CONFIG` names a cfg file of any name.",
+]
+
+[[releases]]
+version = "0.1.8"
+date = 2025-06-17
+changed = ["`openmw.cfg` is read by openmw-config 0.1.2, from crates.io."]
+
+[[releases]]
+version = "0.1.9"
+date = 2025-07-07
+changed = ["Built on vfstool_lib 0.2.0 with its BSA support, and on openmw-config 0.1.5."]
+known_issues = ["Built from a Cargo.toml that still said 0.1.8, and not published to crates.io."]
+
+[[releases]]
+version = "0.2.0"
+date = 2025-07-18
+summary = "find takes a regular expression."
+breaking = [
+    "`find` takes its query as a positional argument and matches it as a regular expression against each file's path. `--path`, `--type` and its eight match modes are gone.",
+]
+
+# 0.2.1 was tagged for vfstool_lib only; 0.2.3 carries the program's changes since 0.2.0.
+[[releases]]
+version = "0.2.3"
+date = 2025-09-25
+summary = "find ignores case, and files reached through symbolic links are part of the VFS."
+changed = [
+    "`find` matches case-insensitively, against the file's path with `\\` read as `/`.",
+    "Updated dependencies, with serde_yaml in place of serde_yaml_with_quirks.",
+]
+fixed = ["Files reached through symbolic links in a data directory are part of the VFS."]
+
+[[releases]]
+version = "0.2.4"
+date = 2025-10-03
+fixed = ["An `openmw.cfg` that points at a user config is read correctly, through openmw-config 0.1.92."]
+
+[[releases]]
+version = "0.2.5"
+date = 2025-12-17
+changed = ["Built and published by StroggForge's release workflow, one archive per platform, named for it."]
+
+[[releases]]
+version = "0.9.0"
+date = 2026-04-29
+summary = "Reports on the providers behind every file, validation, locks, a dry-run collapse, and running tools on the merged VFS."
+added = [
+    "`explain` shows one file's winner and every provider it overrides; `duplicates` lists every file with more than one provider, optionally only those matching a regular expression.",
+    "`conflicts`, `shadowed`, `contributions` and `diff` report which data directories and archives override which, which are hidden entirely, and what each one contributes.",
+    "`archives` lists the loaded archives and how many of their files win; `archive-list` lists one archive's files, chosen by path, file name or `--source-index`.",
+    "`validate` reports missing `data=` directories, fallback archives, content files and groundcover files, and with `--full`, archives that cannot be read.",
+    "`lock` writes a manifest of every winning file with its BLAKE3 hash; `drift` compares the VFS against one, and with `--fail-on-drift` exits with 4 when they differ.",
+    "`collapse --dry-run` prints the plan instead of writing files.",
+    "`run` dumps the merged VFS into a scratch folder, runs a program on it, and copies what the program created or changed into `data-local` or `--output`.",
+    "`find-file --only_physical` matches loose files only, and exits with 2 for a file only an archive has.",
+    "Documented exit codes: 1 not found, 2 only in an archive, 4 drift, 5 validation issues, 6 bad regular expression, 7 `openmw.cfg` not loaded, 8 invalid input, 9 runtime failure.",
+]
+changed = [
+    "`find` matches against the VFS path, like `textures/tx_wood_01.dds`, instead of the file's path on disk, and uses the expression as written, so `\\.` matches a dot.",
+    "BSA and BA2 archives are read through dream_archive.",
+    "JSON output is compact.",
+    "vfstool is licensed GPL-3.0-only instead of GPL-3.0-or-later.",
+]
+fixed = ["`find-file` exits with 1 when the file is not in the VFS, and `find` with 6 on a bad expression; both exited with 0."]
+
+[[releases]]
+version = "0.9.1"
+date = 2026-09-26
+fixed = [
+    "Fallout 3 BSAs whose entries store only a folder and a file name are read.",
+    "Dependencies updated past the crossbeam-epoch and memmap2 security advisories.",
+]
+known_issues = ["Built from a Cargo.toml that still said 0.9.0, not published to crates.io, and without a Linux archive."]
+
+[[releases]]
+version = "0.10.0"
+date = 2026-09-26
+fixed = ["Oblivion's BSAs are no longer mistaken for Xbox archives, through dream_archive 0.2."]
+
+[[releases]]
+version = "0.10.1"
+date = 2026-09-26
+fixed = ["Fallout 3's voice archives are read, through dream_archive 0.2.2."]
+changed = ["Building vfstool needs Rust 1.88."]
+
+[[releases]]
+version = "0.10.2"
+date = 2026-09-27
+changed = ["Built on vfstool_lib 0.10.2; the program is unchanged."]
+
+[[releases]]
+version = "0.10.3"
+date = 2026-09-27
+changed = ["Built on vfstool_lib 0.10.3; the program is unchanged."]
+
+[[releases]]
+version = "0.10.4"
+date = 2026-09-27
+summary = "vfstool is MIT OR Apache-2.0."
+changed = ["vfstool is licensed MIT OR Apache-2.0, at your option, instead of GPL-3.0-only."]
+
+# Declared ahead of its tag: the page lists it as unreleased until 1.0.0 is pushed. Set the date
+# to the day you publish it. 0.11.0 to 0.11.3 were never tagged; 1.0.0 carries their changes.
+[[releases]]
+version = "1.0.0"
+date = 2026-09-29
+summary = "First stable release: the commands, their options, their reports and their exit codes are now under semver."
+changed = [
+    "No command or option changed since 0.10.4. Built on vfstool_lib 1.0.0: looking up a path that is already normalized allocates nothing.",
+]
+known_issues = [
+    "On Linux and macOS, when a file name in the VFS is not UTF-8, `explain`, `duplicates`, `conflicts`, `shadowed --list-files`, `lock`, `drift` and `collapse --dry-run` stop with `path contains invalid UTF-8 characters` and exit code 9.",
+]

@@ -1,0 +1,65 @@
+# Site configuration. This file is about the website; facts about the program and the library
+# live in content/home/mod.toml and content/lib/mod.toml. Zola reads this file; so does CI.
+
+# Where the site lives. On GitHub Pages the workflow substitutes the real Pages URL, so this
+# value matters for local previews.
+base_url = "https://DreamWeave-MP.github.io/vfstool"
+title = "vfstool"
+description = "OpenMW's virtual file system, rebuilt in Rust: a command line to find, explain, lock and collapse your load order's files, and the library under it, for Rust and Luau."
+
+compile_sass = true
+build_search_index = true
+generate_feeds = true
+feed_filenames = ["atom.xml"]
+taxonomies = [{ name = "tags", feed = false }]
+
+[search]
+index_format = "fuse_json"
+include_title = true
+include_description = true
+include_content = true
+truncate_content_length = 400
+
+[markdown]
+highlighting = { theme = "dracula-soft" }
+insert_anchor_links = "right"
+smart_punctuation = true
+
+[slugify]
+paths = "safe"
+
+[link_checker]
+skip_prefixes = ["https://github.com/", "https://www.nexusmods.com/", "https://crates.io/", "https://docs.rs/"]
+
+[extra]
+# The repository that builds and publishes this site. CI refuses to build anywhere else.
+github_username = "DreamWeave-MP"
+github_project = "vfstool"
+
+logo_text = "vfstool"
+footer_text = "vfstool · MIT OR Apache-2.0 · DreamWeave contributors"
+favicon = "img/vfstool.png"
+
+palette = "indigo"
+
+# DejaVu Sans Mono, the face of the paths this site is about, for titles. The docs are read, so
+# their text stays in the system font.
+font_override = "deja-vu-sans-mono"
+font_override_titles_only = true
+
+menu_items = [
+    { name = "vfstool", url = "@/home/index.md" },
+    { name = "vfstool_lib", url = "@/lib/index.md" },
+    { name = "Guide", url = "@/docs/_index.md" },
+    { name = "Command line", url = "@/docs/cli.md" },
+    { name = "Rust API", url = "@/docs/api/_index.md" },
+    { name = "Luau API", url = "@/docs/luau/_index.md" },
+]
+
+# DreamWeave's own page-view counter: this is DreamWeave's site.
+goatcounter = "dreamweave-mp"
+
+# GitHub Discussions on this repository, through giscus. The ids are looked up at build time.
+[extra.comments]
+enabled = true
+category = "General"

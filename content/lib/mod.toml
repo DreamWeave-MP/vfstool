@@ -1,0 +1,154 @@
+# vfstool_lib, the library vfstool is built on. Structured facts only: the name and summary are
+# `title` and `description` in index.md. The program is its own project in content/home/. Every
+# key is explained at https://dreamweave-mp.github.io/DreamWeave-Mod-Template/guide/mod-toml/
+
+# Permanent identity. Never changes, whatever the crate is called or wherever it is hosted.
+id = "b5412bc5-4c2c-49d6-b488-dd772a1046fa"
+
+slug = "vfstool_lib"
+type = "library"
+status = "active"
+license = "MIT OR Apache-2.0"
+
+[[maintainers]]
+name = "DreamWeave"
+url = "https://github.com/DreamWeave-MP"
+
+[links]
+documentation = "@/docs/api/_index.md"
+donate = "https://ko-fi.com/magicaldave"
+
+# A Rust library. The program and the library share their bare version tags: StroggForge's
+# workflow (.github/workflows/release.yaml) publishes vfstool_lib to crates.io, then vfstool, and
+# records the library's version from crates.io in mod.lock beside this file.
+[package]
+format = "crate"
+crate = "vfstool_lib"
+
+[[credits]]
+name = "OpenMW"
+role = "The virtual file system vfstool_lib reimplements"
+url = "https://openmw.org"
+
+# Every version on crates.io, oldest first, each dated the day it was published there. To release,
+# add the next one here and in content/home/mod.toml with the day you publish it, set the same
+# version in both Cargo.toml files, commit, and push its tag: git tag 1.0.0.
+
+[[releases]]
+version = "0.1.0"
+date = 2025-04-25
+summary = "First release: OpenMW's virtual file system from ordered data directories and BSA and BA2 archives."
+added = [
+    "`VFS::from_directories` builds the VFS from data directories in load order, later ones winning, and from the archives it is given, which loose files override.",
+    "`get_file`, `paths_matching` and `paths_with` look files up by their lowercase, `/`-separated path; `tree` and `tree_filtered` sort them into folders.",
+    "`VfsFile`: a loose file or an archive entry, opened for reading either way.",
+    "Morrowind, Oblivion, Skyrim and Fallout 4 archives through `ba2`, and JSON, YAML and TOML trees behind `serialize`.",
+]
+
+[[releases]]
+version = "0.2.0"
+date = 2025-07-07
+breaking = ["Archive support is behind the `bsa` feature; without it, a VFS is built from loose files only."]
+changed = ["Updated `serde_yaml_with_quirks` and `toml`."]
+
+[[releases]]
+version = "0.2.1"
+date = 2025-09-25
+fixed = ["Files reached through symbolic links in a data directory are part of the VFS."]
+
+[[releases]]
+version = "0.2.3"
+date = 2025-09-25
+changed = ["Updated dependencies, with `serde_yaml` in place of `serde_yaml_with_quirks`."]
+
+[[releases]]
+version = "0.9.0"
+date = 2026-04-29
+summary = "A new core: provider stacks behind every key, byte-first keys, conflict and provenance reports, locks, semantic analysis, materialization and the run workflow."
+breaking = [
+    "Keys are byte-first `NormalizedPath`s from dream-path, taken through `VfsKeyInput`; host paths stay `Path` and `PathBuf`. `normalize_path` is gone; `normalize_host_path` normalizes a host path for comparison.",
+    "The `bsa` feature is `beth-archives`, and reads BSA and BA2 through dream_archive instead of `ba2`.",
+    "Rust 1.87.",
+]
+added = [
+    "`VFS` keeps every provider of a key, low to high priority, with the winner cached: `explain`, `provider_records_for`, `duplicates`, `archives`, `archive_entries`, `source_contributions`, and mutation that either replaces a key's stack or preserves it.",
+    "`LayerIndex` for provenance, provider chains, lock manifests (`VfsLock`) and drift reports; `ConflictIndex` for conflicts, shadowed sources and source-to-source diffs.",
+    "`analyze_pair` and semantic conflict reports that tell cosmetic changes from behavior changes in INI, TOML, JSON and script files.",
+    "`collapse_into`, `materialization_plan`, `dump_to_directory` and `extract_file`, and `run_setup` and `run_finalize` for running a tool on the merged VFS.",
+    "ZIP and PK3 archives behind the `zip` feature.",
+    "With `serialize`, `serde`, `serde_json`, `serde_yaml` and `toml` are re-exported.",
+    "Lua bindings through `mlua` behind `lua`; `standalone-lua` builds a vendored LuaJIT.",
+    "Simulation, candidate planning, policies, a load-order solver and a knowledge base, the last three in the unstable `experimental` module.",
+]
+changed = ["vfstool_lib is licensed GPL-3.0-only instead of GPL-3.0-or-later."]
+
+[[releases]]
+version = "0.9.1"
+date = 2026-09-26
+summary = "The Lua bindings run on Luau, with camelCase names."
+breaking = [
+    "The `lua` feature builds mlua 0.12's vendored Luau; `standalone-lua` and LuaJIT are gone. Functions, methods, table fields and string enum values are camelCase.",
+]
+fixed = [
+    "Fallout 3 BSAs whose entries store only a folder and a file name are enumerated.",
+    "Dependencies updated past the crossbeam-epoch and memmap2 security advisories.",
+]
+
+[[releases]]
+version = "0.10.0"
+date = 2026-09-26
+fixed = ["Oblivion's BSAs are no longer mistaken for Xbox archives, through dream_archive 0.2."]
+changed = ["dream-path 0.2."]
+
+[[releases]]
+version = "0.10.1"
+date = 2026-09-26
+fixed = ["Fallout 3's voice archives are read, through dream_archive 0.2.2."]
+changed = ["Rust 1.88."]
+
+[[releases]]
+version = "0.10.2"
+date = 2026-09-27
+fixed = ["`VfsFile:readAll()` returns a Luau string, as documented, instead of a table of bytes."]
+
+[[releases]]
+version = "0.10.3"
+date = 2026-09-27
+fixed = [
+    "A prefix with a trailing separator matches like one without: `paths_with(\"meshes/\")`, `remove_provider_prefix` and `remove_resolved_prefix`, and their Luau forms.",
+    "`vfs:keys()` returns the keys sorted, as documented, instead of in hash map order.",
+]
+
+[[releases]]
+version = "0.10.4"
+date = 2026-09-27
+summary = "vfstool_lib is MIT OR Apache-2.0."
+changed = ["vfstool_lib is licensed MIT OR Apache-2.0, at your option, instead of GPL-3.0-only."]
+
+# Declared ahead of its tag: the page lists it as unreleased until 1.0.0 is pushed. Set the date
+# to the day you publish it. 0.11.0 to 0.11.3 were never tagged; 1.0.0 carries their changes.
+[[releases]]
+version = "1.0.0"
+date = 2026-09-29
+summary = "First stable release: the Luau binding is an l3i extension providing @dream/vfs, keys stay bytes end to end, and the top-level API is under semver."
+breaking = [
+    "The `lua` feature makes the crate an l3i extension, `lua::VfsExtension`, providing the module `@dream/vfs`. `lua::open`, `lua::register` and `mlua` are gone.",
+    "In Luau: key lists are sequence views and trees are streams (`:toTable()` gives the old tables), indices are 1-based, sizes are integers, unknown option keys are errors, and paths are bytes.",
+    "Building with `lua` needs l3i's toolchain: clang, lld and cross-language thin LTO.",
+    "dream-path 1.0.",
+]
+added = [
+    "`VFS::len` and `VFS::is_empty`, in constant time, and `get_file_normalized`, `contains_normalized` and `paths_matching_bytes` for keys already normalized.",
+    "`VfsKeyInput::vfs_key_bytes`, and `VfsKeyInput` for `[u8]`; `VfsFile::path_bytes`.",
+    "In Luau: `file:readInto(buffer, offset?)`, `tree:count()`, `snapshot:len()`, and a type for every function, method and view element in the plan's definitions.",
+]
+changed = [
+    "Looking up a key that is already normalized borrows it instead of allocating, and searches compare bytes.",
+    "The sorted key list is built once per change to the VFS and shared by every `keys()` call.",
+]
+fixed = [
+    "On Unix, a key that is not UTF-8 keeps its exact bytes in provider records, lock manifests and semantic conflicts, instead of a lossy spelling that looks up nothing.",
+]
+known_issues = [
+    "serde cannot write a `PathBuf` that is not UTF-8, so serializing a report or lock that holds such a key fails with `path contains invalid UTF-8 characters`.",
+]

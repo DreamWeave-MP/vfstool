@@ -1,0 +1,20 @@
+// vfstool. This file belongs to vfstool: the template never changes it, and it loads last.
+// The indigo palette does the rest.
+
+// The program's icon is the hero's featured image: a round badge, shown whole on the page's own
+// background instead of cropped into the 16:9 screenshot frame.
+.dw-hero__figure
+  justify-self: end
+  width: min(100%, 15rem)
+  border: 0
+  background: none
+  aspect-ratio: 1
+
+  img
+    object-fit: contain
+
+@media (max-width: 1000px)
+  .dw-hero__figure
+    grid-row: 1
+    justify-self: start
+    width: 7rem
