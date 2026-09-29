@@ -41,3 +41,8 @@ features = ["beth-archives", "zip", "serialize", "lua"]
 [[bench]]
 name = "vfs_benchmarks"
 harness = false
+
+[[bench]]
+name = "luau_boundary"
+harness = false
+required-features = ["lua"]
