@@ -137,7 +137,7 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
     }
     check_strict_script(
         &plan,
-        "--!strict\n\
+        &("--!strict\n\
          local vfstool = require('@dream/vfs')\n\
          local path = require('@dream/path')\n\
          local vfs: dream_vfs_VFS = vfstool.VFS.fromDirectories({ 'data' }, { archives = { 'a.bsa' } })\n\
@@ -175,7 +175,13 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
          local nested: { [string]: any } = tree:toTable()\n\
          local written, snapshot = vfstool.runSetup(vfs, 'merged', false)\n\
          local copied = vfstool.runFinalize('merged', 'out', snapshot)\n\
-         print(count, n, first, joined, table, nested, #drift.entries, vfs:contains('x'), written, #copied, tree:count(), vfstool.serialize(keys, 'json'))\n",
+         print(count, n, first, joined, table, nested, #drift.entries, vfs:contains('x'), written, #copied, tree:count())\n"
+            .to_owned()
+            + if cfg!(feature = "serialize") {
+                "print(vfstool.serialize(keys, 'json'))\n"
+            } else {
+                ""
+            }),
     );
 }
 
@@ -391,13 +397,21 @@ fn option_tables_are_strict_and_sizes_are_integers() {
         .unwrap();
     runtime
         .exec(
-            r#"
+            r"
             local vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex({ dir })
             local provenance = layer:provenance(vfs, 'a.txt', true)
             assert(provenance.providers[1].size == 4i, 'sizes are integers')
             assert(#provenance.providers[1].hashBlake3 == 64)
             local lock = layer:lockManifest(vfs)
             assert(lock:entries()[1].winnerSize == 4i and lock:toTable().entries[1].providerCount == 1)
+            ",
+        )
+        .unwrap();
+    #[cfg(feature = "serialize")]
+    runtime
+        .exec(
+            r#"
+            local vfs = vfstool.VFS.fromDirectories({ dir })
             assert(#vfstool.serialize({ files = vfs:keys(), n = 1, ok = true, nested = { 1, 2 } }, 'json') > 0)
             local json = vfstool.serialize({ files = vfs:keys() }, 'json')
             assert(json == '{"files":["a.txt"]}', json)
@@ -421,6 +435,15 @@ fn semantic_conflicts_are_rows_of_plain_tables() {
     runtime
         .exec(&format!("low = {:?} high = {:?}", low.lua(), high.lua()))
         .unwrap();
+    // JSON is only parsed with `serialize`; without it the delta is unknown, as documented.
+    let json_delta = if cfg!(feature = "serialize") {
+        "cosmeticOnly"
+    } else {
+        "unknown"
+    };
+    runtime
+        .exec(&format!("jsonDelta = {json_delta:?}"))
+        .unwrap();
     runtime
         .exec(
             r#"
@@ -437,7 +460,7 @@ fn semantic_conflicts_are_rows_of_plain_tables() {
             assert(a.providers[2].relation == 'identicalToWinner' and a.providers[2].semanticDeltaToWinner.kind == 'noOpEquivalent')
             assert(b.allIdentical == false and b.distinctVersions == 2 and b.assetClass == 'json')
             assert(b.providers[1].relation == 'differentFromWinner')
-            assert(b.providers[1].semanticDeltaToWinner.kind == 'cosmeticOnly', b.providers[1].semanticDeltaToWinner.kind)
+            assert(b.providers[1].semanticDeltaToWinner.kind == jsonDelta, b.providers[1].semanticDeltaToWinner.kind)
             local ok, err = pcall(layer.semanticConflicts, layer, vfs, { archiveHashMode = 'sometimes' })
             assert(not ok and err:find("archiveHashMode", 1, true) and err:find("got 'sometimes'", 1, true), err)
             "#,
