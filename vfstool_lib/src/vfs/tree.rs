@@ -2,7 +2,7 @@
 use super::VFS;
 #[cfg(feature = "serialize")]
 use crate::SerializeType;
-use crate::{DirectoryNode, DisplayTree, NormalizedPath, VfsFile, paths::key_to_path_buf_lossy};
+use crate::{DirectoryNode, DisplayTree, NormalizedPath, VfsFile, paths::key_to_path_buf};
 #[cfg(feature = "serialize")]
 use std::io::{Error, ErrorKind, Result};
 use std::{
@@ -56,12 +56,12 @@ impl VFS {
             .map_or_else(
                 || {
                     if relative {
-                        key_to_path_buf_lossy(key)
+                        key_to_path_buf(key)
                     } else {
                         entry.path().to_path_buf()
                     }
                 },
-                |parent| PathBuf::from(parent).join(key_to_path_buf_lossy(key)),
+                |parent| PathBuf::from(parent).join(key_to_path_buf(key)),
             );
 
             if file_filter.as_ref().is_some_and(|f| !f(key, entry)) {

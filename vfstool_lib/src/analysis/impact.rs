@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     VFS, path_glob_matches,
-    paths::key_to_path_buf_lossy,
+    paths::key_to_path_buf,
     semantic::{SemanticDelta, analyze_pair},
 };
 use ahash::AHashSet;
@@ -113,7 +113,7 @@ impl LayerIndex {
         let mut provider_cache = ProviderIoCache::new();
 
         for key in self.keys() {
-            let key_path = key_to_path_buf_lossy(&key);
+            let key_path = key_to_path_buf(&key);
             let provider_chain = self.provider_chain(&key_path);
             let providers = self.sources_containing(&key);
             let before_provider_index = vfs.winner_provider_index(&key);

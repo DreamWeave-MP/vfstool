@@ -67,7 +67,7 @@ impl VFS {
                 let normalized = normalized_safe_key(&relative)?;
                 Some((
                     normalized.clone(),
-                    crate::paths::key_to_path_buf_lossy(&normalized),
+                    crate::paths::key_to_path_buf(&normalized),
                     VfsFile::from(entry.path()),
                 ))
             })

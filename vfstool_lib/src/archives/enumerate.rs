@@ -13,7 +13,7 @@ pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
             .entries()
             .filter_map(bethesda_entry_path_bytes)
             .filter_map(|path| normalized_archive_key(&path))
-            .map(|key| crate::paths::key_to_path_buf_lossy(&key))
+            .map(|key| crate::paths::key_to_path_buf(&key))
             .collect(),
         #[cfg(feature = "zip")]
         TypedArchive::Zip(archive) => {
@@ -24,7 +24,7 @@ pub fn archive_paths(stored: &StoredArchive) -> Vec<PathBuf> {
                 .file_names()
                 .filter(|name| !name.ends_with('/'))
                 .filter_map(|name| normalized_archive_key(name.as_bytes()))
-                .map(|key| crate::paths::key_to_path_buf_lossy(&key))
+                .map(|key| crate::paths::key_to_path_buf(&key))
                 .collect()
         }
     }

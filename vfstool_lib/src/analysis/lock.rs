@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{LayerIndex, VFS_LOCK_SCHEMA_VERSION, VfsLock, VfsLockEntry};
-use crate::{NormalizedPath, VFS, paths::key_to_path_buf_lossy, semantic::ArchiveHashMode};
+use crate::{NormalizedPath, VFS, paths::key_to_path_buf, semantic::ArchiveHashMode};
 use rayon::prelude::*;
 use std::io;
 
@@ -34,7 +34,7 @@ impl LayerIndex {
         vfs: &VFS,
         key: &NormalizedPath,
     ) -> io::Result<Option<VfsLockEntry>> {
-        let providers = self.provider_chain(&key_to_path_buf_lossy(key));
+        let providers = self.provider_chain(&key_to_path_buf(key));
         if providers.is_empty() {
             return Ok(None);
         }
@@ -55,7 +55,7 @@ impl LayerIndex {
         )?;
 
         Ok(Some(VfsLockEntry {
-            key: key_to_path_buf_lossy(key),
+            key: key_to_path_buf(key),
             winner_source: winner_source.path.clone(),
             winner_kind: winner_source.kind,
             winner_hash_blake3: winner_fp.as_ref().map(|f| f.to_digest().hex),

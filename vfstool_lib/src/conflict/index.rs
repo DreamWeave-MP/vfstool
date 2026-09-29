@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::{
     LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsKeyInput,
-    paths::{key_to_path_buf_bytes, key_to_path_buf_lossy, normalized_safe_key},
+    paths::{key_to_path_buf, key_to_path_buf_bytes, normalized_safe_key},
 };
 use ahash::{AHashMap, AHashSet};
 use rayon::prelude::*;
@@ -135,7 +135,7 @@ impl ConflictIndex {
             .collect();
 
         for (key, source_indices) in &path_to_sources {
-            let path = key_to_path_buf_lossy(key);
+            let path = key_to_path_buf(key);
             // source_indices is sorted ascending (low priority → high priority).
             // Any entry after the first overrides something earlier (green).
             // Any entry before the last is overridden by something later (red).

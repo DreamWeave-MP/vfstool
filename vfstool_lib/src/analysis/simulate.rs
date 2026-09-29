@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta};
-use crate::{NormalizedPath, VFS, path_glob_matches, paths::key_to_path_buf_lossy};
+use crate::{NormalizedPath, VFS, path_glob_matches, paths::key_to_path_buf};
 use ahash::AHashSet;
 use std::io;
 
@@ -71,7 +71,7 @@ impl LayerIndex {
                 bucket: bucket.clone(),
                 changed_winners: changed
                     .iter()
-                    .filter(|key| path_glob_matches(bucket, &key_to_path_buf_lossy(key)))
+                    .filter(|key| path_glob_matches(bucket, &key_to_path_buf(key)))
                     .count(),
             })
             .collect();
@@ -84,7 +84,7 @@ impl LayerIndex {
             changed_keys_sample: changed
                 .into_iter()
                 .take(opts.sample_limit)
-                .map(|key| key_to_path_buf_lossy(&key))
+                .map(|key| key_to_path_buf(&key))
                 .collect(),
         })
     }

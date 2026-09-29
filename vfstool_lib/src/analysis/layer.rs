@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     NormalizedKey, NormalizedPath, SourceId, VfsKeyInput,
-    paths::{key_to_path_buf_lossy, normalized_safe_key},
+    paths::{key_to_path_buf, normalized_safe_key},
 };
 use ahash::AHashMap;
 use std::path::{Path, PathBuf};
@@ -105,13 +105,13 @@ impl LayerIndex {
                     .provider_paths
                     .get(&(source_index, NormalizedKey::from(key.clone())))
                     .and_then(|paths| paths.get(*source_occurrence))
-                    .map_or_else(|| key_to_path_buf_lossy(&key), PathBuf::from);
+                    .map_or_else(|| key_to_path_buf(&key), PathBuf::from);
                 *source_occurrence += 1;
                 Some(LayerProvider {
                     source_index,
                     provider_index,
                     source,
-                    key: key_to_path_buf_lossy(&key),
+                    key: key_to_path_buf(&key),
                     original_path,
                 })
             })

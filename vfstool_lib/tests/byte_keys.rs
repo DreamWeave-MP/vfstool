@@ -101,3 +101,45 @@ fn keys_and_paths_that_are_not_utf8_survive_byte_for_byte() {
     assert_eq!(vfs.paths_matching("odd").count(), 1);
     assert_eq!(VfsFile::from("/a/b.txt").path_bytes(), b"/a/b.txt");
 }
+
+#[cfg(unix)]
+#[test]
+fn analysis_reports_carry_keys_that_are_not_utf8_exactly() {
+    use std::os::unix::ffi::OsStrExt;
+    let low = TempDir::new("analysis_low");
+    let high = TempDir::new("analysis_high");
+    let name = std::ffi::OsStr::from_bytes(b"odd/\xffkey.dat");
+    for (dir, content) in [(&low, &b"low"[..]), (&high, &b"high"[..])] {
+        let path = dir.0.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+    }
+    let (mut vfs, layer) =
+        VFS::from_directories_with_layer_index([low.0.as_path(), high.0.as_path()], None);
+    let key_path = PathBuf::from(std::ffi::OsStr::from_bytes(b"odd/\xffkey.dat"));
+
+    let explain = vfs
+        .explain(&b"odd/\xffkey.dat"[..])
+        .expect("the key resolves");
+    assert_eq!(explain.key, key_path, "report keys keep their bytes");
+    assert_eq!(explain.winner.key, key_path);
+    assert_eq!(vfs.duplicates().entries[0].key, key_path);
+    let chain = layer.provider_chain(&key_path);
+    assert_eq!(chain.len(), 2);
+    assert_eq!(chain[1].key, key_path);
+    // The lock manifest and semantic conflicts look every key up again by its path; a lossy
+    // spelling used to drop such keys from both.
+    let lock = layer.lock_manifest(&vfs).unwrap();
+    assert_eq!(lock.entries.len(), 1);
+    assert_eq!(lock.entries[0].key, key_path);
+    assert_eq!(lock.entries[0].winner_size, Some(4));
+    let semantic = layer.semantic_conflicts(&vfs).unwrap();
+    assert_eq!(semantic.entries.len(), 1);
+    assert_eq!(semantic.entries[0].distinct_versions, 2);
+    let provenance = layer
+        .provenance(&vfs, &key_path, true)
+        .unwrap()
+        .expect("provenance");
+    assert_eq!(provenance.providers[1].size, Some(4));
+    assert_eq!(vfs.remove_resolved_matching_glob("odd/*").len(), 1);
+}

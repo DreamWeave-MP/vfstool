@@ -3,7 +3,7 @@ use crate::{
     VFS,
     analysis::{LayerIndex, SourceKind},
     matchers::CompiledGlob,
-    paths::key_to_path_buf_lossy,
+    paths::key_to_path_buf,
 };
 use std::{io, path::PathBuf};
 
@@ -94,10 +94,7 @@ impl Policy {
     ///
     /// Returns an error when provider/provenance resolution fails.
     pub fn evaluate(&self, index: &LayerIndex, vfs: &VFS) -> io::Result<PolicyResult> {
-        let mut keys: Vec<PathBuf> = vfs
-            .iter()
-            .map(|(key, _)| key_to_path_buf_lossy(key))
-            .collect();
+        let mut keys: Vec<PathBuf> = vfs.iter().map(|(key, _)| key_to_path_buf(key)).collect();
         keys.sort();
         let mut violations = Vec::new();
 

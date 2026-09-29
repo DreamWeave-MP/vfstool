@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use crate::{NormalizedPath, VfsKeyInput, paths::key_to_path_buf_lossy};
+use crate::{NormalizedPath, VfsKeyInput, paths::key_to_path_buf};
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -40,13 +40,13 @@ impl NormalizedKey {
     /// Borrow as a [`Path`].
     #[must_use]
     pub fn as_path(&self) -> PathBuf {
-        key_to_path_buf_lossy(&self.0)
+        key_to_path_buf(&self.0)
     }
 
     /// Convert to an owned [`PathBuf`].
     #[must_use]
     pub fn into_path_buf(self) -> PathBuf {
-        key_to_path_buf_lossy(&self.0)
+        key_to_path_buf(&self.0)
     }
 
     #[must_use]

@@ -148,9 +148,14 @@ pub(crate) fn key_is_at_or_under_prefix(key: &[u8], mut prefix: &[u8]) -> bool {
             .is_some_and(|suffix| suffix.starts_with(b"/"))
 }
 
+/// A normalized key as a host [`PathBuf`]: byte for byte where the platform's paths carry
+/// arbitrary bytes (Unix), and with replacement characters only where they cannot. Report
+/// keys, provenance, lock manifests, and glob matching all go through this, so a key that is
+/// not UTF-8 round-trips exactly instead of being looked up under a spelling nothing has.
 #[must_use]
-pub(crate) fn key_to_path_buf_lossy(key: &NormalizedPath) -> PathBuf {
-    PathBuf::from(String::from_utf8_lossy(key.as_bytes()).into_owned())
+pub(crate) fn key_to_path_buf(key: &NormalizedPath) -> PathBuf {
+    key_to_path_buf_bytes(key)
+        .unwrap_or_else(|| PathBuf::from(String::from_utf8_lossy(key.as_bytes()).into_owned()))
 }
 
 #[must_use]

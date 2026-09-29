@@ -3,7 +3,7 @@ use super::VFS;
 use crate::{
     CollapseOptions, NormalizedPath, SourceContributionReport, SourceKind, SourceMeta,
     normalize_host_path,
-    paths::{key_to_path_buf_bytes, key_to_path_buf_lossy, key_to_string_lossy},
+    paths::{key_to_path_buf, key_to_path_buf_bytes, key_to_string_lossy},
 };
 use ahash::{AHashMap, AHashSet};
 use std::path::{Path, PathBuf};
@@ -187,7 +187,7 @@ impl VFS {
         key: &NormalizedPath,
         entry: &super::ProviderEntry,
     ) -> VfsProviderRecord {
-        let key_path = key_to_path_buf_lossy(key);
+        let key_path = key_to_path_buf(key);
         let source = entry.provider.source.clone();
         let original_path = VFS::provider_original_path(&source, key, &entry.provider.file);
         let resolved_path = if source.kind == SourceKind::Archive {
@@ -230,7 +230,7 @@ impl VFS {
         let mut providers = self.provider_records_for_key(&key);
         let winner = providers.pop()?;
         Some(ExplainReport {
-            key: key_to_path_buf_lossy(&key),
+            key: key_to_path_buf(&key),
             winner,
             overridden: providers,
         })
@@ -273,7 +273,7 @@ impl VFS {
             .filter_map(|key| {
                 let providers = self.provider_records_for_key(&key);
                 (providers.len() > 1).then(|| DuplicateEntry {
-                    key: key_to_path_buf_lossy(&key),
+                    key: key_to_path_buf(&key),
                     winner_index: providers.len() - 1,
                     providers,
                 })
@@ -350,7 +350,7 @@ impl VFS {
                 let original_path =
                     VFS::provider_original_path(&entry.provider.source, key, &entry.provider.file);
                 entries.push(ArchiveEntry {
-                    key: key_to_path_buf_lossy(key),
+                    key: key_to_path_buf(key),
                     archive_path: entry.provider.source.path.clone(),
                     original_path,
                     wins: provider_index == winner_index,
@@ -397,7 +397,7 @@ impl VFS {
         for key in keys {
             let file = &self.file_map[&key];
             let Some(key_path) = key_to_path_buf_bytes(&key) else {
-                let display_key = key_to_path_buf_lossy(&key);
+                let display_key = key_to_path_buf(&key);
                 issues.push(MaterializationIssue::UnsafeDestination {
                     key: display_key.clone(),
                     dest: dest.join(display_key),

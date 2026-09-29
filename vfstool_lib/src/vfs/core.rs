@@ -3,10 +3,7 @@ use super::VFS;
 use ahash::AHashMap;
 use rayon::prelude::*;
 
-use crate::{
-    LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsFile,
-    paths::{key_to_path_buf_bytes, key_to_path_buf_lossy},
-};
+use crate::{LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsFile, paths::key_to_path_buf};
 use std::path::{Path, PathBuf};
 
 impl VFS {
@@ -61,7 +58,7 @@ impl VFS {
         if source.kind == SourceKind::LooseDir {
             file.path()
                 .strip_prefix(&source.path)
-                .map_or_else(|_| key_to_path_buf_lossy(key), Path::to_path_buf)
+                .map_or_else(|_| key_to_path_buf(key), Path::to_path_buf)
         } else {
             file.path().to_path_buf()
         }
@@ -175,7 +172,7 @@ impl VFS {
             for entry in providers {
                 let source = &entry.provider.source;
                 let path_for_layer = if source.kind == SourceKind::Archive {
-                    key_to_path_buf_bytes(key).unwrap_or_else(|| key_to_path_buf_lossy(key))
+                    key_to_path_buf(key)
                 } else {
                     Self::provider_original_path(source, key, &entry.provider.file)
                 };

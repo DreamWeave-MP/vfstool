@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::{LayerIndex, ProvenanceChain, ProviderRecord, SourceKind};
-use crate::{NormalizedPath, VFS, paths::key_to_path_buf_lossy, semantic::ArchiveHashMode};
+use crate::{NormalizedPath, VFS, paths::key_to_path_buf, semantic::ArchiveHashMode};
 use std::{io, path::Path};
 
 use super::provider_io::ProviderIoCache;
@@ -78,7 +78,7 @@ impl LayerIndex {
         }
 
         Ok(Some(ProvenanceChain {
-            key: key_to_path_buf_lossy(&key),
+            key: key_to_path_buf(&key),
             providers,
             winner,
         }))

@@ -5,7 +5,7 @@ use crate::archives;
 use crate::{
     NormalizedPath, SourceKind, SourceMeta, VfsFile, VfsKeyInput, path_glob_matches,
     paths::{
-        key_is_at_or_under_prefix, key_to_path_buf_lossy, normalized_safe_key,
+        key_is_at_or_under_prefix, key_to_path_buf, normalized_safe_key,
         normalized_safe_normalized_bytes,
     },
 };
@@ -328,7 +328,7 @@ impl VFS {
         let keys = self
             .file_map
             .keys()
-            .filter(|key| path_glob_matches(glob, &key_to_path_buf_lossy(key)))
+            .filter(|key| path_glob_matches(glob, &key_to_path_buf(key)))
             .cloned()
             .collect::<Vec<_>>();
 
