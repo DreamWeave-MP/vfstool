@@ -151,6 +151,26 @@ const SCRIPTS: &[(&str, u64, &str)] = &[
         CALLS,
         "return function() for _ = 1, N do bigFile:path() end end",
     ),
+    (
+        "read_into_64k",
+        1,
+        "local buf = buffer.create(65536) return function() return bigFile:readInto(buf, 0) end",
+    ),
+    (
+        "keys_5000_to_table",
+        1,
+        "return function() return #vfsLarge:keys():toTable() end",
+    ),
+    (
+        "entries_1000_to_table",
+        1,
+        "return function() return #vfs:entries():toTable() end",
+    ),
+    (
+        "tree_1000_to_table",
+        1,
+        "return function() return vfs:tree():toTable() end",
+    ),
 ];
 
 fn bench_boundary(c: &mut Criterion) {
