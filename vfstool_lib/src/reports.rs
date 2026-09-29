@@ -11,7 +11,7 @@ pub struct CollapseOptions {
     pub allow_copying: bool,
     /// Extract supported archive entries as loose files.
     ///
-    /// With archive features enabled, this covers BSA/BA2 (`beth-archives`) and ZIP/PK3 (`zip`).
+    /// With archive features enabled, this covers BSA/BA2 (`beth-archives`) and ZIP/PK3/JPK (`zip`).
     /// Configured loose archive files are skipped so the output does not contain both an archive and
     /// its extracted contents.
     pub extract_archives: bool,

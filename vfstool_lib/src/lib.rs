@@ -3,7 +3,7 @@
 //! Virtual file system library for `OpenMW` modding tools.
 //!
 //! `vfstool_lib` builds a resolved view of an `OpenMW`-style virtual file system from ordered
-//! data directories and, when archive features are enabled, BSA/BA2/ZIP/PK3 archives. Paths are
+//! data directories and, when archive features are enabled, BSA/BA2/ZIP/PK3/JPK archives. Paths are
 //! normalized to lowercase keys with `/` separators. Directory priority follows `OpenMW`'s
 //! `data=` semantics: later loose directories win, and loose files override archive entries.
 //!
@@ -127,7 +127,7 @@
 //! # Feature flags
 //!
 //! - `beth-archives`: BSA/BA2 archive support.
-//! - `zip`: ZIP/PK3 archive support. Entries are buffered on open with a 512 MiB
+//! - `zip`: ZIP/PK3/JPK archive support. Entries are buffered on open with a 512 MiB
 //!   per-entry uncompressed cap; they are not streamed in 1.0, and parallel extraction can buffer
 //!   multiple entries at once.
 //! - `serialize`: JSON/YAML/TOML serialization and structured JSON/TOML semantic comparison.
@@ -147,7 +147,7 @@
 //! hardlink-safe. This is not a hidden safety feature; it is a tradeoff with teeth.
 /// Higher-level analysis APIs: provenance, lock manifests, drift, and semantic conflict reports.
 pub mod analysis;
-/// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
+/// Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3, JPK).
 #[cfg(any(feature = "beth-archives", feature = "zip"))]
 pub mod archives;
 /// Conflict analysis: per-source override and overridden-by sets.

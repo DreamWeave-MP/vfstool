@@ -24,7 +24,7 @@ mod simulate;
 pub enum SourceKind {
     /// A loose data directory.
     LooseDir,
-    /// An archive source (BSA/BA2/ZIP/PK3).
+    /// An archive source (BSA/BA2/ZIP/PK3/JPK).
     Archive,
 }
 

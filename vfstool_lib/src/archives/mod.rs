@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3).
+//! Low-level archive loading and enumeration (BSA, BA2, ZIP, PK3, JPK).
 
 mod enumerate;
 mod keys;

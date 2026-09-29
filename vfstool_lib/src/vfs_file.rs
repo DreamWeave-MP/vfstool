@@ -25,7 +25,7 @@ mod tests;
 /// Backing storage for a [`VfsFile`]: either a loose path on disk or an archive entry.
 #[derive(Debug, Clone)]
 pub enum FileType {
-    /// File stored inside a BSA, BA2, ZIP, or PK3 archive.
+    /// File stored inside a BSA, BA2, ZIP, PK3, JPK, or JPK archive.
     #[cfg(any(feature = "beth-archives", feature = "zip"))]
     Archive(ArchiveReference),
     /// Loose file on the real filesystem, stored exactly as the caller or scanner provided it.
@@ -133,7 +133,7 @@ impl VfsFile {
         }
     }
 
-    /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, or PK3 archive.
+    /// Returns `true` if this file is stored inside a BSA, BA2, ZIP, PK3, JPK, or JPK archive.
     #[must_use]
     pub fn is_archive(&self) -> bool {
         match self.file {
