@@ -143,10 +143,16 @@ added = [
     "`VFS::len` and `VFS::is_empty`, in constant time, and `get_file_normalized`, `contains_normalized` and `paths_matching_bytes` for keys already normalized.",
     "`VfsKeyInput::vfs_key_bytes`, and `VfsKeyInput` for `[u8]`; `VfsFile::path_bytes`.",
     "In Luau: `file:readInto(buffer, offset?)`, `tree:count()`, `snapshot:len()`, and a type for every function, method and view element in the plan's definitions.",
+    "File I/O in Luau: `file:size()`, positional `file:readAt(buffer, fileOffset, length?, bufferOffset?)` through a memory map, `file:readRange`, `file:readAllBuffer`, and `file:open()` giving a `Reader` with `read`, `readInto`, `seek`, `skip`, `tell` and `close`.",
+    "The `lua-write` feature: a write root on the VFS (`writeRoot` option, `setWriteRoot`), `writeFile`, `openWrite` giving a `Writer`, `mkdir`, `remove` and `rename`, behind the `filesystem.write` runtime capability; the root is kept canonical and refuses keys that pass through a symbolic link beneath it.",
+    "The `lua-host` feature: a `host` table of host-path functions (`readFile`, `readAt`, `writeFile`, `open`, `openWrite`, `stat`, `exists`, `list`, `mkdir`, `remove`, `rename`, `copy`, `canonicalize`), behind the `filesystem.host` runtime capability.",
+    "`lua::VfsRequireNavigator`, l3i's `require` over a VFS with `.luaurc` aliases and relative paths, and `lua::TemplateCache`, OpenMW's script template cache: one compiled template per module per VM, cloned per instance, invalidated explicitly. The `jit` feature forwards l3i's and reports each template's native code status.",
+    "Zip archives: `.jpk` files are read as zip archives, and Zstandard entries are listed and decoded through a pure-Rust decoder.",
 ]
 changed = [
     "Looking up a key that is already normalized borrows it instead of allocating, and searches compare bytes.",
     "The sorted key list is built once per change to the VFS and shared by every `keys()` call.",
+    "`lua::Vfs` is shared and `Clone`, and `lua::VfsFileHandle` is built with `VfsFileHandle::new`. dream_archive 1.0.0 and l3i 1.0.0 come from crates.io; Rust 1.92.",
 ]
 fixed = [
     "On Unix, a key that is not UTF-8 keeps its exact bytes in provider records, lock manifests and semantic conflicts, instead of a lossy spelling that looks up nothing.",
