@@ -193,7 +193,10 @@ changed = ["vfstool is licensed MIT OR Apache-2.0, at your option, instead of GP
 version = "1.0.0"
 date = 2026-09-29
 summary = "First stable release: the commands, their options, their reports and their exit codes are now under semver."
-added = ["`--version` prints the version."]
+added = [
+    "`--version` prints the version.",
+    "The global options, `-c` and `-r`, also work after the command: `vfstool find-file x -c openmw`.",
+]
 breaking = [
     "`remaining --replacements-only` has no short form: its `-r` is gone, so `-r` means `--use-relative` everywhere.",
 ]

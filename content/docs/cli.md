@@ -11,7 +11,9 @@ kind = "reference"
 vfstool [--config <DIR>] [--use-relative] <COMMAND> [OPTIONS]
 ```
 
-The global options go before the command; `vfstool find-file -c openmw …` is an error.
+The global options go before the command or anywhere after it: `vfstool -c openmw find-file x`
+and `vfstool find-file x -c openmw` are the same. After `run`'s `--`, everything belongs to the
+command it starts.
 `vfstool --help` and `vfstool <COMMAND> --help` print the same options as this page, and
 `vfstool --version` prints the version, `vfstool 1.0.0`.
 

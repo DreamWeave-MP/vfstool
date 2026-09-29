@@ -1214,3 +1214,36 @@ fn remaining_spells_replacements_only_in_full_so_r_means_one_thing() {
     let payload = stdout_json(&output);
     assert!(payload.to_string().contains("a.dds"), "{payload}");
 }
+
+#[test]
+fn global_options_work_after_the_command_too() {
+    let fixture = Fixture::new("global_after");
+    let config = fixture.config_dir.to_str().expect("path should be utf-8");
+    let found = Command::new(vfstool_bin())
+        .args(["find-file", "textures/a.dds", "--simple", "-c", config])
+        .output()
+        .expect("vfstool command should spawn");
+    assert_eq!(
+        found.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&found.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&found.stdout).trim(),
+        fixture.high.join("textures/a.dds").display().to_string()
+    );
+
+    let low = fixture.low.to_str().expect("path should be utf-8");
+    let relative = Command::new(vfstool_bin())
+        .args(["remaining", low, "-f", "json", "--config", config, "-r"])
+        .output()
+        .expect("vfstool command should spawn");
+    assert_eq!(
+        relative.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&relative.stderr)
+    );
+    assert!(stdout_json(&relative).get("Data Files").is_some());
+}

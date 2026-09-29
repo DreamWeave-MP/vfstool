@@ -21,11 +21,11 @@ pub struct Cli {
     /// If you need to use an openmw.cfg which is named something else,
     ///
     /// set the `OPENMW_CONFIG` variable to the absolute path of your desired config file instead.
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
 
     /// Whether or not to use relative paths in output
-    #[arg(short = 'r', long)]
+    #[arg(short = 'r', long, global = true)]
     pub use_relative: bool,
 
     #[command(subcommand)]
@@ -273,4 +273,17 @@ pub enum OutputFormat {
     Json,
     Yaml,
     Toml,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
+
+    /// clap's own checks, which catch two arguments of one command, or a global one and a
+    /// command's, sharing a short or long name.
+    #[test]
+    fn the_command_line_is_consistent() {
+        Cli::command().debug_assert();
+    }
 }

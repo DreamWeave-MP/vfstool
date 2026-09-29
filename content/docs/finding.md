@@ -90,7 +90,7 @@ $ vfstool -c openmw find -f json '\.nif$'
 {"/":{"tmp":{"mw":{"Morrowind":{"Data Files":{"Morrowind.bsa":{"meshes":{".":["xbase_anim.nif"]}},"Tribunal.bsa":{"meshes":{"tr":{".":["tr_lantern.nif"]}}}}},"mods":{"Lantern Glow":{"Meshes":{"L":{".":["Light_Com_Lantern_01.NIF"]}}}}}}}}
 ```
 
-With `-r` (`--use-relative`, before the command), the tree starts at a folder named `Data Files`
+With `-r` (`--use-relative`), the tree starts at a folder named `Data Files`
 and follows keys instead of the folders on disk, with each archive's files under its name:
 
 ```sh
