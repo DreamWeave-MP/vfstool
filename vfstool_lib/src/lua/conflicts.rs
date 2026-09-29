@@ -43,27 +43,21 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             "fromFileLists",
             |call: &Call, sources: ValueView| {
                 let sources_table = sources.as_table()?;
-                let rows = call.with_frame(|frame| {
-                    let mut rows = Vec::new();
-                    for index in 1..=sources_table.raw_len() {
-                        let row = sources_table.raw_get_index(frame, index as i64)?;
+                let mut rows = Vec::with_capacity(sources_table.raw_len());
+                call.with_frame(|frame| {
+                    sources_table.for_each_array(frame, |frame, index, row| {
                         let context = format!("ConflictIndex.fromFileLists[{index}]");
-                        let (source, files) = Options::read(frame, row, &context, |o| {
+                        let row = Options::read(frame, row, &context, |o| {
                             let source =
                                 o.required_bytes("source", |source| Ok(host_path(source)))?;
-                            let files: Table = o.required("files")?;
-                            let files = o.frame().with_frame(|frame| {
-                                paths_from_table(
-                                    frame,
-                                    &files.push_to(frame)?,
-                                    &format!("{context}.files"),
-                                )
+                            let files = o.required_table("files", |frame, files| {
+                                paths_from_table(frame, &files, "files")
                             })?;
                             Ok((source, files))
                         })?;
-                        rows.push((source, files));
-                    }
-                    Ok(rows)
+                        rows.push(row);
+                        Ok(())
+                    })
                 })?;
                 Ok::<_, Error>(Owned(ConflictIndexHandle(ConflictIndex::from_file_lists(
                     rows,

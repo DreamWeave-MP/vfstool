@@ -70,7 +70,7 @@ use l3i::{
     bind::Call,
     convert::Exact,
     extension::{Extension, ExtensionDescriptor, InstallContext},
-    stack::{Scope, TableView, Type, ValueView},
+    stack::{Frame, Scope, TableView, ValueView},
     userdata::Owned,
     value::{Function, Table},
 };
@@ -354,7 +354,9 @@ pub(crate) fn source_kind_from_name(name: &str) -> Result<crate::SourceKind> {
     }
 }
 
-/// The array of byte strings at `view`, as host paths.
+/// The array of byte strings at the argument `view`, as host paths. `what` names the argument
+/// in errors (`dream.vfs: dirs: Lua stack index 1: expected table, got number`, `dream.vfs:
+/// dirs[2]: expected a string, got number`).
 pub(crate) fn paths_from_array(
     scope: &impl Scope,
     view: ValueView<'_>,
@@ -363,30 +365,28 @@ pub(crate) fn paths_from_array(
     let table = view
         .as_table()
         .map_err(|error| Error::runtime(format!("dream.vfs: {what}: {error}")))?;
-    paths_from_table(scope, &table, what)
+    scope
+        .with_frame(|frame| paths_from_table(frame, &table, what))
+        .map_err(|error| Error::runtime(format!("dream.vfs: {error}")))
 }
 
-/// The array of byte strings in `table`, as host paths.
+/// The array of byte strings in `table`, as host paths, walked one element at a time. `path`
+/// names the table in an element's type error (`files[2]: expected a string, got number`); an
+/// option reader wraps that under its own key, the binder's `scan.dirs: dirs[2]` form.
 pub(crate) fn paths_from_table(
-    scope: &impl Scope,
+    frame: &Frame<'_>,
     table: &TableView<'_>,
-    what: &str,
+    path: &str,
 ) -> Result<Vec<PathBuf>> {
-    scope.with_frame(|frame| {
-        let count = table.raw_len();
-        let mut paths = Vec::with_capacity(count);
-        for index in 1..=count {
-            let item = table.raw_get_index(frame, index as i64)?;
-            if !item.is_string() {
-                return Err(Error::runtime(format!(
-                    "dream.vfs: {what}[{index}]: {}",
-                    item.type_error(Type::String)
-                )));
-            }
-            paths.push(host_path(item.read::<&[u8]>()?));
+    let mut paths = Vec::with_capacity(table.raw_len());
+    table.for_each_array(frame, |_, index, item| {
+        if !item.is_string() {
+            return Err(item.field_type_error(&format!("{path}[{index}]"), "a string"));
         }
-        Ok(paths)
-    })
+        paths.push(host_path(item.read::<&[u8]>()?));
+        Ok(())
+    })?;
+    Ok(paths)
 }
 
 /// Binds `callable` as `name` inside a class table, with a debug name under this extension.
