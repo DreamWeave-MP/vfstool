@@ -394,3 +394,39 @@ fn option_tables_are_strict_and_sizes_are_integers() {
         )
         .unwrap();
 }
+
+#[test]
+fn semantic_conflicts_are_rows_of_plain_tables() {
+    let low = TempDir::new("semantic_low");
+    low.write("a.txt", b"same");
+    low.write("b.json", b"{\"x\": 1}");
+    let high = TempDir::new("semantic_high");
+    high.write("a.txt", b"same");
+    high.write("b.json", b"{ \"x\": 1 }");
+    let runtime = runtime();
+    runtime
+        .exec(&format!("low = {:?} high = {:?}", low.lua(), high.lua()))
+        .unwrap();
+    runtime
+        .exec(
+            r#"
+            local vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex({ low, high })
+            local report = layer:semanticConflicts(vfs, { includeSemanticDeltas = true, archiveHashMode = 'disabled' })
+            assert(#report.entries == 2, #report.entries)
+            local byKey = {}
+            for _, entry in ipairs(report.entries) do byKey[entry.key] = entry end
+            local a, b = byKey['a.txt'], byKey['b.json']
+            assert(a.winner.path == high and a.winner.kind == 'looseDir', a.winner.path)
+            assert(#a.providers == 2 and a.allIdentical == true and a.distinctVersions == 1)
+            assert(a.providers[1].source.path == low and a.providers[1].relation == 'identicalToWinner')
+            assert(a.providers[1].size == 4i and #a.providers[1].hashBlake3 == 64)
+            assert(a.providers[2].relation == 'identicalToWinner' and a.providers[2].semanticDeltaToWinner.kind == 'noOpEquivalent')
+            assert(b.allIdentical == false and b.distinctVersions == 2 and b.assetClass == 'json')
+            assert(b.providers[1].relation == 'differentFromWinner')
+            assert(b.providers[1].semanticDeltaToWinner.kind == 'cosmeticOnly', b.providers[1].semanticDeltaToWinner.kind)
+            local ok, err = pcall(layer.semanticConflicts, layer, vfs, { archiveHashMode = 'sometimes' })
+            assert(not ok and err:find("archiveHashMode", 1, true) and err:find("got 'sometimes'", 1, true), err)
+            "#,
+        )
+        .unwrap();
+}

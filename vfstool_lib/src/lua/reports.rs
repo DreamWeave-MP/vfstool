@@ -559,30 +559,30 @@ pub(super) fn semantic_conflicts(
     scope: &impl Scope,
     report: &SemanticConflictReport,
 ) -> Result<Table> {
-    let entries = Table::new(scope, report.entries.len(), 0)?;
-    for (index, entry) in report.entries.iter().enumerate() {
-        let row = Table::new(scope, 0, 6)?;
-        row.set(scope, "key", path_bytes(&entry.key))?;
-        row.set(scope, "winner", &source_meta(scope, &entry.winner)?)?;
-        let providers = Table::new(scope, entry.providers.len(), 0)?;
-        for (provider_index, provider) in entry.providers.iter().enumerate() {
-            let provider = semantic_provider(scope, provider)?;
-            scope.with_frame(|frame| {
-                let view = providers.push_to(frame)?;
-                provider.push_to(frame)?;
-                view.raw_set_index(frame, (provider_index + 1) as i64)
-            })?;
-        }
-        row.set(scope, "providers", &providers)?;
-        row.set(scope, "assetClass", asset_class_name(entry.asset_class))?;
-        row.set(scope, "allIdentical", &entry.all_identical)?;
-        row.set(scope, "distinctVersions", &(entry.distinct_versions as f64))?;
-        scope.with_frame(|frame| {
-            let view = entries.push_to(frame)?;
-            row.push_to(frame)?;
-            view.raw_set_index(frame, (index + 1) as i64)
+    let entries = array(scope, report.entries.len(), |frame, i| {
+        let entry = &report.entries[i];
+        let winner = source_meta(frame, &entry.winner)?;
+        let providers = array(frame, entry.providers.len(), |frame, j| {
+            semantic_provider(frame, &entry.providers[j])?
+                .push_to(frame)
+                .map(drop)
         })?;
-    }
+        push_record(frame, 6, |frame, table| {
+            frame.push(path_bytes(&entry.key))?;
+            table.raw_set(frame, "key")?;
+            winner.push_to(frame)?;
+            table.raw_set(frame, "winner")?;
+            providers.push_to(frame)?;
+            table.raw_set(frame, "providers")?;
+            frame.push(asset_class_name(entry.asset_class))?;
+            table.raw_set(frame, "assetClass")?;
+            frame.push(&entry.all_identical)?;
+            table.raw_set(frame, "allIdentical")?;
+            frame.push(&(entry.distinct_versions as f64))?;
+            table.raw_set(frame, "distinctVersions")
+        })
+        .map(drop)
+    })?;
     let table = Table::new(scope, 0, 1)?;
     table.set(scope, "entries", &entries)?;
     Ok(table)
