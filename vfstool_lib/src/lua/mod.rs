@@ -56,6 +56,7 @@ mod handles;
 mod io;
 mod layer;
 mod reports;
+mod require;
 #[cfg(feature = "serialize")]
 mod serialize;
 mod vfs;
@@ -82,6 +83,7 @@ pub use handles::{
     VfsFileHandle, VfsLockHandle, VfsProviderHandle,
 };
 pub use io::VfsReader;
+pub use require::{TemplateCache, VfsRequireNavigator};
 pub use views::{Entries, KeyBlob, Keys, ProviderRecords, Providers, TreeWalk};
 
 use crate::{

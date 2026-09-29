@@ -93,6 +93,11 @@ impl VFS {
         }
     }
 
+    /// Whether `key` names a directory some resolved key sits under.
+    pub(crate) fn has_directory(&self, key: &NormalizedPath) -> bool {
+        self.dir_prefix_counts.contains_key(key)
+    }
+
     pub(crate) fn key_has_materialization_conflict(&self, key: &NormalizedPath) -> bool {
         if self.dir_prefix_counts.contains_key(key) {
             return true;

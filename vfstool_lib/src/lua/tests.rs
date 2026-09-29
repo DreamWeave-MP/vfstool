@@ -682,3 +682,274 @@ fn bsa_members_read_positionally() {
         )
         .unwrap();
 }
+
+// ---------------------------------------------------------------------------------------------
+// require over the VFS
+// ---------------------------------------------------------------------------------------------
+
+/// A runtime, its sandbox, and `require` over `vfs` through `cache`.
+fn runtime_requiring(
+    vfs: &super::Vfs,
+    cache: &Rc<super::TemplateCache>,
+) -> (Rc<Runtime>, Rc<l3i::sandbox::Sandbox>) {
+    let runtime = Rc::new(runtime());
+    let sandbox = Rc::new(
+        runtime
+            .sandbox(|_| {}, l3i::sandbox::SandboxOptions::default())
+            .unwrap(),
+    );
+    runtime
+        .install_require(
+            super::VfsRequireNavigator::with_cache(
+                vfs.clone(),
+                sandbox.clone(),
+                &runtime,
+                cache.clone(),
+            )
+            .alias("dream", "scripts/dream"),
+        )
+        .unwrap();
+    (runtime, sandbox)
+}
+
+/// Runs the VFS module at `key` as the chunk `@key` in the globals and returns its first result.
+fn run_module<R: l3i::call::CallResults>(
+    runtime: &Runtime,
+    vfs: &super::Vfs,
+    key: &str,
+) -> l3i::Result<R> {
+    let source = vfs
+        .with(|vfs| vfs.get_file(key).map(|file| file.read_to_vec().unwrap()))
+        .unwrap()
+        .unwrap_or_else(|| panic!("{key} is in the VFS"));
+    let options = runtime.compile_options();
+    let stack = runtime.stack();
+    stack.with_frame(|frame| {
+        let chunk = runtime.load(
+            frame,
+            &format!("@{key}"),
+            std::str::from_utf8(&source).unwrap(),
+            &options,
+        )?;
+        chunk.as_function()?.invoke::<R, ()>(frame, ())
+    })
+}
+
+#[test]
+fn require_resolves_relative_paths_init_modules_and_aliases_through_the_vfs() {
+    let dir = TempDir::new("require");
+    dir.write("scripts/main.luau", b"local greet = require('./lib/greet') local pkg = require('./pkg') local ui = require('@dream/ui') local m = require('@lib/math') local util = require('./util') return greet.four + pkg.value + ui.width + m.twice(1) + util.one");
+    dir.write(
+        "scripts/lib/math.luau",
+        b"return { twice = function(x) return x * 2 end }",
+    );
+    dir.write(
+        "scripts/lib/greet.lua",
+        b"local math = require('./math') return { four = math.twice(2) }",
+    );
+    dir.write(
+        "scripts/pkg/init.luau",
+        b"local util = require('./util') return { value = 100 + util.one }",
+    );
+    dir.write("scripts/util.luau", b"return { one = 1 }");
+    dir.write("scripts/dream/ui.luau", b"return { width = 1000 }");
+    dir.write("scripts/.luaurc", br#"{ "aliases": { "lib": "./lib" } }"#);
+    dir.write("scripts/both.luau", b"return 1");
+    dir.write("scripts/both.lua", b"return 2");
+    dir.write("scripts/bad.luau", b"return '\xff'");
+    let vfs = super::Vfs::new(crate::VFS::from_directories([&dir.0], None));
+    let cache = Rc::new(super::TemplateCache::new());
+    let (runtime, _sandbox) = runtime_requiring(&vfs, &cache);
+    let total: i32 = run_module(&runtime, &vfs, "scripts/main.luau").unwrap();
+    assert_eq!(total, 4 + 101 + 1000 + 2 + 1);
+    // The five modules compiled once each, whatever path reached them.
+    assert_eq!(cache.compiles(), 5, "{cache:?}");
+    assert_eq!(cache.len(), 5);
+    let again: i32 = run_module(&runtime, &vfs, "scripts/main.luau").unwrap();
+    assert_eq!(again, total);
+    assert_eq!(
+        cache.compiles(),
+        5,
+        "the second run is served from Luau's own cache: {cache:?}"
+    );
+    // Errors: a missing module, an ambiguous one, one that is not UTF-8, and a bad prefix.
+    for (source, expected) in [
+        ("return require('./nothing')", "no module present"),
+        ("return require('./both')", "ambiguous"),
+        ("return require('./bad')", "is not UTF-8"),
+        (
+            "return require('lib/math')",
+            "must start with a valid prefix",
+        ),
+        ("return require('@nope/x')", "nope"),
+    ] {
+        let error = runtime
+            .stack()
+            .with_frame(|frame| {
+                let chunk = runtime.load(
+                    frame,
+                    "@scripts/main.luau",
+                    source,
+                    &runtime.compile_options(),
+                )?;
+                chunk.as_function()?.invoke::<i32, ()>(frame, ())
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(expected), "{source}: {error}");
+    }
+    // A chunk that is not a VFS key requires from the root; @dream/vfs still resolves.
+    runtime
+        .exec("assert(require('./scripts/util').one == 1) assert(require('@dream/vfs').VFS.new():len() == 0)")
+        .unwrap();
+    assert!(cache.invalidate(b"Scripts\\Util.luau") && !cache.invalidate(b"scripts/util.luau"));
+    assert_eq!(cache.len(), 4);
+    cache.clear();
+    assert!(cache.is_empty());
+}
+
+/// A runtime whose sandbox instances share Luau's `require` over a counter module, with the
+/// template cache in view.
+struct CounterFixture {
+    dir: TempDir,
+    vfs: super::Vfs,
+    cache: Rc<super::TemplateCache>,
+    runtime: Rc<Runtime>,
+    sandbox: Rc<l3i::sandbox::Sandbox>,
+    instances: Vec<l3i::sandbox::Instance>,
+    script: l3i::sandbox::Template,
+}
+
+impl CounterFixture {
+    fn new() -> Self {
+        let dir = TempDir::new("require_cache");
+        dir.write(
+            "scripts/counter.luau",
+            b"local M = { n = 0 } function M.bump() M.n += 1 return M.n end return M",
+        );
+        let vfs = super::Vfs::new(crate::VFS::from_directories([&dir.0], None));
+        let cache = Rc::new(super::TemplateCache::new());
+        let (runtime, sandbox) = runtime_requiring(&vfs, &cache);
+        let loader = runtime
+            .bind_function("dream.vfs.tests.loader", |name: &str| -> l3i::Result<()> {
+                Err(l3i::Error::runtime(format!("no package '{name}'")))
+            })
+            .unwrap();
+        let require = runtime.global("require").unwrap();
+        let instances = ["first", "second", "third"]
+            .into_iter()
+            .map(|name| {
+                let spec = l3i::sandbox::InstanceSpec {
+                    name,
+                    packages: &[],
+                    hidden_data: None,
+                    loader: &loader,
+                };
+                let instance = sandbox.new_instance(&runtime, &spec).unwrap();
+                instance
+                    .env
+                    .set(&runtime.stack(), "require", &require)
+                    .unwrap();
+                instance
+            })
+            .collect();
+        let script = sandbox
+            .load_template(
+                &runtime,
+                "@scripts/instance.luau",
+                "return require('./counter').bump()",
+            )
+            .unwrap();
+        CounterFixture {
+            dir,
+            vfs,
+            cache,
+            runtime,
+            sandbox,
+            instances,
+            script,
+        }
+    }
+
+    /// Runs the entry script in instance `index` and returns the counter it saw.
+    fn run(&self, index: usize) -> l3i::Result<i32> {
+        let results = self.sandbox.run(
+            &self.runtime,
+            &self.script,
+            &self.instances[index],
+            self.runtime.initialization_context(),
+        )?;
+        results[0].with_value(&self.runtime.stack(), |_, view| view.read::<i32>())
+    }
+
+    fn rewrite(&self, source: &str) {
+        self.dir.write("scripts/counter.luau", source.as_bytes());
+        assert!(
+            self.vfs
+                .with(|vfs| vfs.contains("scripts/counter.luau"))
+                .unwrap()
+        );
+    }
+}
+
+#[test]
+fn require_clones_one_template_per_instance() {
+    let fixture = CounterFixture::new();
+    // Two sandbox instances share Luau's require, and so the module table, until the host
+    // clears Luau's result cache between them; the template is cloned, never recompiled.
+    assert_eq!(fixture.run(0).unwrap(), 1);
+    assert_eq!(
+        fixture.run(1).unwrap(),
+        2,
+        "Luau caches the module result per VM"
+    );
+    fixture.runtime.clear_require_cache().unwrap();
+    assert_eq!(
+        fixture.run(2).unwrap(),
+        1,
+        "a fresh clone of the template, in the third instance"
+    );
+    assert_eq!(
+        fixture.cache.compiles(),
+        1,
+        "one compile, three instances: {:?}",
+        fixture.cache
+    );
+    // A module's error reaches the requiring script.
+    fixture.rewrite("error('boom')");
+    fixture.cache.clear();
+    fixture.runtime.clear_require_cache().unwrap();
+    let error = fixture.run(0).unwrap_err().to_string();
+    assert!(error.contains("boom"), "{error}");
+    assert_eq!(
+        fixture.cache.len(),
+        1,
+        "the template stays; only running it failed"
+    );
+}
+
+#[test]
+fn require_reloads_a_rewritten_module_only_when_told() {
+    let fixture = CounterFixture::new();
+    assert_eq!(fixture.run(0).unwrap(), 1);
+    // Rewritten on disk: still the template, until the cache is cleared.
+    fixture.rewrite("return { bump = function() return 42 end }");
+    fixture.runtime.clear_require_cache().unwrap();
+    assert_eq!(
+        fixture.run(0).unwrap(),
+        1,
+        "no fingerprint: the old template serves"
+    );
+    assert_eq!(fixture.cache.compiles(), 1);
+    fixture.cache.clear();
+    fixture.runtime.clear_require_cache().unwrap();
+    assert_eq!(fixture.run(1).unwrap(), 42, "reloaded lazily after clear");
+    assert_eq!(fixture.cache.compiles(), 2);
+    assert_eq!(fixture.cache.len(), 1);
+    // invalidate does the same for one key.
+    fixture.rewrite("return { bump = function() return 7 end }");
+    fixture.runtime.clear_require_cache().unwrap();
+    assert!(fixture.cache.invalidate(b"scripts/counter.luau"));
+    assert_eq!(fixture.run(2).unwrap(), 7);
+    assert_eq!(fixture.cache.compiles(), 3);
+}
