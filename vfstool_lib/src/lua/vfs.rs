@@ -23,31 +23,65 @@ use super::{
 };
 use crate::{CollapseOptions, VFS};
 
-/// The `VFS` class table's type.
-pub(super) const CLASS_TYPE: &str = "{ new: () -> dream_vfs_VFS, \
-    fromDirectories: (dirs: { string }, options: { archives: { string }? }?) -> dream_vfs_VFS, \
-    fromDirectoriesWithConflictIndex: (dirs: { string }, options: { archives: { string }? }?) -> (dream_vfs_VFS, dream_vfs_ConflictIndex), \
-    fromDirectoriesWithLayerIndex: (dirs: { string }, options: { archives: { string }? }?) -> (dream_vfs_VFS, dream_vfs_LayerIndex) }";
+/// The constructors' option table.
+#[cfg(feature = "lua-write")]
+const CONSTRUCTOR_OPTIONS: &str = "{ archives: { string }?, writeRoot: string? }?";
+#[cfg(not(feature = "lua-write"))]
+const CONSTRUCTOR_OPTIONS: &str = "{ archives: { string }? }?";
 
-/// `{ archives = { string } }?` of the constructors.
-fn archive_list(
-    scope: &impl Scope,
-    options: Option<ValueView<'_>>,
-    context: &str,
-) -> Result<Option<Vec<String>>> {
-    let Some(options) = options.filter(|view| !view.is_nil()) else {
-        return Ok(None);
-    };
-    Options::read(scope, options, context, |o| {
-        let archives_path = format!("{}.archives", o.context());
-        o.optional_table("archives", |frame, archives| {
-            let paths = paths_from_table(frame, &archives, &archives_path)?;
-            Ok(paths
-                .iter()
-                .map(|path| path.to_string_lossy().into_owned())
-                .collect())
+/// The `VFS` class table's type.
+pub(super) fn class_type() -> String {
+    format!(
+        "{{ new: () -> dream_vfs_VFS, \
+        fromDirectories: (dirs: {{ string }}, options: {CONSTRUCTOR_OPTIONS}) -> dream_vfs_VFS, \
+        fromDirectoriesWithConflictIndex: (dirs: {{ string }}, options: {CONSTRUCTOR_OPTIONS}) -> (dream_vfs_VFS, dream_vfs_ConflictIndex), \
+        fromDirectoriesWithLayerIndex: (dirs: {{ string }}, options: {CONSTRUCTOR_OPTIONS}) -> (dream_vfs_VFS, dream_vfs_LayerIndex) }}"
+    )
+}
+
+/// What the constructors' option table says: `{ archives = { string }?, writeRoot = string? }?`.
+#[derive(Default)]
+struct Constructor {
+    archives: Option<Vec<String>>,
+    #[cfg(feature = "lua-write")]
+    write_root: Option<std::path::PathBuf>,
+}
+
+impl Constructor {
+    fn read(scope: &impl Scope, options: Option<ValueView<'_>>, context: &str) -> Result<Self> {
+        let Some(options) = options.filter(|view| !view.is_nil()) else {
+            return Ok(Constructor::default());
+        };
+        Options::read(scope, options, context, |o| {
+            let archives_path = format!("{}.archives", o.context());
+            let archives = o.optional_table("archives", |frame, archives| {
+                let paths = paths_from_table(frame, &archives, &archives_path)?;
+                Ok(paths
+                    .iter()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect())
+            })?;
+            Ok(Constructor {
+                archives,
+                #[cfg(feature = "lua-write")]
+                write_root: o.optional_bytes("writeRoot", |root| Ok(host_path(root)))?,
+            })
         })
-    })
+    }
+
+    fn archives(&self) -> Option<Vec<&str>> {
+        self.archives
+            .as_ref()
+            .map(|list| list.iter().map(String::as_str).collect())
+    }
+
+    /// The handle over `vfs`, with the write root when one was given.
+    fn handle(self, vfs: VFS) -> Vfs {
+        let handle = Vfs::new(vfs);
+        #[cfg(feature = "lua-write")]
+        handle.set_write_root(self.write_root);
+        handle
+    }
 }
 
 /// `{ allowCopying, extractArchives, useSymlinks }?`.
@@ -83,14 +117,9 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             "fromDirectories",
             |call: &Call, dirs: ValueView, options: Option<ValueView>| {
                 let dirs = paths_from_array(call, dirs, "dirs")?;
-                let archives = archive_list(call, options, "VFS.fromDirectories")?;
-                let archives = archives
-                    .as_ref()
-                    .map(|list| list.iter().map(String::as_str).collect());
-                Ok::<_, Error>(Owned(Vfs::new(VFS::from_directories(
-                    dirs.iter(),
-                    archives,
-                ))))
+                let options = Constructor::read(call, options, "VFS.fromDirectories")?;
+                let vfs = VFS::from_directories(dirs.iter(), options.archives());
+                Ok::<_, Error>(Owned(options.handle(vfs)))
             },
         )?;
         class_function(
@@ -100,13 +129,11 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             "fromDirectoriesWithConflictIndex",
             |call: &Call, dirs: ValueView, options: Option<ValueView>| {
                 let dirs = paths_from_array(call, dirs, "dirs")?;
-                let archives = archive_list(call, options, "VFS.fromDirectoriesWithConflictIndex")?;
-                let archives = archives
-                    .as_ref()
-                    .map(|list| list.iter().map(String::as_str).collect());
+                let options =
+                    Constructor::read(call, options, "VFS.fromDirectoriesWithConflictIndex")?;
                 let (vfs, conflicts) =
-                    VFS::from_directories_with_conflict_index(dirs.iter(), archives);
-                push_owned(call, Vfs::new(vfs))?;
+                    VFS::from_directories_with_conflict_index(dirs.iter(), options.archives());
+                push_owned(call, options.handle(vfs))?;
                 push_owned(call, ConflictIndexHandle(conflicts))?;
                 Ok::<_, Error>(StackResults)
             },
@@ -118,12 +145,11 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             "fromDirectoriesWithLayerIndex",
             |call: &Call, dirs: ValueView, options: Option<ValueView>| {
                 let dirs = paths_from_array(call, dirs, "dirs")?;
-                let archives = archive_list(call, options, "VFS.fromDirectoriesWithLayerIndex")?;
-                let archives = archives
-                    .as_ref()
-                    .map(|list| list.iter().map(String::as_str).collect());
-                let (vfs, layer) = VFS::from_directories_with_layer_index(dirs.iter(), archives);
-                push_owned(call, Vfs::new(vfs))?;
+                let options =
+                    Constructor::read(call, options, "VFS.fromDirectoriesWithLayerIndex")?;
+                let (vfs, layer) =
+                    VFS::from_directories_with_layer_index(dirs.iter(), options.archives());
+                push_owned(call, options.handle(vfs))?;
                 push_owned(call, LayerIndexHandle(layer))?;
                 Ok::<_, Error>(StackResults)
             },
@@ -140,6 +166,8 @@ pub(super) fn describe(d: &mut ExtensionDescriptor) {
     describe_materialization(&mut vfs);
     describe_reports(&mut vfs);
     describe_archives_and_plans(&mut vfs);
+    #[cfg(feature = "lua-write")]
+    super::write::describe_vfs_writes(&mut vfs);
     vfs.metamethod("__tostring", |v: &Vfs| {
         v.with(|vfs| format!("dream.vfs.VFS({} files)", vfs.len()))
     });

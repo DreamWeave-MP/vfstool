@@ -117,6 +117,12 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
         "function readRange(self, fileOffset: number, length: number): buffer",
         "function open(self): dream_vfs_Reader",
         "declare extern type dream_vfs_Reader with",
+        #[cfg(feature = "lua-write")]
+        "function writeFile(self, key: string, data: buffer | string, options: { offset: number?, append: boolean?, create: boolean? }?): dream_vfs_VfsFile",
+        #[cfg(any(feature = "lua-write", feature = "lua-host"))]
+        "declare extern type dream_vfs_Writer with",
+        #[cfg(feature = "lua-write")]
+        "fromDirectories: (dirs: { string }, options: { archives: { string }?, writeRoot: string? }?) -> dream_vfs_VFS",
         "function readInto(self, buffer: buffer, bufferOffset: number?, length: number?): number",
         "declare extern type dream_vfs_Keys with",
         "    [number]: string?",
@@ -141,9 +147,13 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
             "every member is typed ({fallback:?} found):\n{definitions}"
         );
     }
-    check_strict_script(
-        &plan,
-        &("--!strict\n\
+    check_strict_script(&plan, &strict_script());
+}
+
+/// A strict script that touches every part of the module's surface, built from the features on.
+#[cfg(feature = "luau-analysis")]
+fn strict_script() -> String {
+    "--!strict\n\
          local vfstool = require('@dream/vfs')\n\
          local path = require('@dream/path')\n\
          local vfs: dream_vfs_VFS = vfstool.VFS.fromDirectories({ 'data' }, { archives = { 'a.bsa' } })\n\
@@ -196,8 +206,21 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
                 "print(vfstool.serialize(keys, 'json'))\n"
             } else {
                 ""
-            }),
-    );
+            }
+        + if cfg!(feature = "lua-write") {
+                "local out: dream_vfs_VFS = vfstool.VFS.fromDirectories({ 'data' }, { writeRoot = 'out' })\n\
+                 local made: dream_vfs_VfsFile = out:writeFile('a/b.txt', buffer.create(4), { append = true })\n\
+                 local w: dream_vfs_Writer = out:openWrite('c.txt', { truncate = false })\n\
+                 local n: number = w:write('abc', 1, 2) + w:writeAt(0, buffer.create(2))\n\
+                 w:seek(0) w:truncate(1) w:flush()\n\
+                 local closed: dream_vfs_VfsFile? = w:close()\n\
+                 out:mkdir('d') out:rename('c.txt', 'd/c.txt') out:remove('d')\n\
+                 local root: string? = out:writeRoot()\n\
+                 out:setWriteRoot('elsewhere')\n\
+                 print(made:size(), n, w:tell(), closed, root)\n"
+            } else {
+                ""
+            }
 }
 
 /// Type checks `script` in strict mode against the plan's definitions and module stubs.
@@ -952,4 +975,161 @@ fn require_reloads_a_rewritten_module_only_when_told() {
     assert!(fixture.cache.invalidate(b"scripts/counter.luau"));
     assert_eq!(fixture.run(2).unwrap(), 7);
     assert_eq!(fixture.cache.compiles(), 3);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Writes under a write root (lua-write)
+// ---------------------------------------------------------------------------------------------
+
+#[cfg(feature = "lua-write")]
+#[test]
+fn writes_go_under_the_write_root_and_register_winners() {
+    let data = TempDir::new("write_data");
+    data.write("textures/a.dds", b"old");
+    let out = TempDir::new("write_root");
+    let runtime = runtime();
+    runtime
+        .exec(&format!("data = {:?} out = {:?}", data.lua(), out.lua()))
+        .unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({ data }, { writeRoot = out })
+            assert(vfs:writeRoot() == out)
+            local file = vfs:writeFile('textures/a.dds', 'new')
+            assert(file:isLoose() and file:path() == out .. '/textures/a.dds', file:path())
+            assert(file:readAll() == 'new' and vfs:getFile('textures/a.dds'):readAll() == 'new', 'later reads see the write')
+            assert(vfs:providersFor('textures/a.dds')[1].source.path == out .. '/textures', 'the write root directory is the source')
+            vfs:writeFile('new/deep/b.bin', buffer.fromstring('bufferdata'))
+            assert(vfs:getFile('new/deep/b.bin'):readAll() == 'bufferdata', 'a buffer, into new directories')
+            vfs:writeFile('textures/a.dds', 'XY', { offset = 1 })
+            assert(vfs:getFile('textures/a.dds'):readAll() == 'nXY', 'offset writes in place')
+            vfs:writeFile('textures/a.dds', 'Z', { append = true })
+            assert(vfs:getFile('textures/a.dds'):readAll() == 'nXYZ', 'append')
+            local ok, err = pcall(vfs.writeFile, vfs, 'missing.txt', 'x', { create = false })
+            assert(not ok and err:find('dream.vfs: ', 1, true), err)
+            ok, err = pcall(vfs.writeFile, vfs, 'x.txt', 'x', { offset = 0, append = true })
+            assert(not ok and err:find('vfs:writeFile: offset and append cannot be combined', 1, true), err)
+            ok, err = pcall(vfs.writeFile, vfs, 'x.txt', 'x', { bogus = true })
+            assert(not ok and err:find([[vfs:writeFile: unknown option 'bogus']], 1, true), err)
+            ok, err = pcall(vfs.writeFile, vfs, 'x.txt', 'x', { offset = -1 })
+            assert(not ok and err:find('offset -1 is negative', 1, true), err)
+            for _, bad in { '../x', '/abs', 'C:\\x', 'a/../b', '', 'a\\..\\b', 'a/./b' } do
+                ok, err = pcall(vfs.writeFile, vfs, bad, 'x')
+                assert(not ok and err:find('escapes the write root', 1, true), bad .. ': ' .. tostring(err))
+                ok, err = pcall(vfs.mkdir, vfs, bad)
+                assert(not ok and err:find('escapes the write root', 1, true), bad .. ': ' .. tostring(err))
+            end
+            ok, err = pcall(vfs.writeFile, vfs, 'textures', 'x')
+            assert(not ok and err:find([[the VFS refused key 'textures']], 1, true), err)
+            -- A writer: buffered, positional, registered on close only.
+            local w = vfs:openWrite('log.txt')
+            assert(tostring(w) == 'dream.vfs.Writer(' .. out .. '/log.txt)', tostring(w))
+            assert(w:write('hello ') == 6 and w:tell() == 6)
+            assert(w:write(buffer.fromstring('xxworldxx'), 2, 5) == 5 and w:tell() == 11)
+            assert(w:writeAt(0, 'J') == 1 and w:tell() == 11, 'writeAt does not move')
+            w:seek(6) w:write('W')
+            w:truncate(5)
+            assert(w:tell() == 5, 'a position past the new end moves to it')
+            w:flush()
+            assert(not vfs:contains('log.txt'), 'registered on close only')
+            local closed = w:close()
+            assert(closed and closed:readAll() == 'Jello' and vfs:getFile('log.txt'):readAll() == 'Jello', closed:readAll())
+            assert(w:close() == nil, 'closing again is nothing')
+            ok, err = pcall(w.write, w, 'x')
+            assert(not ok and err:find('dream.vfs: Writer.write: the writer over ', 1, true) and err:find('log.txt is closed', 1, true), err)
+            ok, err = pcall(w.write, w, 'x', 5)
+            assert(not ok and err:find('dream.vfs: Writer.write: offset 5 past the end of the data (size 1)', 1, true), err)
+            local a = vfs:openWrite('log.txt', { append = true })
+            assert(a:tell() == 5, 'an append writer starts at the end')
+            a:write('!')
+            ok, err = pcall(a.writeAt, a, 0, 'x')
+            assert(not ok and err:find('appends, so it cannot write at a position', 1, true), err)
+            a:close()
+            assert(vfs:getFile('log.txt'):readAll() == 'Jello!')
+            local k = vfs:openWrite('log.txt', { truncate = false })
+            k:write('H') k:close()
+            assert(vfs:getFile('log.txt'):readAll() == 'Hello!')
+            ok, err = pcall(vfs.openWrite, vfs, 'log.txt', { mode = 'w' })
+            assert(not ok and err:find([[vfs:openWrite: unknown option 'mode']], 1, true), err)
+            -- A writer dropped without close still flushes, and registers nothing.
+            local dropped = vfs:openWrite('dropped.txt')
+            dropped:write('bytes')
+            dropped = nil
+            ",
+        )
+        .unwrap();
+    runtime.collect_garbage();
+    assert_eq!(fs::read(out.0.join("dropped.txt")).unwrap(), b"bytes");
+    runtime
+        .exec("assert(not vfstool.VFS.fromDirectories({ out }):contains('dropped.txt') == false)")
+        .unwrap();
+}
+
+#[cfg(feature = "lua-write")]
+#[test]
+fn directory_writes_stay_under_the_root_and_move_the_winners() {
+    let data = TempDir::new("write_dirs_data");
+    data.write("textures/a.dds", b"old");
+    let out = TempDir::new("write_dirs_root");
+    let runtime = runtime();
+    runtime
+        .exec(&format!("data = {:?} out = {:?}", data.lua(), out.lua()))
+        .unwrap();
+    runtime
+        .exec(
+            r"
+            local vfs = vfstool.VFS.fromDirectories({ data }, { writeRoot = out })
+            vfs:writeFile('log.txt', 'Hello!')
+            local ok, err
+            -- Directories, moves and removals stay under the root and follow the winners.
+            vfs:mkdir('made/dir')
+            vfs:rename('log.txt', 'moved/log.txt')
+            assert(not vfs:contains('log.txt') and vfs:getFile('moved/log.txt'):readAll() == 'Hello!')
+            assert(vfs:getFile('moved/log.txt'):path() == out .. '/moved/log.txt')
+            vfs:remove('moved/log.txt')
+            assert(not vfs:contains('moved/log.txt'))
+            ok, err = pcall(vfs.remove, vfs, 'textures/nope.dds')
+            assert(not ok and err:find([[dream.vfs: remove: 'textures/nope.dds' is not under the write root]], 1, true), err)
+            ok, err = pcall(vfs.rename, vfs, 'nope.txt', 'x.txt')
+            assert(not ok and err:find([[dream.vfs: rename: 'nope.txt' is not under the write root]], 1, true), err)
+            vfs:writeFile('tmp/a.txt', 'a') vfs:writeFile('tmp/b/c.txt', 'c')
+            vfs:remove('tmp')
+            assert(not vfs:contains('tmp/a.txt') and not vfs:contains('tmp/b/c.txt'), 'a directory takes its winners with it')
+            vfs:writeFile('d1/x.txt', 'x') vfs:writeFile('d1/sub/y.txt', 'y')
+            vfs:rename('d1', 'd2')
+            assert(not vfs:contains('d1/x.txt') and vfs:getFile('d2/x.txt'):path() == out .. '/d2/x.txt')
+            assert(vfs:getFile('d2/sub/y.txt'):readAll() == 'y')
+            -- Without a write root nothing is written.
+            local plain = vfstool.VFS.fromDirectories({ data })
+            assert(plain:writeRoot() == nil)
+            ok, err = pcall(plain.writeFile, plain, 'a.txt', 'b')
+            assert(not ok and err:find('dream.vfs: writeFile: this VFS has no write root', 1, true), err)
+            plain:setWriteRoot(out .. '/later')
+            assert(plain:writeFile('a.txt', 'b'):path() == out .. '/later/a.txt')
+            ",
+        )
+        .unwrap();
+    assert!(out.0.join("made/dir").is_dir());
+    assert!(!out.0.join("tmp").exists() && !out.0.join("d1").exists());
+}
+
+#[cfg(not(feature = "lua-write"))]
+#[test]
+fn a_runtime_without_lua_write_has_no_write_methods() {
+    let dir = TempDir::new("no_write");
+    let runtime = runtime();
+    runtime.exec(&format!("dir = {:?}", dir.lua())).unwrap();
+    runtime
+        .exec(
+            r"
+            local ok, err = pcall(vfstool.VFS.fromDirectories, { dir }, { writeRoot = dir })
+            assert(not ok and err:find([[unknown option 'writeRoot']], 1, true), err)
+            local vfs = vfstool.VFS.fromDirectories({ dir })
+            for _, name in { 'writeFile', 'openWrite', 'writeRoot', 'setWriteRoot', 'mkdir', 'remove', 'rename' } do
+                assert(not pcall(function() return vfs[name](vfs, 'a', 'b') end), name)
+            end
+            ",
+        )
+        .unwrap();
 }

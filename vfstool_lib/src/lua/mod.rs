@@ -61,6 +61,8 @@ mod require;
 mod serialize;
 mod vfs;
 mod views;
+#[cfg(any(feature = "lua-write", feature = "lua-host"))]
+mod write;
 
 use std::{
     cell::RefCell,
@@ -85,6 +87,8 @@ pub use handles::{
 pub use io::VfsReader;
 pub use require::{TemplateCache, VfsRequireNavigator};
 pub use views::{Entries, KeyBlob, Keys, ProviderRecords, Providers, TreeWalk};
+#[cfg(any(feature = "lua-write", feature = "lua-host"))]
+pub use write::VfsWriter;
 
 use crate::{
     analyze_pair, changed_files, changed_files_metadata, normalize_host_path_in_place,
@@ -162,6 +166,8 @@ impl Extension for VfsExtension {
         vfs::describe(d);
         handles::describe_file(d);
         io::describe_reader(d);
+        #[cfg(any(feature = "lua-write", feature = "lua-host"))]
+        write::describe_writer(d);
         handles::describe_provider(d);
         layer::describe(d);
         conflicts::describe(d);
@@ -256,7 +262,7 @@ fn describe_module(d: &mut ExtensionDescriptor) {
         .doc("Encodes a value as json, yaml, or toml; tables, sequence views, strings, numbers, booleans.");
     module
         .installed("VFS")
-        .signature(vfs::CLASS_TYPE)
+        .signature(vfs::class_type())
         .doc("VFS constructors.")
         .installed("VfsFile")
         .signature("{ from: (path: string) -> dream_vfs_VfsFile }")
