@@ -1104,3 +1104,17 @@ fn diff_finds_data_directories_spelled_in_another_case() {
             .any(|key| key == "textures/a.dds")
     );
 }
+
+#[test]
+fn version_prints_the_package_version() {
+    let output = Command::new(vfstool_bin())
+        .arg("--version")
+        .output()
+        .expect("vfstool command should spawn");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("vfstool {}\n", env!("CARGO_PKG_VERSION"))
+    );
+}

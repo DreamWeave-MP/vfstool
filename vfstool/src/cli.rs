@@ -5,6 +5,7 @@ use std::{ffi::OsString, path::PathBuf};
 #[derive(Parser)]
 #[command(
     name = "vfstool",
+    version,
     about = "vfstool allows users to reconstruct and interact with OpenMW's virtual file system in any way they might see fit, using this application to locate files, serialize their VFS to most major text formats, extract files out of the vfs, and even collapse their VFS to a single directory for space savings."
 )]
 pub struct Cli {

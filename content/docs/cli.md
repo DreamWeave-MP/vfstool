@@ -12,8 +12,8 @@ vfstool [--config <DIR>] [--use-relative] <COMMAND> [OPTIONS]
 ```
 
 The global options go before the command; `vfstool find-file -c openmw …` is an error.
-`vfstool --help` and `vfstool <COMMAND> --help` print the same options as this page. There is no
-`--version`.
+`vfstool --help` and `vfstool <COMMAND> --help` print the same options as this page, and
+`vfstool --version` prints the version, `vfstool 1.0.0`.
 
 ## Global options
 
@@ -22,6 +22,7 @@ The global options go before the command; `vfstool find-file -c openmw …` is a
 | `-c`, `--config <DIR>` | The folder holding `openmw.cfg`. See [Choosing the config](#choosing-the-config) |
 | `-r`, `--use-relative` | Write report paths relative: keys instead of paths on disk, in `find`, `remaining`, `conflicts` and `shadowed` |
 | `-h`, `--help` | Print help |
+| `-V`, `--version` | Print the version |
 
 ## Choosing the config
 

@@ -193,8 +193,9 @@ changed = ["vfstool is licensed MIT OR Apache-2.0, at your option, instead of GP
 version = "1.0.0"
 date = 2026-09-29
 summary = "First stable release: the commands, their options, their reports and their exit codes are now under semver."
+added = ["`--version` prints the version."]
 changed = [
-    "No command or option changed since 0.10.4. Built on vfstool_lib 1.0.0: looking up a path that is already normalized allocates nothing.",
+    "No command or option was removed or renamed since 0.10.4. Built on vfstool_lib 1.0.0: looking up a path that is already normalized allocates nothing.",
 ]
 fixed = [
     "`collapse` into one of the cfg's own data directories leaves that directory's loose files where they are. It deleted each one before linking it, then failed.",
