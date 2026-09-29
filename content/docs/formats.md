@@ -20,8 +20,9 @@ json`, compact) or TOML (`-f toml`). Field names are `snake_case` in all three. 
 - **Lists** at the top level cannot be TOML, so `archives` and `archive-list` are YAML or JSON
   only.
 
-On Linux and macOS, a report that holds a file name that is not UTF-8 cannot be written: serde
-refuses the path, and vfstool exits with 9.
+On Linux and macOS a file name need not be UTF-8. YAML, JSON and TOML hold only text, so such a
+name is written with U+FFFD (`�`) in place of each byte sequence that is not UTF-8. `drift`
+compares a lock the same way, so a lock reads back without drift from the files it was made from.
 
 ## Trees: find, remaining
 

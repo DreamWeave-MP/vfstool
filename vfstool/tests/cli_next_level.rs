@@ -188,6 +188,75 @@ fn lock_then_drift_detects_hash_change_and_exits_four() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn reports_hold_file_names_that_are_not_utf8_and_a_lock_of_them_does_not_drift() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+    let fixture = Fixture::new("not_utf8");
+    let name = OsStr::from_bytes(b"Textures/caf\xe9.dds");
+    write_file(&fixture.low.join(name), b"low");
+    write_file(&fixture.high.join(name), b"high");
+    let lock_path = fixture.path("lock.json");
+    let lock_arg = lock_path.to_str().expect("lock path should be utf-8");
+
+    let lock = fixture.run(&["lock", "--format", "json", "--output", lock_arg]);
+    assert_eq!(
+        lock.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&lock.stderr)
+    );
+    assert!(
+        fs::read_to_string(&lock_path)
+            .expect("lock should be written")
+            .contains("textures/caf\u{fffd}.dds")
+    );
+
+    let drift = fixture.run(&["drift", lock_arg, "--fail-on-drift", "--format", "json"]);
+    assert_eq!(
+        drift.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&drift.stderr)
+    );
+
+    let explain = Command::new(vfstool_bin())
+        .arg("--config")
+        .arg(&fixture.config_dir)
+        .args(["explain", "-f", "json"])
+        .arg(OsStr::from_bytes(b"textures/caf\xe9.dds"))
+        .output()
+        .expect("vfstool command should spawn");
+    assert_eq!(
+        explain.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&explain.stderr)
+    );
+    assert_eq!(
+        stdout_json(&explain)["key"],
+        Value::from("textures/caf\u{fffd}.dds")
+    );
+
+    let merged = fixture.path("merged");
+    let merged_arg = merged.to_str().expect("merged path should be utf-8");
+    for args in [
+        &["duplicates", "-f", "json"][..],
+        &["conflicts", "-f", "json"],
+        &["shadowed", "-l", "-f", "json"],
+        &["collapse", "--dry-run", "-f", "json", merged_arg],
+    ] {
+        let output = fixture.run(args);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 #[test]
 fn bad_regex_exit_code_is_six() {
     let fixture = Fixture::new("bad_regex");

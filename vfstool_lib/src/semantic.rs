@@ -80,6 +80,7 @@ pub struct SemanticProvider {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemanticConflict {
     /// Normalized key.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Winning source.
     pub winner: SourceMeta,

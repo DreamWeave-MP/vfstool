@@ -128,6 +128,10 @@ same formats with the same versions without depending on them itself:
 To derive `Serialize` through the re-export, name it: `#[serde(crate = "vfstool_lib::serde")]`,
 as the program does for its own reports.
 
+Every `PathBuf` in a report type serializes as a string. serde refuses a path that is not UTF-8;
+these write one with U+FFFD in place of each invalid sequence, as `NormalizedKey` does, while the
+report in memory keeps the exact bytes.
+
 ## Standard error
 
 Three methods write to standard error, one line per thing they leave out:

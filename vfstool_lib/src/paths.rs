@@ -188,6 +188,54 @@ pub(crate) fn key_to_string_lossy(key: &NormalizedPath) -> String {
     String::from_utf8_lossy(key.as_bytes()).into_owned()
 }
 
+/// Serde helpers that write paths as text. JSON, YAML and TOML hold only UTF-8, and serde refuses
+/// a `PathBuf` that is not, which failed a whole report over one file name. A path that is not
+/// UTF-8 is written with U+FFFD in place of each invalid sequence, the spelling `NormalizedKey`
+/// serializes with; the report in memory keeps the exact bytes.
+#[cfg(feature = "serialize")]
+pub(crate) mod lossy {
+    use serde::Serializer;
+    use std::path::{Path, PathBuf};
+
+    pub(crate) fn path<S: Serializer>(path: &Path, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&path.to_string_lossy())
+    }
+
+    pub(crate) fn paths<S: Serializer>(
+        paths: &[PathBuf],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(paths.iter().map(|path| path.to_string_lossy()))
+    }
+
+    #[allow(clippy::ref_option)] // serde's serialize_with passes the field by reference
+    pub(crate) fn optional_path<S: Serializer>(
+        path: &Option<PathBuf>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match path {
+            Some(path) => serializer.serialize_some(&path.to_string_lossy()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    #[allow(clippy::ref_option)] // serde's serialize_with passes the field by reference
+    pub(crate) fn optional_paths<S: Serializer>(
+        paths: &Option<Vec<PathBuf>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        match paths {
+            Some(paths) => serializer.serialize_some(
+                &paths
+                    .iter()
+                    .map(|path| path.to_string_lossy())
+                    .collect::<Vec<_>>(),
+            ),
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
 mod sealed {
     use dream_path::NormalizedPath;
     use std::path::{Path, PathBuf};

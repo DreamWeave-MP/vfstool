@@ -7,8 +7,10 @@ use std::{io, path::PathBuf};
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConflictFingerprint {
     /// Lower-priority source path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub low_source: PathBuf,
     /// Higher-priority source path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub high_source: PathBuf,
     /// Key pattern or exact key text.
     pub key_pattern: String,

@@ -72,6 +72,10 @@ pub struct Violation {
     /// Rule identifier string.
     pub rule: String,
     /// Optional key associated with the violation.
+    #[cfg_attr(
+        feature = "serialize",
+        serde(serialize_with = "crate::lossy::optional_path")
+    )]
     pub key: Option<PathBuf>,
     /// Human-readable message.
     pub message: String,

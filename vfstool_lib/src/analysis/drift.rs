@@ -4,10 +4,15 @@ use super::{
 };
 use crate::VFS;
 use ahash::AHashMap;
-use std::{collections::BTreeMap, io, path::PathBuf};
+use std::{borrow::Cow, collections::BTreeMap, io};
 
 impl LayerIndex {
     /// Compare current VFS state against a lock manifest.
+    ///
+    /// Keys and winner sources are compared as text, the way a lock file holds them: a key that is
+    /// not UTF-8 is written with U+FFFD in place of its invalid bytes, so a lock read back from a
+    /// file matches the VFS it was written from. Each entry carries the current key when the VFS
+    /// has it, and the lock's key otherwise.
     ///
     /// # Errors
     ///
@@ -25,31 +30,32 @@ impl LayerIndex {
 
         let current = self.lock_manifest(vfs)?;
 
-        let mut expected_map: AHashMap<PathBuf, &VfsLockEntry> = AHashMap::new();
-        for row in &expected.entries {
-            expected_map.insert(row.key.clone(), row);
-        }
-
-        let mut current_map: AHashMap<PathBuf, &VfsLockEntry> = AHashMap::new();
-        for row in &current.entries {
-            current_map.insert(row.key.clone(), row);
-        }
+        let expected_map: AHashMap<Cow<'_, str>, &VfsLockEntry> = expected
+            .entries
+            .iter()
+            .map(|row| (row.key.to_string_lossy(), row))
+            .collect();
+        let current_map: AHashMap<Cow<'_, str>, &VfsLockEntry> = current
+            .entries
+            .iter()
+            .map(|row| (row.key.to_string_lossy(), row))
+            .collect();
 
         let mut entries = Vec::<DriftEntry>::new();
 
-        for key in current_map.keys() {
+        for (key, current_row) in &current_map {
             if !expected_map.contains_key(key) {
                 entries.push(DriftEntry {
-                    key: key.clone(),
+                    key: current_row.key.clone(),
                     kind: DriftKind::Added,
                 });
             }
         }
 
-        for key in expected_map.keys() {
+        for (key, expected_row) in &expected_map {
             if !current_map.contains_key(key) {
                 entries.push(DriftEntry {
-                    key: key.clone(),
+                    key: expected_row.key.clone(),
                     kind: DriftKind::Removed,
                 });
             }
@@ -59,26 +65,23 @@ impl LayerIndex {
             let Some(current_row) = current_map.get(key) else {
                 continue;
             };
+            let drifted = |kind| DriftEntry {
+                key: current_row.key.clone(),
+                kind,
+            };
 
-            if expected_row.winner_source != current_row.winner_source {
-                entries.push(DriftEntry {
-                    key: (*key).clone(),
-                    kind: DriftKind::WinnerSourceChanged,
-                });
+            if expected_row.winner_source.to_string_lossy()
+                != current_row.winner_source.to_string_lossy()
+            {
+                entries.push(drifted(DriftKind::WinnerSourceChanged));
             }
 
             if expected_row.winner_hash_blake3 != current_row.winner_hash_blake3 {
-                entries.push(DriftEntry {
-                    key: (*key).clone(),
-                    kind: DriftKind::WinnerHashChanged,
-                });
+                entries.push(drifted(DriftKind::WinnerHashChanged));
             }
 
             if expected_row.provider_count != current_row.provider_count {
-                entries.push(DriftEntry {
-                    key: (*key).clone(),
-                    kind: DriftKind::ProviderCountChanged,
-                });
+                entries.push(drifted(DriftKind::ProviderCountChanged));
             }
         }
 

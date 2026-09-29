@@ -86,8 +86,10 @@ The keys are hashed in parallel, and the entries sorted by key, component by com
 {{ api_signature(value="fn diff_against_lock(&self, vfs: &VFS, expected: &VfsLock) -> io::Result<DriftReport>") }}
 
 Builds the current lock, as `lock_manifest` does, and compares it with `expected`, key by key.
-Keys are compared exactly: a lock edited by hand to spell a key another way reads as that key
-removed and the other added.
+Keys and winning sources are compared as the text a lock file holds, with bytes that are not UTF-8
+read as U+FFFD, so a lock written to a file and read back matches the VFS it came from. Otherwise
+they are compared exactly: a lock edited by hand to spell a key another way reads as that key
+removed and the other added. An entry carries the current key, or the lock's for `Removed`.
 
 | Kind | When |
 |---|---|

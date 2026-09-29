@@ -192,6 +192,8 @@ pub(crate) use directory_node::DirectoryNode;
 pub use dream_path::NormalizedPath;
 pub use foundation::{ContentDigest, NormalizedKey, SourceId};
 pub use matchers::{path_glob_matches, source_glob_matches};
+#[cfg(feature = "serialize")]
+pub(crate) use paths::lossy;
 pub use paths::{VfsKeyInput, normalize_host_path, normalize_host_path_in_place};
 pub use reports::{
     CollapseOptions, ConflictSourceEntry, ConflictsReport, DiffReport, ShadowedReport,

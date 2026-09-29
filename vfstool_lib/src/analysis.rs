@@ -33,6 +33,7 @@ pub enum SourceKind {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SourceMeta {
     /// Absolute path to the source.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// Source type.
     pub kind: SourceKind,
@@ -61,8 +62,10 @@ pub struct LayerProvider {
     /// Source metadata.
     pub source: SourceMeta,
     /// Normalized VFS key.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: std::path::PathBuf,
     /// Original path recorded for this provider.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub original_path: std::path::PathBuf,
 }
 
@@ -123,6 +126,7 @@ pub struct ProviderRecord {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ProvenanceChain {
     /// Normalized key queried.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Providers in low -> high priority order.
     pub providers: Vec<ProviderRecord>,
@@ -145,8 +149,10 @@ pub struct VfsLock {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct VfsLockEntry {
     /// Normalized key.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Winning source.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub winner_source: PathBuf,
     /// Winner source kind.
     pub winner_kind: SourceKind,
@@ -228,6 +234,7 @@ pub struct ImpactProfile {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct RiskyChange {
     /// Changed key.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Accumulated impact score.
     pub score: f32,
@@ -283,6 +290,7 @@ pub struct BucketDelta {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct SourceDelta {
     /// Source path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub source: PathBuf,
     /// Wins before simulation.
     pub wins_before: usize,
@@ -303,6 +311,7 @@ pub struct SimulationDelta {
     /// Change totals by optional bucket globs.
     pub by_bucket: Vec<BucketDelta>,
     /// Small sorted sample of changed keys.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub changed_keys_sample: Vec<PathBuf>,
 }
 
@@ -328,6 +337,7 @@ pub enum DriftKind {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct DriftEntry {
     /// Key whose lock relation drifted.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Drift category.
     pub kind: DriftKind,
@@ -378,10 +388,13 @@ impl Default for CandidatePlanOpts {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct CandidateConflict {
     /// Normalized key.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Current winner source path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub current_winner_source: PathBuf,
     /// Candidate file path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub candidate_file: PathBuf,
     /// Whether candidate content differs from current winner.
     pub semantic_differs: Option<bool>,
@@ -406,10 +419,12 @@ pub struct CandidatePlanSummary {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct CandidatePlan {
     /// Normalized keys that would be newly added.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub additions: Vec<PathBuf>,
     /// Conflicting keys and metadata.
     pub conflicts: Vec<CandidateConflict>,
     /// Keys whose current winners would be replaced by candidate content.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub displaced_winners: Vec<PathBuf>,
     /// Summary counters.
     pub summary: CandidatePlanSummary,

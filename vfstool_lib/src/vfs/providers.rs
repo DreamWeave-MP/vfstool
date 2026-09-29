@@ -17,8 +17,10 @@ pub struct VfsProviderRecord {
     /// Source metadata for the provider.
     pub source: SourceMeta,
     /// Normalized VFS key provided by this source.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Original loose path or in-archive entry path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub original_path: PathBuf,
     /// Human-readable resolved path, including archive parent when applicable.
     pub resolved_path: String,
@@ -29,6 +31,7 @@ pub struct VfsProviderRecord {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ExplainReport {
     /// Normalized key that was explained.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Winning provider.
     pub winner: VfsProviderRecord,
@@ -41,6 +44,7 @@ pub struct ExplainReport {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct DuplicateEntry {
     /// Normalized key with more than one provider.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Providers in low-to-high priority order.
     pub providers: Vec<VfsProviderRecord>,
@@ -66,6 +70,7 @@ pub struct ArchiveInfo {
     /// Source index of the archive.
     pub source_index: usize,
     /// Archive path on disk.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// Number of entries provided by this archive.
     pub entry_count: usize,
@@ -81,10 +86,13 @@ pub struct ArchiveInfo {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ArchiveEntry {
     /// Normalized VFS key.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub key: PathBuf,
     /// Archive path on disk.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub archive_path: PathBuf,
     /// Original in-archive entry path.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub original_path: PathBuf,
     /// Whether this archive entry is the resolved winner.
     pub wins: bool,
@@ -98,44 +106,58 @@ pub enum MaterializationAction {
     /// Create a hardlink.
     Hardlink {
         /// Normalized VFS key to materialize.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Loose source path to link from.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         source: PathBuf,
         /// Destination path to create.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
     /// Create a symbolic link.
     Symlink {
         /// Normalized VFS key to materialize.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Loose source path to link from.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         source: PathBuf,
         /// Destination path to create.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
     /// Copy a loose file.
     Copy {
         /// Normalized VFS key to materialize.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Loose source path to copy from.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         source: PathBuf,
         /// Destination path to create.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
     /// Extract an archive entry.
     ExtractArchive {
         /// Normalized VFS key to materialize.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Archive path to extract from.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         archive: PathBuf,
         /// Destination path to create.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
     /// Skip an archive file or entry.
     SkipArchiveFile {
         /// Normalized VFS key that would otherwise materialize archive data.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Archive path that was skipped.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         archive: PathBuf,
     },
 }
@@ -148,15 +170,19 @@ pub enum MaterializationIssue {
     /// Loose source is missing.
     MissingLooseSource {
         /// Normalized VFS key whose source is missing.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Missing loose source path.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         source: PathBuf,
     },
     /// Planned destination has a file/directory conflict.
     FileDirectoryConflict {
         /// Normalized VFS key that cannot be materialized safely.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Conflicting destination path.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
     /// Planned destination would escape the output root or hit an unsafe path.
@@ -166,8 +192,10 @@ pub enum MaterializationIssue {
     /// shape. Execution paths still perform their own root/parent safety checks before writing.
     UnsafeDestination {
         /// Normalized VFS key with an unsafe destination.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         key: PathBuf,
         /// Unsafe destination path.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         dest: PathBuf,
     },
 }

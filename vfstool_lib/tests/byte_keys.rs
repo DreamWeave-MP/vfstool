@@ -143,3 +143,66 @@ fn analysis_reports_carry_keys_that_are_not_utf8_exactly() {
     assert_eq!(provenance.providers[1].size, Some(4));
     assert_eq!(vfs.remove_resolved_matching_glob("odd/*").len(), 1);
 }
+
+#[cfg(all(unix, feature = "serialize"))]
+#[test]
+fn reports_holding_keys_that_are_not_utf8_serialize_and_a_lock_reads_back_without_drift() {
+    use std::os::unix::ffi::OsStrExt;
+    use vfstool_lib::{CollapseOptions, SerializeType, VfsLock, serde_json, serialize_value};
+
+    let low = TempDir::new("serialize_low");
+    let high = TempDir::new("serialize_high");
+    let name = std::ffi::OsStr::from_bytes(b"Textures/caf\xe9.dds");
+    for (dir, content) in [(&low, &b"low"[..]), (&high, &b"high"[..])] {
+        let path = dir.0.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+    }
+    let dirs = [low.0.as_path(), high.0.as_path()];
+    let (vfs, layer) = VFS::from_directories_with_layer_index(dirs, None);
+    let (_, conflicts) = VFS::from_directories_with_conflict_index(dirs, None);
+    let key = &b"textures/caf\xe9.dds"[..];
+    let text_key = "textures/caf\u{fffd}.dds";
+
+    for format in [
+        SerializeType::Json,
+        SerializeType::Yaml,
+        SerializeType::Toml,
+    ] {
+        let explain = serialize_value(&vfs.explain(key).unwrap(), format).unwrap();
+        assert!(explain.contains(text_key), "{explain}");
+        serialize_value(&vfs.duplicates(), format).unwrap();
+        serialize_value(&conflicts.conflicts_report(false), format).unwrap();
+        serialize_value(&conflicts.shadowed_report_with_files(false, true), format).unwrap();
+        let plan = vfs.materialization_plan(
+            low.0.join("merged"),
+            &CollapseOptions {
+                allow_copying: false,
+                extract_archives: false,
+                use_symlinks: false,
+            },
+        );
+        serialize_value(&plan, format).unwrap();
+    }
+
+    let lock = layer.lock_manifest(&vfs).unwrap();
+    let written = serialize_value(&lock, SerializeType::Json).unwrap();
+    assert!(written.contains(text_key), "{written}");
+    let read: VfsLock = serde_json::from_str(&written).unwrap();
+    let drift = layer.diff_against_lock(&vfs, &read).unwrap();
+    assert!(drift.entries.is_empty(), "{:?}", drift.entries);
+    serialize_value(&drift, SerializeType::Json).unwrap();
+
+    fs::write(high.0.join(name), b"changed").unwrap();
+    let drift = layer.diff_against_lock(&vfs, &read).unwrap();
+    assert_eq!(drift.entries.len(), 1, "{:?}", drift.entries);
+    assert_eq!(
+        drift.entries[0].key,
+        PathBuf::from(std::ffi::OsStr::from_bytes(b"textures/caf\xe9.dds"))
+    );
+    assert!(
+        serialize_value(&drift, SerializeType::Json)
+            .unwrap()
+            .contains(text_key)
+    );
+}

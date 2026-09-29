@@ -17,15 +17,19 @@ pub enum OrderConstraint {
     /// Require source `a` to come before source `b`.
     SourceBefore {
         /// Source path that must come first.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         a: PathBuf,
         /// Source path that must come later.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         b: PathBuf,
     },
     /// Require source `a` to come after source `b`.
     SourceAfter {
         /// Source path that must come later.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         a: PathBuf,
         /// Source path that must come first.
+        #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
         b: PathBuf,
     },
     /// Require matching keys to be won by a matching source.
@@ -42,6 +46,7 @@ pub enum OrderConstraint {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
 pub struct SolveRequest {
     /// Optional current order. If empty, layer source order is used.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub current_order: Vec<PathBuf>,
     /// Constraints to satisfy.
     pub constraints: Vec<OrderConstraint>,
@@ -68,6 +73,10 @@ pub struct ConstraintViolation {
     /// Human-readable reason.
     pub message: String,
     /// Optional sample key that demonstrates failure.
+    #[cfg_attr(
+        feature = "serialize",
+        serde(serialize_with = "crate::lossy::optional_path")
+    )]
     pub sample_key: Option<PathBuf>,
 }
 
@@ -90,6 +99,10 @@ pub struct SolveResult {
     /// Whether the constraint set is satisfiable.
     pub status: SolveStatus,
     /// Suggested order when satisfiable.
+    #[cfg_attr(
+        feature = "serialize",
+        serde(serialize_with = "crate::lossy::optional_paths")
+    )]
     pub order: Option<Vec<PathBuf>>,
     /// Additional diagnostics.
     pub diagnostics: SolveDiagnostics,

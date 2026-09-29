@@ -32,10 +32,13 @@ pub struct ConflictsReport {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ConflictSourceEntry {
     /// Absolute path to the source directory or archive.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// VFS paths where this source overrides at least one earlier (lower-priority) source.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub overrides: Vec<PathBuf>,
     /// VFS paths where this source is overridden by at least one later (higher-priority) source.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub overridden_by: Vec<PathBuf>,
 }
 
@@ -52,11 +55,13 @@ pub struct ShadowedReport {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct ShadowedSource {
     /// Absolute path to the source directory or archive.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub path: PathBuf,
     /// VFS paths of all files in this source, each overridden by a later source.
     ///
     /// This is empty for summary reports built without file listings.
     #[cfg_attr(feature = "serialize", serde(skip_serializing_if = "Vec::is_empty"))]
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::paths"))]
     pub shadowed_files: Vec<PathBuf>,
 }
 
@@ -66,10 +71,13 @@ pub struct ShadowedSource {
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
 pub struct DiffReport {
     /// Absolute path to the first source directory.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub source_a: PathBuf,
     /// Absolute path to the second source directory.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub source_b: PathBuf,
     /// Whichever of `source_a` or `source_b` has higher load-order priority.
+    #[cfg_attr(feature = "serialize", serde(serialize_with = "crate::lossy::path"))]
     pub higher_priority: PathBuf,
     /// Slash-separated VFS keys present in both sources.
     pub shared: Vec<String>,
