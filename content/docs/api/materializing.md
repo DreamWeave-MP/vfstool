@@ -76,8 +76,8 @@ returns what it wrote and what it left out.
 - **Archive entries** are extracted with `extract_archives`, read through
   [`VfsFile::open`](@/docs/api/files.md#reading-it). Without it they are left out, each an
   `ArchiveEntry` in the report.
-- **Archives that are loose files**, a `.bsa` or `.ba2` with `beth-archives` or a `.zip` or `.pk3`
-  with `zip`, are left out with `extract_archives`, so the result does not hold both an archive and
+- **Archives that are loose files**, a `.bsa` or `.ba2` with `beth-archives` or a `.zip`, `.pk3`
+  or `.jpk` with `zip`, are left out with `extract_archives`, so the result does not hold both an archive and
   its contents, each an `ArchiveFile` in the report. `ArchiveInvalidationInvalidated!.bsa` is not
   treated as an archive. Without `extract_archives`, they are linked like any file.
 

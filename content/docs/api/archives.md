@@ -66,16 +66,20 @@ The example writes its PK3 with the `zip` crate, so it needs
 | Feature | Opens | Through |
 |---|---|---|
 | `beth-archives` | Morrowind's BSA; the BSA of Oblivion, Fallout 3, New Vegas and Skyrim; BA2 general and texture archives from Fallout 4 on | [dream_archive](https://crates.io/crates/dream_archive) 0.2 |
-| `zip` | `.zip` and `.pk3` files, stored, deflate or LZMA | [zip](https://crates.io/crates/zip) 8, without its default features |
+| `zip` | `.zip`, `.pk3` and `.jpk` files, stored, deflate, LZMA or Zstandard | [zip](https://crates.io/crates/zip) 8, without its default features, and [ruzstd](https://crates.io/crates/ruzstd) for Zstandard |
 
-A file whose name ends in `.zip` or `.pk3`, in any case, is opened as a ZIP with the `zip`
+A file whose name ends in `.zip`, `.pk3` or `.jpk`, in any case, is opened as a ZIP with the `zip`
 feature. Any other file is opened as a Bethesda archive with `beth-archives`, recognized by its
 contents rather than its extension. A file that does not open is left out without an error by
 `from_directories` and `from_set`, and makes `push_archive` return `false`. With only `zip`, a BSA
-does not open; with only `beth-archives`, a PK3 does not.
+does not open; with only `beth-archives`, a PK3 or JPK does not.
 
-ZIP entries compressed with AES, bzip2, deflate64, PPMd or zstd do not read. ZIP entries are
-buffered whole when opened, up to 512 MiB each, uncompressed; see
+Every ZIP entry is listed, whatever its compression. Stored, deflate, LZMA and Zstandard entries
+read; Zstandard decodes through ruzstd, in Rust, so no C library is built. An entry compressed
+another way, such as bzip2, deflate64, PPMd or xz, or encrypted with AES, is still a key and can
+win, but opening it fails, with `compression method not supported: 12` for bzip2; so does
+extracting it, and a `collapse_into` with `extract_archives` stops there. ZIP entries are buffered
+whole when opened, up to 512 MiB each, uncompressed; see
 [`VfsFile::open`](@/docs/api/files.md#reading-it). BSA and BA2 entries stream.
 
 ## How entries become keys
@@ -150,4 +154,4 @@ underlying crate in your own dependencies, at the version vfstool_lib uses.
 | Variant | Present | Holds |
 |---|---|---|
 | `Bethesda(dream_archive::Archive)` | with `beth-archives` | A BSA or BA2 |
-| `Zip(Mutex<zip::ZipArchive<File>>)` | with `zip` | A ZIP or PK3, behind a lock so entries are read one at a time |
+| `Zip(Mutex<zip::ZipArchive<File>>)` | with `zip` | A ZIP, PK3 or JPK, behind a lock so entries are read one at a time |

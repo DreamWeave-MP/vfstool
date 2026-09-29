@@ -78,7 +78,7 @@ No feature is on by default. Without any, the crate reads loose files only.
 | Feature | Adds |
 |---|---|
 | `beth-archives` | BSA and BA2 archives, through [dream_archive](https://crates.io/crates/dream_archive); see [Archives](@/docs/api/archives.md) |
-| `zip` | ZIP and PK3 archives, through [zip](https://crates.io/crates/zip), stored, deflate and LZMA only |
+| `zip` | ZIP, PK3 and JPK archives, through [zip](https://crates.io/crates/zip): stored, deflate, LZMA, and Zstandard through [ruzstd](https://crates.io/crates/ruzstd) |
 | `serialize` | `Serialize` on the report types, [`serialize_value`](@/docs/api/materializing.md#serializing-anything) and `VFS::serialize_from_tree`, the re-exports below, and structural JSON and TOML comparison in [semantic analysis](@/docs/api/semantic.md) |
 | `lua` | The [`lua` module](@/docs/luau/extension.md), an l3i extension providing `@dream/vfs`. It needs l3i's toolchain: clang, lld and cross-language thin LTO; [Embedding Luau](@/docs/luau-hosts.md) has the setup |
 | `luau-analysis` | `lua` and l3i's `analysis`, for the crate's own typed tests. Nothing a program needs |

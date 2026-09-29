@@ -17,8 +17,8 @@ kind = "reference"
 | `vfstool-Linux-X64.zip` | Linux, x86-64, glibc 2.34 or newer: RHEL 9, Ubuntu 22.04, Debian 12 and later |
 
 Each holds the program and its [signature bundle](#signed-releases). They are the same program:
-BSA and BA2 archives, and YAML, JSON and TOML reports, on every platform. None reads ZIP or PK3
-archives.
+BSA and BA2 archives, and YAML, JSON and TOML reports, on every platform. None reads ZIP, PK3 or
+JPK archives.
 
 ## Building it yourself
 
@@ -38,7 +38,7 @@ The library's features:
 | Feature | Adds |
 |---|---|
 | `beth-archives` | BSA and BA2, through dream_archive |
-| `zip` | ZIP and PK3: stored, deflate and LZMA entries |
+| `zip` | ZIP, PK3 and JPK: stored, deflate, LZMA and Zstandard entries, Zstandard through the pure-Rust ruzstd |
 | `serialize` | JSON, YAML and TOML, and the `serde`, `serde_json`, `serde_yaml` and `toml` re-exports |
 | `lua` | The [`@dream/vfs`](@/docs/luau/_index.md) l3i extension. Needs l3i's toolchain: clang, lld and cross-language thin LTO |
 | `luau-analysis` | `lua` plus Luau's analysis frontend, for the typed tests. Not for hosts |

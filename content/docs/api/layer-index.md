@@ -259,7 +259,7 @@ wildcard arm.
 | Variant | Meaning |
 |---|---|
 | `LooseDir` | A data directory of loose files |
-| `Archive` | A BSA, BA2, ZIP or PK3 archive |
+| `Archive` | A BSA, BA2, ZIP, PK3 or JPK archive |
 
 ## Locks, semantic conflicts and planning
 

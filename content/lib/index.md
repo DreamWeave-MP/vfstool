@@ -53,7 +53,7 @@ fn main() -> std::io::Result<()> {
   archives, and a plan of what that would do.
 - **Luau**: the same API as the l3i extension `@dream/vfs`, for hosts that run scripts.
 
-BSA and BA2 archives are behind the `beth-archives` feature, ZIP and PK3 behind `zip`, JSON, YAML
+BSA and BA2 archives are behind the `beth-archives` feature, ZIP, PK3 and JPK behind `zip`, JSON, YAML
 and TOML behind `serialize`, and Luau behind `lua`. With none of them, the crate reads loose files.
 
 ## Documentation

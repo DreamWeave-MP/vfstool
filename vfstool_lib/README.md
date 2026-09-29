@@ -22,7 +22,7 @@ vfstool_lib = { version = "1.0", features = ["beth-archives", "zip", "serialize"
 | Feature | Adds |
 |---|---|
 | `beth-archives` | BSA and BA2 archives, through dream_archive |
-| `zip` | ZIP and PK3 archives |
+| `zip` | ZIP, PK3 and JPK archives, Zstandard entries included |
 | `serialize` | JSON, YAML and TOML, and the `serde`, `serde_json`, `serde_yaml` and `toml` re-exports |
 | `lua` | The `@dream/vfs` [l3i](https://github.com/DreamWeave-MP/l3i) extension, `lua::VfsExtension` |
 

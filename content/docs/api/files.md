@@ -59,7 +59,7 @@ fails when it is opened. This is an associated function named `from`, not the `F
 
 {{ api_signature(value="fn from_archive<S: AsRef<str>>(path: S, parent_archive: Arc<StoredArchive>) -> VfsFile") }}
 
-With `beth-archives` or `zip`. An entry named `path` in a Bethesda archive. For a ZIP or PK3, use
+With `beth-archives` or `zip`. An entry named `path` in a Bethesda archive. For a ZIP, PK3 or JPK, use
 `from_zip_archive`: a file made by this function in a ZIP cannot be opened, and `open` returns
 `InvalidData` (`zip archive reference is missing central-directory index`).
 
@@ -132,9 +132,11 @@ A reader over the file's bytes.
 - **Loose files** stream from the file. A file that is gone is the system's error.
 - **BSA and BA2 entries** stream through dream_archive. An entry that cannot be read is
   `InvalidData`.
-- **ZIP and PK3 entries** are read whole into memory when opened, then handed out. An entry larger
-  than 512 MiB uncompressed is refused with `OutOfMemory`. Reads from one ZIP take turns: its
-  handle is behind a lock. Supported compression is stored, deflate and LZMA.
+- **ZIP, PK3 and JPK entries** are read whole into memory when opened, then handed out. An entry
+  larger than 512 MiB uncompressed is refused with `OutOfMemory`. Reads from one ZIP take turns:
+  its handle is behind a lock. Stored, deflate, LZMA and Zstandard entries read; an entry
+  compressed another way fails with `NotFound`, such as `compression method not supported: 12`
+  for bzip2.
 
 ## FileType
 

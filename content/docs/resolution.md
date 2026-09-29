@@ -57,7 +57,7 @@ of whichever data directory has it; if two do, the later one's is used.
 The program reads PC BSA and BA2 archives through
 [dream_archive](https://crates.io/crates/dream_archive): Morrowind's BSAs, the BSAs of Oblivion,
 Fallout 3, New Vegas and Skyrim, and the BA2s of Fallout 4 and later. The format is read from the
-file, not its extension. Console layouts are not read. ZIP and PK3 archives are read by
+file, not its extension. Console layouts are not read. ZIP, PK3 and JPK archives are read by
 `vfstool_lib` with its `zip` feature, which the released program is not built with.
 
 An archive that is named but not found, or found but unreadable, is left out, and the VFS is

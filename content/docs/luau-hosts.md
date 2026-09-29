@@ -23,7 +23,7 @@ l3i = "1.0"
 ```
 
 `lua` is the binding. The others are optional and add to it: `beth-archives` reads BSA and BA2
-archives and `zip` ZIP archives, renamed ones such as PK3 included, and either one adds `vfs:pushArchive`; `serialize` adds
+archives and `zip` ZIP archives, the renamed PK3 and JPK included, and either one adds `vfs:pushArchive`; `serialize` adds
 `serialize` and `vfs:serializeTree`. dream-path is a direct dependency because the host adds its
 `PathExtension` to the plan.
 

@@ -39,6 +39,7 @@ version = "0.1.0"
 date = 2025-04-25
 summary = "First release: OpenMW's virtual file system from ordered data directories and BSA and BA2 archives."
 added = [
+    "With `zip`, `.jpk` files are read as ZIP archives beside `.zip` and `.pk3`, and Zstandard entries decode through ruzstd, in pure Rust. Every ZIP entry is listed whatever its compression; one compressed another way fails when it is opened.",
     "`VFS::from_directories` builds the VFS from data directories in load order, later ones winning, and from the archives it is given, which loose files override.",
     "`get_file`, `paths_matching` and `paths_with` look files up by their lowercase, `/`-separated path; `tree` and `tree_filtered` sort them into folders.",
     "`VfsFile`: a loose file or an archive entry, opened for reading either way.",

@@ -89,7 +89,7 @@ assert(vfs:getFile("textures/tx_extra.dds"):parentArchiveName() == "Extras.zip")
 - **No `io`.** Luau has no `io` library. Scripts read files through `VfsFile`; anything else that
   reads or writes the disk is the host's to provide.
 - **Features.** `vfs:pushArchive` exists only when the crate is built with `beth-archives` (BSA
-  and BA2) or `zip` (ZIP, and renamed ZIPs such as PK3); without either, archive lists are
+  and BA2) or `zip` (ZIP, and renamed ZIPs: PK3 and JPK); without either, archive lists are
   ignored and an archive is a plain file. `serialize` and `vfs:serializeTree` exist only with
   `serialize`.
 
