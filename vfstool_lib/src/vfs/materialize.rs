@@ -125,7 +125,9 @@ impl VFS {
     ///
     /// A file already at a destination is replaced, unless it already is the loose file being
     /// written there (the same path, a hard link to it, or a symbolic link to it): that one is left
-    /// in place, so collapsing into one of the VFS's own data directories keeps its files.
+    /// in place, so collapsing into one of the VFS's own data directories keeps its files. Symbolic
+    /// links point at the file's absolute path, whether or not the VFS was built from relative
+    /// directories.
     ///
     /// # Errors
     ///
@@ -215,7 +217,9 @@ impl VFS {
         }
 
         let link_result = if opts.use_symlinks {
-            Self::symlink(file.path(), merged_path)
+            // A relative target resolves from the link's own folder, not from where the VFS
+            // was built, so a link to a relative data directory's file would dangle.
+            std::path::absolute(file.path()).and_then(|target| Self::symlink(&target, merged_path))
         } else {
             std::fs::hard_link(file.path(), merged_path)
         };

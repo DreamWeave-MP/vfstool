@@ -198,6 +198,34 @@ fn collapse_reports_missing_loose_source() {
 }
 
 #[test]
+#[cfg(unix)]
+fn collapse_symlinks_to_files_of_a_relative_data_directory_resolve() {
+    let relative = PathBuf::from(format!(
+        "collapse_symlink_relative_src_{}",
+        std::process::id()
+    ));
+    let src = TempDir(std::env::current_dir().unwrap().join(&relative));
+    src.write("textures/a.dds", b"texture");
+    let vfs = VFS::from_directories(vec![relative.as_path()], None);
+
+    let dest = TempDir::new("collapse_symlink_relative_dest");
+    vfs.collapse_into(
+        dest.path(),
+        &CollapseOptions {
+            allow_copying: false,
+            extract_archives: false,
+            use_symlinks: true,
+        },
+    )
+    .unwrap();
+
+    let link = dest.path().join("textures/a.dds");
+    assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+    assert!(fs::read_link(&link).unwrap().is_absolute());
+    assert_eq!(fs::read(&link).unwrap(), b"texture");
+}
+
+#[test]
 fn collapse_into_one_of_its_own_data_directories_keeps_the_files_there() {
     let low = TempDir::new("collapse_into_source_low");
     let data = TempDir::new("collapse_into_source_data");

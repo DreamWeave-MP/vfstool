@@ -80,9 +80,8 @@ Writes the whole VFS into `dest`, which is created if needed, the way `vfstool c
   its contents. `ArchiveInvalidationInvalidated!.bsa` is not treated as an archive. Without
   `extract_archives`, they are linked like any file.
 
-A loose file that no longer exists is an error. A symbolic link points at the file's path as the
-VFS stores it, so a VFS built from relative directories makes links that resolve relative to
-where they are, and break; build it from absolute paths when linking.
+A loose file that no longer exists is an error. A symbolic link points at the file's absolute path,
+so a VFS built from relative directories makes links that resolve wherever they are.
 
 Hard links share their bytes with the original: a program that edits a collapsed file in place
 edits the file in the mod.
