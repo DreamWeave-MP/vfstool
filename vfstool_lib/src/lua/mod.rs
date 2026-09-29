@@ -15,8 +15,9 @@
 //!
 //! - Paths are Luau strings read as bytes: no UTF-8 requirement anywhere, and a VFS key is
 //!   normalized once, into a thread-local scratch buffer, before a lookup that allocates nothing.
-//! - `VFS` and `VfsFile` are tagged userdata; `VfsProvider`, `LayerIndex`, `ConflictIndex`,
-//!   `VfsLock`, and the snapshots are untagged userdata.
+//! - `VFS` and `VfsFile` are tagged userdata, and so are the `Keys` and `Entries` views;
+//!   `VfsProvider`, `LayerIndex`, `ConflictIndex`, `VfsLock`, the snapshots, and the other views
+//!   are untagged userdata.
 //! - Lists of keys and entries (`keys`, `entries`, `pathsMatching`, `pathsWith`, `providersFor`,
 //!   `providerRecordsFor`, `layer:keys`, `layer:duplicateKeys`, `filesFromArchive`) are
 //!   sequence views: `#items`, `items[i]` (1-based), `for _, item in items`, and
