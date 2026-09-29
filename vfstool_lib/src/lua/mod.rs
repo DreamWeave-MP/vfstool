@@ -70,7 +70,7 @@ use l3i::{
     bind::Call,
     convert::Exact,
     extension::{Extension, ExtensionDescriptor, InstallContext},
-    stack::{Frame, Scope, TableView, ValueView},
+    stack::{Frame, Scope, TableView, Type, ValueView},
     userdata::Owned,
     value::{Function, Table},
 };
@@ -356,7 +356,7 @@ pub(crate) fn source_kind_from_name(name: &str) -> Result<crate::SourceKind> {
 
 /// The array of byte strings at the argument `view`, as host paths. `what` names the argument
 /// in errors (`dream.vfs: dirs: Lua stack index 1: expected table, got number`, `dream.vfs:
-/// dirs[2]: expected a string, got number`).
+/// dirs[2]: expected string, got number`).
 pub(crate) fn paths_from_array(
     scope: &impl Scope,
     view: ValueView<'_>,
@@ -371,7 +371,8 @@ pub(crate) fn paths_from_array(
 }
 
 /// The array of byte strings in `table`, as host paths, walked one element at a time. `path`
-/// names the table in an element's type error (`dirs[2]: expected a string, got number`); under
+/// names the table in an element's type error (`dirs[2]: expected string, got number`, Luau's own
+/// type name, as the binder's conversions word theirs); under
 /// an option reader it is the field's full path (`format!("{}.files", o.context())`), so the
 /// reader adds nothing and the error reads `LayerIndex.fromFileLists[1].files[2]: ...`.
 pub(crate) fn paths_from_table(
@@ -382,7 +383,7 @@ pub(crate) fn paths_from_table(
     let mut paths = Vec::with_capacity(table.raw_len());
     table.for_each_array(frame, |_, index, item| {
         if !item.is_string() {
-            return Err(item.field_type_error(&format!("{path}[{index}]"), "a string"));
+            return Err(item.field_type_error_of(&format!("{path}[{index}]"), Type::String));
         }
         paths.push(host_path(item.read::<&[u8]>()?));
         Ok(())
