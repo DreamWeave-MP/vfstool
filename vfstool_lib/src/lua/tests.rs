@@ -744,13 +744,8 @@ fn runtime_requiring(
     );
     runtime
         .install_require(
-            super::VfsRequireNavigator::with_cache(
-                vfs.clone(),
-                sandbox.clone(),
-                &runtime,
-                cache.clone(),
-            )
-            .alias("dream", "scripts/dream"),
+            super::VfsRequireNavigator::with_cache(vfs.clone(), sandbox.clone(), cache.clone())
+                .alias("dream", "scripts/dream"),
         )
         .unwrap();
     (runtime, sandbox)

@@ -270,7 +270,7 @@ disk is touched. Neither feature is on by default; without them the members do n
 (`x.luau`, `x.lua`, `x/init.luau`), `.luaurc` aliases are read through the VFS, host aliases come
 from `alias(name, key)`, and modules are compiled once per runtime into a template cache
 (OpenMW's `ScriptTemplateCache`) and cloned per instance. The host installs it:
-`runtime.install_require(VfsRequireNavigator::new(vfs.clone(), sandbox, &runtime))`. The site's
+`runtime.install_require(VfsRequireNavigator::new(vfs.clone(), sandbox))`. The site's
 [require page](https://dreamweave-mp.github.io/vfstool/docs/luau/require/) has the rules.
 
 ## `VfsProvider`

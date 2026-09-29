@@ -23,11 +23,11 @@
 //!     .extension(dream_path::lua::PathExtension)
 //!     .extension(VfsExtension)
 //!     .finalize()?;
-//! let runtime = Rc::new(Runtime::from_plan(&plan)?);
+//! let runtime = Runtime::from_plan(&plan)?;
 //! let sandbox = Rc::new(runtime.sandbox(|line| println!("{line}"), SandboxOptions::default())?);
 //! let vfs = Vfs::new(VFS::from_directories(["Data Files"], None));
 //! runtime.install_require(
-//!     VfsRequireNavigator::new(vfs.clone(), sandbox, &runtime).alias("dream", "scripts/dream"),
+//!     VfsRequireNavigator::new(vfs.clone(), sandbox).alias("dream", "scripts/dream"),
 //! )?;
 //! # Ok::<(), l3i::Error>(())
 //! ```
@@ -35,11 +35,11 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, HashMap},
-    rc::{Rc, Weak},
+    rc::Rc,
 };
 
 use l3i::{
-    Error, Result, Runtime,
+    Error, Result,
     require::{ConfigStatus, Load, Navigate, RequireNavigator, impl_scope::Requirer},
     sandbox::{Sandbox, Template},
     stack::Scope,
@@ -137,7 +137,6 @@ impl TemplateCache {
 pub struct VfsRequireNavigator {
     vfs: Vfs,
     sandbox: Rc<Sandbox>,
-    runtime: Weak<Runtime>,
     cache: Rc<TemplateCache>,
     position: RefCell<Vec<String>>,
     aliases: BTreeMap<String, Vec<String>>,
@@ -162,26 +161,21 @@ fn components(path: &str) -> Vec<String> {
 }
 
 impl VfsRequireNavigator {
-    /// A navigator over `vfs` for `runtime`, compiling modules as templates of `sandbox` (with
-    /// the sandbox's compile options) into a fresh [`TemplateCache`]. The navigator keeps a weak
-    /// reference to the runtime, which owns it once installed.
+    /// A navigator over `vfs`, compiling modules as templates of `sandbox` (with the sandbox's
+    /// compile options) into a fresh [`TemplateCache`]. It needs no handle to the runtime: a
+    /// template loads from any thread of the VM, and the runtime owns the navigator once it is
+    /// installed.
     #[must_use]
-    pub fn new(vfs: Vfs, sandbox: Rc<Sandbox>, runtime: &Rc<Runtime>) -> Self {
-        Self::with_cache(vfs, sandbox, runtime, Rc::new(TemplateCache::new()))
+    pub fn new(vfs: Vfs, sandbox: Rc<Sandbox>) -> Self {
+        Self::with_cache(vfs, sandbox, Rc::new(TemplateCache::new()))
     }
 
     /// [`Self::new`] over `cache`, which the host keeps to `invalidate` or `clear` it.
     #[must_use]
-    pub fn with_cache(
-        vfs: Vfs,
-        sandbox: Rc<Sandbox>,
-        runtime: &Rc<Runtime>,
-        cache: Rc<TemplateCache>,
-    ) -> Self {
+    pub fn with_cache(vfs: Vfs, sandbox: Rc<Sandbox>, cache: Rc<TemplateCache>) -> Self {
         VfsRequireNavigator {
             vfs,
             sandbox,
-            runtime: Rc::downgrade(runtime),
             cache,
             position: RefCell::new(Vec::new()),
             aliases: BTreeMap::new(),
@@ -398,16 +392,11 @@ impl RequireNavigator for VfsRequireNavigator {
         chunkname: &str,
         loadname: &str,
     ) -> Result<Load> {
-        let runtime = self.runtime.upgrade().ok_or_else(|| {
-            Error::logic("dream.vfs: require: the runtime that owns this navigator is gone")
-        })?;
         // The template, compiled on the first require of this file and kept. No borrow of the
         // cache is held while the module runs, so a module's own requires reach it too.
         if !self.cache.has(loadname) {
             let source = self.source(loadname)?;
-            let template = self
-                .sandbox
-                .load_template_in(scope, &runtime, chunkname, &source)?;
+            let template = self.sandbox.load_template_in(scope, chunkname, &source)?;
             self.cache.record(loadname.to_owned(), template);
         }
         let env = requirer_env(scope)?;

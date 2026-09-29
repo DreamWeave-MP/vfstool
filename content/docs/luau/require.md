@@ -24,12 +24,12 @@ fn main() -> l3i::Result<()> {
         .extension(dream_path::lua::PathExtension)
         .extension(VfsExtension)
         .finalize()?;
-    let runtime = Rc::new(Runtime::from_plan(&plan)?);
+    let runtime = Runtime::from_plan(&plan)?;
     let sandbox = Rc::new(runtime.sandbox(|line| println!("{line}"), SandboxOptions::default())?);
 
     let vfs = Vfs::new(VFS::from_directories(["Data Files", "mods/Scripts"], None));
     runtime.install_require(
-        VfsRequireNavigator::new(vfs.clone(), sandbox, &runtime).alias("dream", "scripts/dream"),
+        VfsRequireNavigator::new(vfs.clone(), sandbox).alias("dream", "scripts/dream"),
     )?;
 
     // The entry point runs as the chunk `@scripts/main.luau`, so its `./` is `scripts/`.
@@ -135,12 +135,13 @@ alone changes nothing that Luau has already cached: clear both to see a rewritte
 
 {{ api_signature(value="struct VfsRequireNavigator") }}
 
-{{ api_signature(value="fn new(vfs: Vfs, sandbox: Rc<Sandbox>, runtime: &Rc<Runtime>) -> VfsRequireNavigator") }}
+{{ api_signature(value="fn new(vfs: Vfs, sandbox: Rc<Sandbox>) -> VfsRequireNavigator") }}
 
-A navigator over `vfs` for `runtime`, compiling modules as templates of `sandbox`, with a cache
-of its own.
+A navigator over `vfs`, compiling modules as templates of `sandbox`, with a cache of its own. It
+needs no handle to the runtime: a template loads from any thread of the VM, and the runtime owns
+the navigator once `install_require` has taken it.
 
-{{ api_signature(value="fn with_cache(vfs: Vfs, sandbox: Rc<Sandbox>, runtime: &Rc<Runtime>, cache: Rc<TemplateCache>) -> VfsRequireNavigator") }}
+{{ api_signature(value="fn with_cache(vfs: Vfs, sandbox: Rc<Sandbox>, cache: Rc<TemplateCache>) -> VfsRequireNavigator") }}
 
 The same over `cache`, which the host keeps to `invalidate` or `clear` it.
 

@@ -405,7 +405,6 @@ fn bench_require(c: &mut Criterion) {
         .install_require(VfsRequireNavigator::with_cache(
             vfs,
             sandbox.clone(),
-            &runtime,
             cache.clone(),
         ))
         .expect("install require");
