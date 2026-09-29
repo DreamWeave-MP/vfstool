@@ -293,6 +293,31 @@ use this shape:
 The Lua binding is intentionally boring: deterministic tables in, deterministic tables out. Clever
 Lua magic belongs in the host application, not in the FFI seam.
 
+## Measured
+
+`cargo bench -p vfstool_lib --all-features --bench luau_boundary`: a 1000-file loose fixture
+(`vfs`) and a 5000-file one (`vfsLarge`), the same frozen scripts against the previous mlua
+binding and this one, both pinned to one core, minimum of five runs on a loaded machine. Per call,
+or per materialised collection:
+
+| script | mlua 0.12 | l3i |
+|---|---:|---:|
+| `getFile` hit (`textures/file_00006.dat`) | 400 ns | 250 ns |
+| `getFile` hit, unnormalized spelling (`Textures\File_00006.DAT`) | 396 ns | 286 ns |
+| `getFile` miss | 167 ns | 98 ns |
+| `contains` hit / miss | 181 / 185 ns | 91 / 88 ns |
+| `len` (5000 keys) | 82 ns | 53 ns |
+| `keys` (5000 keys) | 1.33 ms (table) | 618 µs first call, 279 ns repeated (view); `:toTable()` 359 µs |
+| `entries` (1000) | 823 µs (table) | 226 µs (view); `:toTable()` 620 µs |
+| `pathsMatching` broad (1000 hits) / narrow (1 hit) | 1.03 ms / 79 µs | 262 µs / 65 µs |
+| `pathsWith('textures')` (167 hits) | 141 µs | 41 µs |
+| `providersFor` hit | 1.58 µs | 341 ns |
+| `explain` hit | 2.84 µs | 1.99 µs |
+| `tree` (1000 files) | 2.11 ms (nested tables) | 898 µs (stream); `:toTable()` 1.47 ms |
+| `file:readAll()` 64 KiB | 19.6 µs | 19.0 µs |
+| `file:readInto(buffer)` 64 KiB | n/a | 5.4 µs |
+| `file:path()` | 164 ns | 105 ns |
+
 ## Migrating from the mlua binding (0.10)
 
 - `lua::open(&Lua)` and `lua::register(&Lua)` are gone with `mlua`. Compose `lua::VfsExtension`
