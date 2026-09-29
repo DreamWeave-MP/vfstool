@@ -150,8 +150,23 @@ The [sequence views](@/docs/luau/views.md) are `l3i::sequence::SequenceSource` t
 
 {{ api_signature(value="struct Keys(pub KeyBlob)") }}
 
-`dream.vfs.Keys`, items `string`. `Clone`, `Debug`, `Default`. The packed key list inside is not
-exported, so outside the crate a `Keys` can only be empty.
+`dream.vfs.Keys`, items `string`. `Clone`, `Debug`, `Default`. A host fills one with the
+`KeyBlob` below.
+
+{{ api_signature(value="struct KeyBlob") }}
+
+The packed key list inside a `Keys`: one allocation for every key's bytes and one end offset per
+key, shared behind an `Rc`. `Clone`, `Debug`, `Default`.
+
+{{ api_signature(value="fn new<'a>(keys: impl IntoIterator<Item = &'a [u8]>) -> KeyBlob") }}
+
+Packs `keys` in the order given, bytes as they are. Panics if they come to 4 GiB or more together.
+
+{{ api_signature(value="fn sorted(keys: impl IntoIterator<Item = NormalizedPath>) -> KeyBlob") }}
+
+Sorts `keys` by their bytes and packs them, as `vfs:keys()` does.
+
+`len`, `is_empty`, and `get(index)`, 0-based, give the count and each key's bytes.
 
 {{ api_signature(value="struct Entries") }}
 

@@ -79,7 +79,7 @@ pub use handles::{
     ConflictIndexHandle, LayerIndexHandle, MetadataSnapshotHandle, SnapshotHandle, Vfs,
     VfsFileHandle, VfsLockHandle, VfsProviderHandle,
 };
-pub use views::{Entries, Keys, ProviderRecords, Providers, TreeWalk};
+pub use views::{Entries, KeyBlob, Keys, ProviderRecords, Providers, TreeWalk};
 
 use crate::{
     analyze_pair, changed_files, changed_files_metadata, normalize_host_path_in_place,

@@ -299,3 +299,12 @@ fn a_host_can_push_its_own_vfs() {
         .exec("assert(hostVfs:len() == 1 and hostVfs:getFile('A.TXT'):readAll() == 'a')")
         .unwrap();
 }
+
+#[test]
+fn a_host_can_fill_a_keys_view() {
+    use vfstool_lib::lua::{KeyBlob, Keys};
+
+    let keys = Keys(KeyBlob::new([&b"a.txt"[..], b"b\xff.txt"]));
+    assert_eq!(keys.0.len(), 2);
+    assert_eq!(keys.0.get(1), Some(&b"b\xff.txt"[..]));
+}

@@ -61,6 +61,11 @@ pub struct KeyBlob(Rc<KeyBlobData>);
 
 impl KeyBlob {
     /// Packs `keys` in the order given.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the keys come to 4 GiB or more together.
+    #[must_use]
     pub fn new<'a>(keys: impl IntoIterator<Item = &'a [u8]>) -> Self {
         let mut bytes = Vec::new();
         let mut ends = Vec::new();
@@ -75,6 +80,7 @@ impl KeyBlob {
     }
 
     /// Sorted keys of a VFS or an index.
+    #[must_use]
     pub fn sorted(keys: impl IntoIterator<Item = NormalizedPath>) -> Self {
         let mut keys: Vec<NormalizedPath> = keys.into_iter().collect();
         keys.sort_unstable();
@@ -82,16 +88,19 @@ impl KeyBlob {
     }
 
     /// Number of keys.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.ends.len()
     }
 
     /// Whether there are no keys.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.ends.is_empty()
     }
 
     /// The bytes of key `index` (0-based).
+    #[must_use]
     pub fn get(&self, index: usize) -> Option<&[u8]> {
         self.0.get(index)
     }
