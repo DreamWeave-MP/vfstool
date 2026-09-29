@@ -94,6 +94,37 @@ fn simulate_counts_current_winners_when_a_source_provides_nothing() {
 }
 
 #[test]
+#[cfg(feature = "beth-archives")]
+fn simulate_never_lets_an_archive_beat_a_loose_file() {
+    let data = TempDir::new("analysis_sim_archive_data");
+    let patch = TempDir::new("analysis_sim_archive_patch");
+    let archive = data.path().join("base.bsa");
+    let mut builder = dream_archive::Tes3BsaBuilder::new();
+    builder
+        .add_bytes("textures/rock.dds", b"archived")
+        .expect("the entry should be accepted");
+    builder
+        .write_path(&archive)
+        .expect("the archive should be written");
+    patch.write("textures/rock.dds", b"loose");
+
+    let (vfs, index) =
+        VFS::from_directories_with_layer_index([data.path(), patch.path()], Some(vec!["base.bsa"]));
+    assert!(vfs.get_file("textures/rock.dds").unwrap().is_loose());
+    let delta = index
+        .simulate(
+            &vfs,
+            ReorderOp::MoveAfter {
+                source: archive,
+                after: patch.path().to_path_buf(),
+            },
+        )
+        .expect("simulate move-after should succeed");
+
+    assert_eq!(delta.changed_winners, 0);
+}
+
+#[test]
 fn simulate_full_order_rejects_duplicate_sources() {
     let a = TempDir::new("analysis_sim_full_dup_a");
     let b = TempDir::new("analysis_sim_full_dup_b");

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use super::{BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta};
+use super::{
+    BucketDelta, LayerIndex, ReorderOp, SimOpts, SimulationDelta, SourceDelta, SourceKind,
+};
 use crate::{NormalizedPath, VFS, path_glob_matches, paths::key_to_path_buf};
 use ahash::AHashSet;
 use std::io;
@@ -40,7 +42,7 @@ impl LayerIndex {
             }
 
             let before_idx = self.current_winner_source_idx(vfs, &key, providers);
-            let Some(after_idx) = Self::winner_after_reorder(providers, &rank_by_source) else {
+            let Some(after_idx) = self.winner_after_reorder(providers, &rank_by_source) else {
                 continue;
             };
 
@@ -217,13 +219,31 @@ impl LayerIndex {
             .or_else(|| providers.iter().rev().copied().find(is_winner))
     }
 
+    /// The source that wins a key with `providers` in the order `rank_by_source` gives. Loose
+    /// sources rank among themselves, and so do archives, by the new order. A reorder cannot lift
+    /// an archive above a loose file: a VFS puts archives below loose files, so an archive wins
+    /// over the key's best loose source only if it ranks above it both now (`sources` order,
+    /// where only [`VFS::push_archive`](crate::VFS) puts one) and after the reorder.
     pub(super) fn winner_after_reorder(
+        &self,
         providers: &[usize],
         rank_by_source: &[usize],
     ) -> Option<usize> {
-        providers
-            .iter()
-            .copied()
-            .max_by_key(|idx| rank_by_source[*idx])
+        let highest = |kind: SourceKind| {
+            providers
+                .iter()
+                .copied()
+                .filter(|idx| self.sources[*idx].kind == kind)
+                .max_by_key(|idx| rank_by_source[*idx])
+        };
+        match (highest(SourceKind::LooseDir), highest(SourceKind::Archive)) {
+            (Some(loose), Some(archive))
+                if archive > loose && rank_by_source[archive] > rank_by_source[loose] =>
+            {
+                Some(archive)
+            }
+            (Some(loose), _) => Some(loose),
+            (None, archive) => archive,
+        }
     }
 }

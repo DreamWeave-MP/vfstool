@@ -19,14 +19,6 @@ what the crate root re-exports, and `solve_order` takes its request and returns 
 [`experimental::solve`](@/docs/api/experimental.md) types. The command line uses none of it.
 {% end %}
 
-{% callout(kind="warning", title="Known problem in 1.0.0") %}
-**Archives are ranked like directories.** The winner after a reorder is the key's source ranked
-highest in the new order, whatever its kind. A VFS never lets an archive beat a loose file, and
-`solve_order` does not either; a simulation that moves an archive above a data directory reports
-the archive winning, so `simulate`, `simulate_with_opts` and `simulate_impact` report a change
-that would not happen.
-{% end %}
-
 The current winner of each key is the provider the VFS resolves it to, found by its place in the
 key's provider stack, so a source that provides nothing, or that `remove_source` emptied, does not
 throw the count off.
@@ -103,8 +95,11 @@ buckets.
 {{ api_signature(value="fn simulate_with_opts(&self, vfs: &VFS, op: ReorderOp, opts: &SimOpts) -> io::Result<SimulationDelta>") }}
 
 Applies `op` to the order of `sources`, without changing anything, and for every key compares the
-VFS's current winning source with the winner under the new order: the key's source that ranks
-highest in it. Nothing is read from disk.
+VFS's current winning source with the winner under the new order: the key's loose source that
+ranks highest in it, or, when only archives provide the key, the highest archive. A reorder never
+lifts an archive above a loose file, as OpenMW never lets one win over a loose file; only an
+archive that already outranks the loose files, pushed on top with `push_archive`, keeps winning
+while the new order leaves it above them. Nothing is read from disk.
 
 Sources in `op` are matched by exact path against `sources`, the first match if two share a path.
 Errors, all `InvalidInput`:
