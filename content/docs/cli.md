@@ -269,12 +269,12 @@ Writes the VFS into `MERGED_DIR`, runs `COMMAND` with every `{}` argument replac
 |---|---|
 | 0 | Done |
 | 1 | `find-file`, `explain` or `extract`: the path is not in the VFS |
-| 2 | `find-file -p`: the file is only in an archive. Also a command line that does not parse |
+| 2 | `find-file -p`: the file is only in an archive |
 | 4 | `drift --fail-on-drift`: something drifted |
 | 5 | `validate`: at least one issue |
 | 6 | `find` or `duplicates`: the regular expression does not compile |
 | 7 | The config could not be found or loaded |
-| 8 | Invalid input: a folder that is not a data directory, an archive selector that matches nothing or too much, a non-empty merged folder, no place to capture to |
+| 8 | Invalid input: a command line that does not parse, a folder that is not a data directory, an archive selector that matches nothing or too much, a non-empty merged folder, no place to capture to |
 | 9 | Anything else that failed: reading, writing, linking, a report that cannot be serialized, a command `run` cannot start |
 
 After its command starts, `run` exits with the command's own exit code, or 9 if it was ended by a

@@ -58,7 +58,7 @@
 //! - `5`: `validate` found load-order/configuration problems.
 //! - `6`: invalid regular expression.
 //! - `7`: failed to load `openmw.cfg`.
-//! - `8`: invalid input, such as an unknown source path.
+//! - `8`: invalid input, such as an unknown source path or a command line that does not parse.
 //! - `9`: runtime failure while reading, writing, materializing, or starting/capturing a child command.
 //!
 //! `run` passes through the child process exit code after the child starts successfully.
@@ -77,7 +77,16 @@ use config::resolve_config_path;
 use exit::VFSToolExitCode;
 
 fn main() {
-    let args = Cli::parse();
+    let args = Cli::try_parse().unwrap_or_else(|err| {
+        // clap exits a usage error with 2, the code `find-file -p` uses for a file only an archive
+        // has; a command line that does not parse is invalid input. Help and the version are not
+        // errors and keep clap's 0.
+        if err.use_stderr() {
+            let _ = err.print();
+            std::process::exit(VFSToolExitCode::InvalidInput.into());
+        }
+        err.exit()
+    });
     let resolved_config_dir = match resolve_config_path(args.config) {
         Ok(path) => path,
         Err(err) => {

@@ -1170,3 +1170,27 @@ fn collapse_prints_the_archive_entries_it_leaves_out() {
     );
     assert!(merged.join("textures/a.dds").exists());
 }
+
+#[test]
+fn a_command_line_that_does_not_parse_exits_with_invalid_input_not_two() {
+    for args in [
+        &["no-such-command"][..],
+        &["find-file"],
+        &["find", "x", "--no-such-option"],
+        &[],
+    ] {
+        let output = Command::new(vfstool_bin())
+            .args(args)
+            .output()
+            .expect("vfstool command should spawn");
+        assert_eq!(output.status.code(), Some(8), "{args:?}");
+        assert!(!output.stderr.is_empty(), "{args:?}");
+    }
+    for args in [&["--help"][..], &["find", "--help"], &["--version"]] {
+        let output = Command::new(vfstool_bin())
+            .args(args)
+            .output()
+            .expect("vfstool command should spawn");
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+    }
+}
