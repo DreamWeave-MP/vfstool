@@ -19,7 +19,7 @@ use crate::{
     config::{build_conflict_index, build_layer_index, construct_vfs, load_openmw_config},
     exit::VFSToolExitCode,
     output::{parse_lock_file, write_serialized, write_serialized_list, write_serialized_vfs},
-    print,
+    print::{self, Stream},
 };
 
 struct CollapseParams {
@@ -45,15 +45,15 @@ fn handle_extract(vfs: &VFS, source_file: &Path, target_dir: &Path) -> Result<()
             eprintln!(
                 "{}Couldn't locate {} in the vfs!",
                 print::err_prefix(),
-                print::green(source_file.display()),
+                print::green(Stream::Err, source_file.display()),
             );
             std::process::exit(VFSToolExitCode::FindFailed.into());
         }
         Some(dest) => println!(
             "{}Successfully extracted {} to {}",
             print::success_prefix(),
-            print::green(source_file.display()),
-            print::blue(dest.parent().unwrap_or(target_dir).display()),
+            print::green(Stream::Out, source_file.display()),
+            print::blue(Stream::Out, dest.parent().unwrap_or(target_dir).display()),
         ),
     }
     Ok(())
@@ -84,8 +84,8 @@ fn print_find_file_success(path: &Path, path_display: &str, simple: bool) {
         println!(
             "{}Successfully found VFS File {} at path {}",
             print::success_prefix(),
-            print::blue(path.display()),
-            print::green(path_display),
+            print::blue(Stream::Out, path.display()),
+            print::green(Stream::Out, path_display),
         );
     }
 }
@@ -96,13 +96,13 @@ fn print_find_file_missing(path: &Path, simple: bool, only_physical: bool) {
             eprintln!(
                 "{}Failed to locate {} in loose files of the provided VFS.",
                 print::err_prefix(),
-                print::blue(path.display()),
+                print::blue(Stream::Err, path.display()),
             );
         } else {
             eprintln!(
                 "{}Failed to locate {} in the provided VFS.",
                 print::err_prefix(),
-                print::blue(path.display()),
+                print::blue(Stream::Err, path.display()),
             );
         }
     }

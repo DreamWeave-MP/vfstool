@@ -1118,3 +1118,26 @@ fn version_prints_the_package_version() {
         format!("vfstool {}\n", env!("CARGO_PKG_VERSION"))
     );
 }
+
+#[test]
+fn messages_to_a_pipe_carry_no_color_codes() {
+    let fixture = Fixture::new("plain_messages");
+    let out = fixture.path("out");
+    let runs = [
+        fixture.run(&["find-file", "textures/a.dds"]),
+        fixture.run(&["find-file", "meshes/missing.nif"]),
+        fixture.run(&[
+            "extract",
+            "textures/a.dds",
+            out.to_str().expect("path should be utf-8"),
+        ]),
+        fixture.run(&["remaining", "/nowhere"]),
+    ];
+
+    for output in &runs {
+        let text = [output.stdout.as_slice(), output.stderr.as_slice()].concat();
+        let text = String::from_utf8_lossy(&text);
+        assert!(text.contains("[ "), "{text}");
+        assert!(!text.contains('\x1b'), "{text:?}");
+    }
+}

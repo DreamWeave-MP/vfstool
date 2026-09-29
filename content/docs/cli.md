@@ -50,7 +50,8 @@ missing. [How files resolve](@/docs/resolution.md#what-it-reads) lists the lines
 Reports are YAML unless `-f` (`--format`) says `json` or `toml`. JSON is compact, one line. They
 go to standard output, or with `-o` (`--output`) to a file, whose folder is created if needed and
 which is replaced if it exists. Messages and errors go to standard error. `find-file`, `extract`
-and errors are colored with ANSI codes, whatever the output is; `find-file -s` is plain.
+and errors are colored with ANSI codes on a terminal, unless `NO_COLOR` is set; written to a pipe
+or a file they are plain, and `find-file -s` always is.
 
 TOML cannot hold a list at the top level, so with `-f toml` the lists `archives` and
 `archive-list` write are under a key of their own. [Report formats](@/docs/formats.md) lists every
