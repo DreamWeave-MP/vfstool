@@ -9,13 +9,13 @@ use l3i::{
     options::Options,
     stack::{Scope, ValueView},
     userdata::{Owned, Userdata},
-    value::{Table, Value},
+    value::Table,
 };
 
 use super::{
     LayerIndexHandle, Vfs, VfsLockHandle, class_function, frozen_class_table,
     handles::source_meta,
-    host_path, index_from_lua, index_to_lua, io_error, paths_from_array, reports, types,
+    host_path, index_from_lua, index_to_lua, io_error, paths_from_table, reports, types,
     views::{self, KeyBlob},
 };
 use crate::{ArchiveHashMode, LayerIndex, SemanticOpts, SourceId};
@@ -26,17 +26,15 @@ fn semantic_options(scope: &impl Scope, options: Option<ValueView<'_>>) -> Resul
         return Ok(opts);
     };
     Options::read(scope, options, "layer:semanticConflicts", |o| {
-        if let Some(mode) = o.optional::<String>("archiveHashMode")? {
-            opts.archive_hash_mode = match mode.as_str() {
-                "disabled" => ArchiveHashMode::Disabled,
-                "winnerOnly" => ArchiveHashMode::WinnerOnly,
-                "allProviders" => ArchiveHashMode::AllProviders,
-                other => {
-                    return Err(Error::runtime(format!(
-                        "layer:semanticConflicts.archiveHashMode: expected 'disabled', 'winnerOnly', or 'allProviders', got '{other}'"
-                    )));
-                }
-            };
+        if let Some(mode) = o.optional_str("archiveHashMode", |mode| match mode {
+            "disabled" => Ok(ArchiveHashMode::Disabled),
+            "winnerOnly" => Ok(ArchiveHashMode::WinnerOnly),
+            "allProviders" => Ok(ArchiveHashMode::AllProviders),
+            other => Err(Error::runtime(format!(
+                "expected 'disabled', 'winnerOnly', or 'allProviders', got '{other}'"
+            ))),
+        })? {
+            opts.archive_hash_mode = mode;
         }
         opts.include_semantic_deltas = o.or("includeSemanticDeltas", false)?;
         Ok(())
@@ -52,24 +50,24 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             "LayerIndex",
             "fromFileLists",
             |call: &Call, sources: ValueView| {
-                let sources_table = sources.as_table().map_err(|_| Error::runtime("dream.vfs: LayerIndex.fromFileLists takes an array of { source, files } rows"))?;
+                let sources_table = sources.as_table()?;
                 let rows = call.with_frame(|frame| {
                     let mut rows = Vec::new();
                     for index in 1..=sources_table.raw_len() {
                         let row = sources_table.raw_get_index(frame, index as i64)?;
                         let context = format!("LayerIndex.fromFileLists[{index}]");
                         let (source, files) = Options::read(frame, row, &context, |o| {
-                            let source: Value = o.required("source")?;
-                            let files: Value = o.required("files")?;
+                            let source: Table = o.required("source")?;
+                            let files: Table = o.required("files")?;
                             o.frame().with_frame(|frame| {
                                 let source = source_meta(
                                     frame,
-                                    source.push_to(frame)?,
+                                    source.push_to(frame)?.value(),
                                     &format!("{context}.source"),
                                 )?;
-                                let files = paths_from_array(
+                                let files = paths_from_table(
                                     frame,
-                                    files.push_to(frame)?,
+                                    &files.push_to(frame)?,
                                     &format!("{context}.files"),
                                 )?;
                                 Ok((source, files))

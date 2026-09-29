@@ -70,7 +70,7 @@ use l3i::{
     bind::Call,
     convert::Exact,
     extension::{Extension, ExtensionDescriptor, InstallContext},
-    stack::{Scope, ValueView},
+    stack::{Scope, TableView, Type, ValueView},
     userdata::Owned,
     value::{Function, Table},
 };
@@ -360,24 +360,30 @@ pub(crate) fn paths_from_array(
     view: ValueView<'_>,
     what: &str,
 ) -> Result<Vec<PathBuf>> {
-    let table = view.as_table().map_err(|_| {
-        Error::runtime(format!(
-            "dream.vfs: {what} must be an array of strings, got {}",
-            view.type_of().name()
-        ))
-    })?;
+    let table = view
+        .as_table()
+        .map_err(|error| Error::runtime(format!("dream.vfs: {what}: {error}")))?;
+    paths_from_table(scope, &table, what)
+}
+
+/// The array of byte strings in `table`, as host paths.
+pub(crate) fn paths_from_table(
+    scope: &impl Scope,
+    table: &TableView<'_>,
+    what: &str,
+) -> Result<Vec<PathBuf>> {
     scope.with_frame(|frame| {
         let count = table.raw_len();
         let mut paths = Vec::with_capacity(count);
         for index in 1..=count {
             let item = table.raw_get_index(frame, index as i64)?;
-            let bytes: &[u8] = item.read().map_err(|_| {
-                Error::runtime(format!(
-                    "dream.vfs: {what}[{index}] must be a string, got {}",
-                    item.type_of().name()
-                ))
-            })?;
-            paths.push(host_path(bytes));
+            if !item.is_string() {
+                return Err(Error::runtime(format!(
+                    "dream.vfs: {what}[{index}]: {}",
+                    item.type_error(Type::String)
+                )));
+            }
+            paths.push(host_path(item.read::<&[u8]>()?));
         }
         Ok(paths)
     })

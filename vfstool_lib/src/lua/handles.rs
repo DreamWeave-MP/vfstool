@@ -265,12 +265,9 @@ pub(super) fn source_meta(
     context: &str,
 ) -> Result<SourceMeta> {
     Options::read(scope, view, context, |o| {
-        let path: Vec<u8> = o.required("path")?;
-        let kind: String = o.required("kind")?;
-        Ok(SourceMeta {
-            path: host_path(&path),
-            kind: source_kind_from_name(&kind)?,
-        })
+        let path = o.required_bytes("path", |path| Ok(host_path(path)))?;
+        let kind = o.required_str("kind", source_kind_from_name)?;
+        Ok(SourceMeta { path, kind })
     })
 }
 

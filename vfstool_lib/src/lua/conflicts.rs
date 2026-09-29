@@ -8,12 +8,12 @@ use l3i::{
     options::Options,
     stack::{Scope, ValueView},
     userdata::{Owned, Userdata},
-    value::{Table, Value},
+    value::Table,
 };
 
 use super::{
     ConflictIndexHandle, LayerIndexHandle, class_function, frozen_class_table, host_path,
-    paths_from_array, reports, types,
+    paths_from_array, paths_from_table, reports, types,
 };
 use crate::ConflictIndex;
 
@@ -42,23 +42,24 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
             "ConflictIndex",
             "fromFileLists",
             |call: &Call, sources: ValueView| {
-                let sources_table = sources.as_table().map_err(|_| Error::runtime("dream.vfs: ConflictIndex.fromFileLists takes an array of { source, files } rows"))?;
+                let sources_table = sources.as_table()?;
                 let rows = call.with_frame(|frame| {
                     let mut rows = Vec::new();
                     for index in 1..=sources_table.raw_len() {
                         let row = sources_table.raw_get_index(frame, index as i64)?;
                         let context = format!("ConflictIndex.fromFileLists[{index}]");
                         let (source, files) = Options::read(frame, row, &context, |o| {
-                            let source: Vec<u8> = o.required("source")?;
-                            let files: Value = o.required("files")?;
+                            let source =
+                                o.required_bytes("source", |source| Ok(host_path(source)))?;
+                            let files: Table = o.required("files")?;
                             let files = o.frame().with_frame(|frame| {
-                                paths_from_array(
+                                paths_from_table(
                                     frame,
-                                    files.push_to(frame)?,
+                                    &files.push_to(frame)?,
                                     &format!("{context}.files"),
                                 )
                             })?;
-                            Ok((host_path(&source), files))
+                            Ok((source, files))
                         })?;
                         rows.push((source, files));
                     }

@@ -11,12 +11,13 @@ use l3i::{
     sequence::Sequence,
     stack::{Scope, ValueView},
     userdata::{Owned, Userdata, push_owned},
-    value::{Table, Value},
+    value::Table,
 };
 
 use super::{
     ConflictIndexHandle, LayerIndexHandle, Vfs, VfsFileHandle, VfsProviderHandle, class_function,
-    frozen_class_table, host_path, io_error, paths_from_array, regex_error, reports, types,
+    frozen_class_table, host_path, io_error, paths_from_array, paths_from_table, regex_error,
+    reports, types,
     views::{self, Entries, ProviderRecords, Providers},
     with_key,
 };
@@ -38,12 +39,11 @@ fn archive_list(
         return Ok(None);
     };
     Options::read(scope, options, context, |o| {
-        let Some(archives) = o.optional::<Value>("archives")? else {
+        let Some(archives) = o.optional::<Table>("archives")? else {
             return Ok(None);
         };
         o.frame().with_frame(|frame| {
-            let view = archives.push_to(frame)?;
-            let paths = paths_from_array(frame, view, "options.archives")?;
+            let paths = paths_from_table(frame, &archives.push_to(frame)?, "options.archives")?;
             Ok(Some(
                 paths
                     .iter()
