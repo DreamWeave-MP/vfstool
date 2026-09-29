@@ -53,6 +53,9 @@ lua-host = ["lua"]
 # has no optional dev-dependencies, so the typed tests build behind this feature
 # (`cargo test -p vfstool_lib --features luau-analysis`) and a plain `--features lua` run skips them.
 luau-analysis = ["lua", "l3i/analysis"]
+# Forwards l3i's native code generation, so a host that compiles scripts natively gets the
+# template cache's `Template::native_code()` status through this crate's own feature set.
+jit = ["lua", "l3i/jit"]
 
 [package.metadata.docs.rs]
 features = ["beth-archives", "zip", "serialize", "lua", "lua-write", "lua-host"]

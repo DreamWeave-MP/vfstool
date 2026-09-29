@@ -931,6 +931,107 @@ impl CounterFixture {
     }
 }
 
+/// With the `jit` feature forwarded, the cache reports how each template's native compilation
+/// went, once, from the template it holds.
+#[cfg(feature = "jit")]
+#[test]
+fn the_template_cache_reports_native_code_status_under_jit() {
+    use l3i::extension::NativeCodePolicy;
+    use l3i::native_code::{NativeCodeMode, NativeCodeStatus};
+
+    let dir = TempDir::new("require_native");
+    dir.write(
+        "scripts/counter.luau",
+        b"local M = { n = 0 } function M.bump() M.n += 1 return M.n end return M",
+    );
+    let vfs = super::Vfs::new(crate::VFS::from_directories([&dir.0], None));
+    let cache = Rc::new(super::TemplateCache::new());
+    let policy = RuntimePolicy::new()
+        .compat_global(MODULE, MODULE_NAME)
+        .native_code(NativeCodePolicy {
+            mode: NativeCodeMode::Eager,
+            ..NativeCodePolicy::default()
+        });
+    let plan = RuntimePlan::builder()
+        .policy(policy)
+        .extension(dream_path::lua::PathExtension)
+        .extension(VfsExtension)
+        .finalize()
+        .expect("the extension finalizes");
+    let runtime = Rc::new(Runtime::from_plan(&plan).expect("a runtime"));
+    let available = runtime
+        .native_code()
+        .is_some_and(l3i::native_code::NativeCodeGen::is_available);
+    let sandbox = Rc::new(
+        runtime
+            .sandbox(
+                |_| {},
+                l3i::sandbox::SandboxOptions {
+                    compile_options: runtime.compile_options(),
+                    ..l3i::sandbox::SandboxOptions::default()
+                },
+            )
+            .unwrap(),
+    );
+    runtime
+        .install_require(super::VfsRequireNavigator::with_cache(
+            vfs.clone(),
+            sandbox.clone(),
+            cache.clone(),
+        ))
+        .unwrap();
+    assert!(
+        cache.native_code(b"scripts/counter.luau").is_none(),
+        "nothing loaded yet"
+    );
+    let loader = runtime
+        .bind_function("dream.vfs.tests.loader", |name: &str| -> l3i::Result<()> {
+            Err(l3i::Error::runtime(format!("no package '{name}'")))
+        })
+        .unwrap();
+    let require = runtime.global("require").unwrap();
+    let spec = l3i::sandbox::InstanceSpec {
+        name: "native",
+        packages: &[],
+        hidden_data: None,
+        loader: &loader,
+    };
+    let instance = sandbox.new_instance(&runtime, &spec).unwrap();
+    instance
+        .env
+        .set(&runtime.stack(), "require", &require)
+        .unwrap();
+    let script = sandbox
+        .load_template(
+            &runtime,
+            "@scripts/instance.luau",
+            "return require('./counter').bump()",
+        )
+        .unwrap();
+    sandbox
+        .run(
+            &runtime,
+            &script,
+            &instance,
+            runtime.initialization_context(),
+        )
+        .unwrap();
+    let status = cache.native_code(b"scripts/counter.luau");
+    if available {
+        assert_eq!(
+            status.map(|result| result.status),
+            Some(NativeCodeStatus::Success),
+            "the module compiled natively once, at load: {status:?}"
+        );
+    } else {
+        assert!(status.is_none(), "no generator on this platform");
+    }
+    assert!(
+        cache.native_code(b"scripts/missing.luau").is_none(),
+        "unknown keys have no status"
+    );
+}
+
 #[test]
 fn require_clones_one_template_per_instance() {
     let fixture = CounterFixture::new();

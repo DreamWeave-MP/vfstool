@@ -118,6 +118,19 @@ impl TemplateCache {
         self.templates.borrow_mut().clear();
     }
 
+    /// How native compilation of the module file `key`'s template went: `None` when the key
+    /// has no template yet or the runtime has no native code generator. Read once at load, as
+    /// the cache itself does; instances share the template's native code.
+    #[cfg(feature = "jit")]
+    #[must_use]
+    pub fn native_code(&self, key: &[u8]) -> Option<l3i::native_code::NativeCodeResult> {
+        let key = String::from_utf8_lossy(&dream_path::normalize_path(key)).into_owned();
+        self.templates
+            .borrow()
+            .get(&key)
+            .and_then(l3i::sandbox::Template::native_code)
+    }
+
     fn has(&self, key: &str) -> bool {
         self.templates.borrow().contains_key(key)
     }

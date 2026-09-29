@@ -135,6 +135,10 @@ alone changes nothing that Luau has already cached: clear both to see a rewritte
 
 {{ api_signature(value="struct VfsRequireNavigator") }}
 
+With the crate's `jit` feature, which forwards l3i's, `TemplateCache::native_code(key)` reports
+how a template's native compilation went (`l3i::native_code::NativeCodeResult`), read once from
+the template at load; every instance cloned from it shares that native code.
+
 {{ api_signature(value="fn new(vfs: Vfs, sandbox: Rc<Sandbox>) -> VfsRequireNavigator") }}
 
 A navigator over `vfs`, compiling modules as templates of `sandbox`, with a cache of its own. It
