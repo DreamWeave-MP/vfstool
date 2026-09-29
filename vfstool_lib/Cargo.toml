@@ -17,6 +17,9 @@ dream-path = { version = "1.0.0", path = "../../dream-path" }
 dream_archive = { version = "0.2.2", optional = true, default-features = false, features = ["ba2", "bsa", "parallel"] }
 l3i = { version = "1.0.0", path = "../../dream-binder", optional = true }
 zip = { version = "8.6", optional = true, default-features = false, features = ["deflate", "lzma"] }
+# Zstandard entries (method 93) decode through ruzstd, a pure-Rust decoder: the zip crate's own
+# `zstd` feature would pull in the C library, which this crate keeps out on purpose.
+ruzstd = { version = "0.9", optional = true }
 rayon = "1.12.0"
 regex = "1"
 serde = { version = "1.0.229", features = ["derive"], optional = true }
@@ -31,7 +34,7 @@ criterion = { version = "0.8.2", features = ["html_reports"] }
 [features]
 default = []
 beth-archives = ["dep:dream_archive"]
-zip = ["dep:zip"]
+zip = ["dep:zip", "dep:ruzstd"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
 lua = ["dep:l3i", "dream-path/lua"]
 # The definitions gate (`RuntimePlan::check_definitions`) needs Luau's analysis frontend. Cargo

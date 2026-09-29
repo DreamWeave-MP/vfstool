@@ -55,7 +55,10 @@ pub fn file_entries(archives: &ArchiveList) -> Vec<(NormalizedPath, VfsFile)> {
                     {
                         (0..guard.len())
                             .filter_map(|zip_index| {
-                                let Ok(entry) = guard.by_index(zip_index) else {
+                                // The raw reader lists an entry whatever its compression method;
+                                // `by_index` would refuse one the zip crate cannot decode itself
+                                // (Zstandard, which this crate decodes through ruzstd on read).
+                                let Ok(entry) = guard.by_index_raw(zip_index) else {
                                     return None;
                                 };
                                 if entry.is_dir() {

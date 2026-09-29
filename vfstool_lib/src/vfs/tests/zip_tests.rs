@@ -167,6 +167,73 @@ fn deflated_zip_entry_content_readable() {
 }
 
 #[test]
+fn jpk_archives_are_read_as_zip_archives() {
+    let dir = TempDir::new("vfszip_jpk");
+    dir.create_zip_with_method(
+        "data.JPK",
+        &[("textures/from_jpk.dds", b"jpk payload")],
+        zip::CompressionMethod::Deflated,
+    );
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.JPK"]));
+    let file = vfs.get_file("textures/from_jpk.dds").unwrap();
+    let mut buf = Vec::new();
+    std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
+    assert_eq!(buf, b"jpk payload");
+    assert!(file.is_archive());
+}
+
+#[test]
+fn zstd_zip_entries_are_listed_and_decoded_without_a_c_library() {
+    let dir = TempDir::new("vfszip_zstd");
+    // A JPK written by Python 3.14's zipfile (libzstd behind it): one Zstandard entry (method
+    // 93, 52 bytes to 28), one stored, one deflated; all under the test build's 64-byte
+    // buffered-entry cap. The zip crate is built without its C
+    // `zstd` feature, so the Zstandard entry decodes through ruzstd.
+    dir.write(
+        "data.jpk",
+        &[
+            80, 75, 3, 4, 63, 0, 0, 0, 93, 0, 0, 0, 33, 0, 29, 0, 123, 46, 28, 0, 0, 0, 52, 0, 0,
+            0, 20, 0, 0, 0, 116, 101, 120, 116, 117, 114, 101, 115, 47, 116, 120, 95, 122, 115,
+            116, 100, 46, 100, 100, 115, 40, 181, 47, 253, 0, 88, 157, 0, 0, 104, 122, 115, 116,
+            100, 32, 112, 97, 121, 108, 111, 97, 100, 32, 1, 0, 160, 156, 95, 80, 75, 3, 4, 20, 0,
+            0, 0, 0, 0, 0, 0, 33, 0, 161, 41, 7, 209, 14, 0, 0, 0, 14, 0, 0, 0, 17, 0, 0, 0, 109,
+            101, 115, 104, 101, 115, 47, 115, 116, 111, 114, 101, 100, 46, 110, 105, 102, 115, 116,
+            111, 114, 101, 100, 32, 112, 97, 121, 108, 111, 97, 100, 80, 75, 3, 4, 20, 0, 0, 0, 8,
+            0, 0, 0, 33, 0, 71, 45, 225, 132, 22, 0, 0, 0, 51, 0, 0, 0, 18, 0, 0, 0, 84, 101, 120,
+            116, 117, 114, 101, 115, 47, 85, 112, 112, 101, 114, 46, 100, 100, 115, 75, 73, 77,
+            203, 73, 44, 73, 77, 81, 40, 72, 172, 204, 201, 79, 76, 81, 72, 33, 40, 0, 0, 80, 75,
+            1, 2, 63, 3, 63, 0, 0, 0, 93, 0, 0, 0, 33, 0, 29, 0, 123, 46, 28, 0, 0, 0, 52, 0, 0, 0,
+            20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 1, 0, 0, 0, 0, 116, 101, 120, 116, 117, 114,
+            101, 115, 47, 116, 120, 95, 122, 115, 116, 100, 46, 100, 100, 115, 80, 75, 1, 2, 20, 3,
+            20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 161, 41, 7, 209, 14, 0, 0, 0, 14, 0, 0, 0, 17, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 128, 1, 78, 0, 0, 0, 109, 101, 115, 104, 101, 115, 47, 115,
+            116, 111, 114, 101, 100, 46, 110, 105, 102, 80, 75, 1, 2, 20, 3, 20, 0, 0, 0, 8, 0, 0,
+            0, 33, 0, 71, 45, 225, 132, 22, 0, 0, 0, 51, 0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 128, 1, 139, 0, 0, 0, 84, 101, 120, 116, 117, 114, 101, 115, 47, 85, 112, 112, 101,
+            114, 46, 100, 100, 115, 80, 75, 5, 6, 0, 0, 0, 0, 3, 0, 3, 0, 193, 0, 0, 0, 209, 0, 0,
+            0, 0, 0,
+        ],
+    );
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["data.jpk"]));
+    // Three entries plus the archive file itself, which sits in the data directory as a loose file.
+    assert_eq!(
+        vfs.len(),
+        4,
+        "the Zstandard entry is listed like the others"
+    );
+    assert!(vfs.contains("textures/tx_zstd.dds"));
+    let read = |key: &str| {
+        let file = vfs.get_file(key).unwrap();
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut file.open().unwrap(), &mut buf).unwrap();
+        buf
+    };
+    assert_eq!(read("textures/tx_zstd.dds"), b"zstd payload ".repeat(4));
+    assert_eq!(read("meshes/stored.nif"), b"stored payload");
+    assert_eq!(read("textures/upper.dds"), b"deflated payload ".repeat(3));
+}
+
+#[test]
 fn lzma_zip_entry_content_readable() {
     let dir = TempDir::new("vfszip_lzma_content");
     // zip 8 can read LZMA with the `lzma` feature, but intentionally does not

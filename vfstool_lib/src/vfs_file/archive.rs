@@ -88,29 +88,46 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
                         "zip archive reference is missing central-directory index",
                     ));
                 };
-                let entry = guard
-                    .by_index(zip_index)
-                    .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
-                if entry.size() > MAX_BUFFERED_ZIP_ENTRY_SIZE {
+                // The method first, from the raw reader, which never refuses an entry: the zip
+                // crate decodes stored, deflate, and LZMA entries; Zstandard (method 93) goes
+                // through ruzstd, a pure-Rust decoder, so no C library enters the build.
+                let (name, size, method) = {
+                    let raw = guard
+                        .by_index_raw(zip_index)
+                        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+                    (raw.name().to_owned(), raw.size(), raw.compression())
+                };
+                if size > MAX_BUFFERED_ZIP_ENTRY_SIZE {
                     return Err(io::Error::new(
                         io::ErrorKind::OutOfMemory,
                         format!(
-                            "zip entry '{}' is {} bytes, exceeding the buffered entry limit of {} bytes",
-                            entry.name(),
-                            entry.size(),
-                            MAX_BUFFERED_ZIP_ENTRY_SIZE
+                            "zip entry '{name}' is {size} bytes, exceeding the buffered entry limit of {MAX_BUFFERED_ZIP_ENTRY_SIZE} bytes"
                         ),
                     ));
                 }
-                let capacity = usize::try_from(entry.size()).map_err(|_| {
+                let capacity = usize::try_from(size).map_err(|_| {
                     io::Error::new(
                         io::ErrorKind::OutOfMemory,
-                        format!("zip entry '{}' is too large to buffer", entry.name()),
+                        format!("zip entry '{name}' is too large to buffer"),
                     )
                 })?;
                 let mut buf = Vec::with_capacity(capacity);
-                let mut limited_entry = entry.take(MAX_BUFFERED_ZIP_ENTRY_SIZE + 1);
-                limited_entry.read_to_end(&mut buf)?;
+                // `ZSTD` is method 93 whether or not the zip crate was built to decode it.
+                if method == zip::CompressionMethod::ZSTD {
+                    let raw = guard
+                        .by_index_raw(zip_index)
+                        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+                    let decoder = ruzstd::decoding::StreamingDecoder::new(raw)
+                        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+                    let mut limited_entry = decoder.take(MAX_BUFFERED_ZIP_ENTRY_SIZE + 1);
+                    limited_entry.read_to_end(&mut buf)?;
+                } else {
+                    let entry = guard
+                        .by_index(zip_index)
+                        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e.to_string()))?;
+                    let mut limited_entry = entry.take(MAX_BUFFERED_ZIP_ENTRY_SIZE + 1);
+                    limited_entry.read_to_end(&mut buf)?;
+                }
                 if u64::try_from(buf.len()).unwrap_or(u64::MAX) > MAX_BUFFERED_ZIP_ENTRY_SIZE {
                     return Err(io::Error::new(
                         io::ErrorKind::OutOfMemory,
