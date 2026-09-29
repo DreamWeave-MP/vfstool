@@ -455,7 +455,4 @@ fn describe_archives_and_plans(vfs: &mut UserdataBuilder<'_, Vfs>) {
         },
     )
     .signature("(self, relative: boolean?, format: string): string");
-    vfs.metamethod("__tostring", |v: &Vfs| {
-        v.with(|vfs| format!("dream.vfs.VFS({} files)", vfs.len()))
-    });
 }
