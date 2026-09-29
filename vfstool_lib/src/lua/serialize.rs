@@ -37,7 +37,8 @@ pub(super) fn serialize(call: &Call<'_>, value: ValueView<'_>, name: &str) -> Re
     serialize_value(&value, format).map_err(super::io_error)
 }
 
-/// The sequence view at `view` materialized as an array, if it is one of this module's.
+/// The sequence view at `view` materialized as an array, if it is one of this module's. One
+/// frame serves every item: each is pushed, converted, and popped in turn.
 fn sequence_items<S: SequenceSource>(
     frame: &Frame<'_>,
     view: ValueView<'_>,
@@ -47,13 +48,12 @@ fn sequence_items<S: SequenceSource>(
         return Ok(None);
     };
     let mut items = Vec::with_capacity(sequence.0.len());
+    let mut step = frame.frame();
     for index in 0..sequence.0.len() {
         if let Some(item) = sequence.0.get(index) {
-            let value = frame.with_frame(|step| {
-                item.push_item(step)?;
-                convert(step, step.top_value(), depth + 1)
-            })?;
-            items.push(value);
+            item.push_item(&step)?;
+            items.push(convert(&step, step.top_value(), depth + 1)?);
+            step.pop(1);
         }
     }
     Ok(Some(Value::Array(items)))
@@ -119,13 +119,10 @@ fn table(frame: &Frame<'_>, view: ValueView<'_>, depth: usize) -> Result<Value> 
     if entries == border {
         // Keys are exactly 1..border: an array (empty included).
         let mut items = Vec::with_capacity(border);
-        for index in 1..=border {
-            let value = frame.with_frame(|step| {
-                let item = table.raw_get_index(step, index as i64)?;
-                convert(step, item, depth + 1)
-            })?;
-            items.push(value);
-        }
+        table.for_each_array(frame, |step, _, item| {
+            items.push(convert(step, item, depth + 1)?);
+            Ok(())
+        })?;
         return Ok(Value::Array(items));
     }
     let mut object = Map::new();
