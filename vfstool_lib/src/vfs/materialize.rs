@@ -16,7 +16,7 @@ impl VFS {
     /// When `use_hardlinks` is `true`, loose files are hardlinked; cross-device
     /// link failures fall back to a copy. All other hardlink errors propagate.
     /// Archive files are always read via [`VfsFile::open`] regardless of mode.
-    /// Bethesda archive entries stream; ZIP/PK3 entries are currently buffered.
+    /// Bethesda archive entries stream; ZIP/PK3/JPK entries are currently buffered.
     /// The destination directory must already exist. Returns the number of
     /// files successfully written.
     ///
@@ -266,7 +266,8 @@ impl VFS {
         let is_bethesda_archive = cfg!(feature = "beth-archives")
             && matches!(ext.to_str(), Some("bsa" | "ba2"))
             && name != "archiveinvalidationinvalidated!.bsa";
-        let is_zip_archive = cfg!(feature = "zip") && matches!(ext.to_str(), Some("zip" | "pk3"));
+        let is_zip_archive =
+            cfg!(feature = "zip") && matches!(ext.to_str(), Some("zip" | "pk3" | "jpk"));
         is_bethesda_archive || is_zip_archive
     }
 

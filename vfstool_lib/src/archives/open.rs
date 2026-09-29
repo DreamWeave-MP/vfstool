@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 #[cfg(feature = "zip")]
-use super::keys::is_zip_or_pk3;
+use super::keys::is_zip_archive;
 use super::{ArchiveList, StoredArchive, TypedArchive};
 use crate::{NormalizedPath, VfsFile};
 use ahash::AHashMap;
@@ -34,7 +34,7 @@ pub fn from_set(
 
 /// Try to open a single archive file, detecting its format by extension and content.
 ///
-/// ZIP/PK3 files are identified by extension; BSA/BA2 files are identified by
+/// ZIP/PK3/JPK files are identified by extension; BSA/BA2 files are identified by
 /// magic bytes. Returns `None` on any failure.
 #[allow(unreachable_code)]
 pub(crate) fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
@@ -44,7 +44,7 @@ pub(crate) fn open_archive(path: &Path) -> Option<Arc<StoredArchive>> {
 #[allow(unreachable_code)]
 pub(crate) fn try_open_archive(path: &Path) -> Result<Arc<StoredArchive>, String> {
     #[cfg(feature = "zip")]
-    if is_zip_or_pk3(path) {
+    if is_zip_archive(path) {
         let file = File::open(path).map_err(|err| err.to_string())?;
         return match zip::ZipArchive::new(file) {
             Ok(archive) => Ok(Arc::new(StoredArchive {
