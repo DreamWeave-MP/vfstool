@@ -188,5 +188,5 @@ $ vfstool -c openmw archive-list Bloodmoon.bsa
 [ ERROR ]: No loaded archive matches 'Bloodmoon.bsa'. Available archives: 0=/tmp/mw/Morrowind/Data Files/Morrowind.bsa, 1=/tmp/mw/Morrowind/Data Files/Tribunal.bsa
 ```
 
-`archives` and `archive-list` write YAML or JSON. Their reports are lists, which TOML cannot hold
-at the top level: `-f toml` stops with `unsupported array type` and exit code 9.
+`archives` and `archive-list` write lists. TOML cannot hold one at the top level, so with
+`-f toml` the list is under `archives` or `entries`.

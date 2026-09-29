@@ -51,8 +51,9 @@ go to standard output, or with `-o` (`--output`) to a file, whose folder is crea
 which is replaced if it exists. Messages and errors go to standard error. `find-file`, `extract`
 and errors are colored with ANSI codes, whatever the output is; `find-file -s` is plain.
 
-TOML cannot hold a list at the top level, so `archives` and `archive-list` fail with `-f toml`,
-exit code 9. [Report formats](@/docs/formats.md) lists every report's fields.
+TOML cannot hold a list at the top level, so with `-f toml` the lists `archives` and
+`archive-list` write are under a key of their own. [Report formats](@/docs/formats.md) lists every
+report's fields.
 
 ## Finding
 

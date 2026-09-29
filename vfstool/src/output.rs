@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use std::{
+    collections::BTreeMap,
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
@@ -44,6 +45,20 @@ pub fn write_serialized<T: serde::Serialize>(
         }
     }
     Ok(())
+}
+
+/// Writes a report that is a list. TOML has no top-level arrays, so there the list is the one entry
+/// of a table, under `key`; JSON and YAML get the bare list.
+pub fn write_serialized_list<T: serde::Serialize>(
+    path: Option<PathBuf>,
+    format: OutputFormat,
+    key: &str,
+    list: &[T],
+) -> io::Result<()> {
+    match format {
+        OutputFormat::Toml => write_serialized(path, format, &BTreeMap::from([(key, list)])),
+        OutputFormat::Json | OutputFormat::Yaml => write_serialized(path, format, &list),
+    }
 }
 
 pub fn parse_lock_file(path: &Path) -> io::Result<VfsLock> {

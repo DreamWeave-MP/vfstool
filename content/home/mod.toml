@@ -207,5 +207,6 @@ fixed = [
     "`run` refuses a `MERGED_DIR` that is a file or a symbolic link with exit code 8, as it does a folder with files in it. A file stopped it with `Not a directory` and exit code 9, and a symbolic link to an empty folder was replaced by a folder of its own and then deleted.",
     "`run` names a command it cannot start: `failed to start 'COMMAND': No such file or directory`, where it printed only the reason.",
     "On Linux and macOS, `find` and `remaining` list a file from a Morrowind BSA by its name, `ex_door.nif`, instead of its whole path inside the archive, `meshes\\x\\ex_door.nif`, and sort it by that name.",
+    "`archives -f toml` and `archive-list -f toml` write their list under `archives` and `entries`, since TOML has no top-level lists. They stopped with `unsupported array type` and exit code 9. JSON and YAML are unchanged.",
     "On Linux and macOS, every report writes a file or folder name that is not UTF-8 with U+FFFD in place of its invalid bytes, instead of stopping with `path contains invalid UTF-8 characters` and exit code 9, and `drift` reads a lock of such a name back without drift.",
 ]

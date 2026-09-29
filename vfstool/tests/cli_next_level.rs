@@ -1037,3 +1037,41 @@ fn run_names_a_command_that_cannot_be_started() {
     );
     assert!(!merged.exists(), "the merged folder should be removed");
 }
+
+#[test]
+fn archives_and_archive_list_write_toml_as_a_table_holding_the_list() {
+    let fixture = Fixture::new("archives_toml");
+    create_tes3_bsa_archive(&fixture.low, "Morrowind.bsa", &["Meshes/Used.NIF"]);
+    write_text(
+        &fixture.config_dir.join("openmw.cfg"),
+        &format!(
+            "data=\"{}\"\ndata=\"{}\"\ndata-local=\"{}\"\nfallback-archive=Morrowind.bsa\n",
+            fixture.low.display(),
+            fixture.high.display(),
+            fixture.data_local.display()
+        ),
+    );
+
+    for (args, key) in [
+        (&["archives", "-f", "toml"][..], "archives"),
+        (&["archive-list", "Morrowind.bsa", "-f", "toml"], "entries"),
+    ] {
+        let output = fixture.run(args);
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let table: vfstool_lib::toml::Table =
+            vfstool_lib::toml::from_str(&String::from_utf8_lossy(&output.stdout))
+                .expect("stdout should be a TOML table");
+        let rows = table[key]
+            .as_array()
+            .expect("the list should be under its key");
+        assert_eq!(rows.len(), 1, "{args:?}");
+    }
+
+    let json = fixture.run(&["archives", "-f", "json"]);
+    assert!(stdout_json(&json).is_array(), "JSON stays a bare list");
+}

@@ -17,8 +17,8 @@ json`, compact) or TOML (`-f toml`). Field names are `snake_case` in all three. 
 - **Variants**, in `validate` and collapse plans, are tagged. YAML writes the tag before the
   fields (`- !MissingContentFile`), JSON as an object with one key
   (`{"MissingContentFile":{"name":"Missing Plugin.esp"}}`), TOML as a table of that name.
-- **Lists** at the top level cannot be TOML, so `archives` and `archive-list` are YAML or JSON
-  only.
+- **Lists** at the top level cannot be TOML, so in TOML the list `archives` writes is under the
+  key `archives`, and the one `archive-list` writes under `entries`.
 
 On Linux and macOS a file name need not be UTF-8. YAML, JSON and TOML hold only text, so such a
 name is written with U+FFFD (`�`) in place of each byte sequence that is not UTF-8. `drift`
@@ -73,7 +73,7 @@ Each provider:
 
 ## Archives: archives, archive-list
 
-`archives` writes a list, one per loaded archive:
+`archives` writes a list, one per loaded archive, under `archives` in TOML:
 
 | Field | |
 |---|---|
@@ -82,7 +82,7 @@ Each provider:
 | `entry_count` | Files in it |
 | `winning_entry_count` | Files in it that win |
 
-`archive-list` writes a list, one per file in the archive, sorted by key:
+`archive-list` writes a list, one per file in the archive, sorted by key, under `entries` in TOML:
 
 | Field | |
 |---|---|

@@ -18,7 +18,7 @@ use crate::{
     cli::{Commands, OutputFormat},
     config::{build_conflict_index, build_layer_index, construct_vfs, load_openmw_config},
     exit::VFSToolExitCode,
-    output::{parse_lock_file, write_serialized, write_serialized_vfs},
+    output::{parse_lock_file, write_serialized, write_serialized_list, write_serialized_vfs},
     print,
 };
 
@@ -298,7 +298,7 @@ fn handle_duplicates(
 }
 
 fn handle_archives(vfs: &VFS, format: OutputFormat, output: Option<PathBuf>) -> Result<()> {
-    write_serialized(output, format, &vfs.archives())
+    write_serialized_list(output, format, "archives", &vfs.archives())
 }
 
 fn handle_archive_list(
@@ -309,7 +309,7 @@ fn handle_archive_list(
     output: Option<PathBuf>,
 ) -> Result<()> {
     let archive = resolve_archive_selector(vfs, archive, source_index);
-    write_serialized(output, format, &vfs.archive_entries(archive))
+    write_serialized_list(output, format, "entries", &vfs.archive_entries(archive))
 }
 
 fn normalized_path_text(path: &Path) -> String {
