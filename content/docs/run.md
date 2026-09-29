@@ -22,7 +22,8 @@ vfstool run [OPTIONS] <MERGED_DIR> -- <COMMAND>...
    with `--copy` or when the folder is on another drive), and the winning files inside archives
    extracted. The archive files themselves are written too.
 2. Hashes every file it wrote.
-3. Runs the command. Every argument that is exactly `{}` is replaced by `MERGED_DIR`.
+3. Runs the command. Every argument that is exactly `{}` is replaced by `MERGED_DIR`, made
+   absolute, so it names the folder from any `--working-dir`.
 4. If the command succeeds, hashes the folder again and copies every file that is new, or whose
    content changed, into `data-local`, or into `--output`, at the same relative path. Each copy is
    printed as `relative path -> destination`; a reader that stops early, like `head`, shortens

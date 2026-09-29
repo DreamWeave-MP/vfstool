@@ -203,5 +203,6 @@ fixed = [
     "Ctrl+C during `run` no longer leaves the merged folder behind: vfstool outlives the command it stopped, captures nothing, removes the folder and exits with 9.",
     "`run` whose output is read by something that stops early, such as `head`, finishes capturing and removes the merged folder; it panicked with exit code 101 partway through the list of captured files and left the folder behind.",
     "`run` passes the command's arguments and the `{}` folder byte for byte: an argument that is not UTF-8 was refused with exit code 2, and a merged folder whose name is not UTF-8 reached the command with U+FFFD in its path, a folder that does not exist.",
+    "`run` replaces `{}` with the merged folder's absolute path, so a relative `MERGED_DIR` still names it from the command's `--working-dir`.",
     "On Linux and macOS, every report writes a file or folder name that is not UTF-8 with U+FFFD in place of its invalid bytes, instead of stopping with `path contains invalid UTF-8 characters` and exit code 9, and `drift` reads a lock of such a name back without drift.",
 ]

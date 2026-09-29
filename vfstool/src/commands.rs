@@ -695,12 +695,17 @@ fn dump_run_and_capture(
         return (Err(err), None);
     }
 
+    // Absolute, so `{}` still names the folder from the command's own --working-dir.
+    let merged_argument = match std::path::absolute(merged) {
+        Ok(path) => path,
+        Err(e) => return (Err(e), None),
+    };
     let substituted: Vec<&OsStr> = params
         .command
         .iter()
         .map(|arg| {
             if arg == "{}" {
-                merged.as_os_str()
+                merged_argument.as_os_str()
             } else {
                 arg.as_os_str()
             }

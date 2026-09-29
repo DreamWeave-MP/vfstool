@@ -949,3 +949,37 @@ fn run_passes_a_merged_dir_and_arguments_that_are_not_utf8_through_unchanged() {
         argument.as_bytes()
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn run_gives_a_relative_merged_dir_to_a_command_in_another_working_dir() {
+    let fixture = Fixture::new("run_relative_merged");
+    let elsewhere = fixture.path("elsewhere");
+    fs::create_dir_all(&elsewhere).expect("working dir should be creatable");
+    let output = Command::new(vfstool_bin())
+        .current_dir(&fixture.root)
+        .arg("--config")
+        .arg(&fixture.config_dir)
+        .args(["run", "--copy", "--working-dir"])
+        .arg(&elsewhere)
+        .args([
+            "merged",
+            "--",
+            "sh",
+            "-c",
+            "test -f \"$1/textures/a.dds\" && printf found > \"$1/found.txt\"",
+            "sh",
+            "{}",
+        ])
+        .output()
+        .expect("vfstool command should spawn");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!fixture.path("merged").exists());
+    assert!(fixture.data_local.join("found.txt").exists());
+}
