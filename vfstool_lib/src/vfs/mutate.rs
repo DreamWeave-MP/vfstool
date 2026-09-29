@@ -230,11 +230,19 @@ impl VFS {
     /// Remove the resolved key entirely, discarding all lower-priority providers for it.
     pub fn remove_resolved_file<K: VfsKeyInput + ?Sized>(&mut self, key: &K) -> Option<VfsFile> {
         let key = key.to_vfs_key();
-        self.providers.remove(&key);
-        let removed = self.file_map.remove(&key);
+        let removed = self.discard_stack(&key);
         if removed.is_some() {
             self.rebuild_layer_index();
         }
+        removed
+    }
+
+    /// Drops `key`'s whole provider stack and returns the winner it had, releasing the key's
+    /// directories through `refresh_winner` like every other removal.
+    fn discard_stack(&mut self, key: &NormalizedPath) -> Option<VfsFile> {
+        self.providers.remove(key);
+        let removed = self.file_map.get(key).cloned();
+        self.refresh_winner(key);
         removed
     }
 
@@ -339,8 +347,7 @@ impl VFS {
     ) -> Vec<(NormalizedPath, VfsFile)> {
         let mut removed = Vec::new();
         for key in keys {
-            self.providers.remove(&key);
-            if let Some(file) = self.file_map.remove(&key) {
+            if let Some(file) = self.discard_stack(&key) {
                 removed.push((key, file));
             }
         }

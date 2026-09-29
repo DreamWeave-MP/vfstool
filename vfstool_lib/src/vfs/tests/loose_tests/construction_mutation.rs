@@ -393,6 +393,38 @@ fn remove_resolved_file_does_not_reveal_lower_priority_provider() {
 }
 
 #[test]
+fn removing_whole_stacks_frees_their_directory_names() {
+    type Removal = fn(&mut VFS) -> usize;
+    let provider = |name: &str| {
+        VfsProvider::new(
+            SourceMeta {
+                path: PathBuf::from("/x"),
+                kind: crate::SourceKind::LooseDir,
+            },
+            VfsFile::from(Path::new("/x").join(name)),
+        )
+    };
+    let removals: [(&str, Removal); 3] = [
+        ("remove_resolved_file", |vfs| {
+            usize::from(vfs.remove_resolved_file("a/b.txt").is_some())
+        }),
+        ("remove_resolved_prefix", |vfs| {
+            vfs.remove_resolved_prefix("a").len()
+        }),
+        ("remove_resolved_matching_glob", |vfs| {
+            vfs.remove_resolved_matching_glob("a/*").len()
+        }),
+    ];
+    for (name, remove) in removals {
+        let mut vfs = VFS::new();
+        assert!(vfs.push_provider("a/b.txt", provider("b.txt")));
+        assert_eq!(remove(&mut vfs), 1, "{name}");
+        assert!(vfs.push_provider("a", provider("a")), "{name}");
+        assert!(vfs.get_file("a").is_some(), "{name}");
+    }
+}
+
+#[test]
 fn remove_winner_reveals_lower_priority_provider() {
     let low = TempDir::new("vfsloose_reveal_low");
     let high = TempDir::new("vfsloose_reveal_high");

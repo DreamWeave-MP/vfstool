@@ -320,12 +320,6 @@ data directory holding `Morrowind.esm` and `Meshes/X/Door.NIF`:
 
 ## Known issues
 
-Two kinds of change can leave a VFS with a file and a directory under one name, or make it refuse
-a name that is free:
-
-- `push_provider_batch` checks its entries against the VFS as it was, not against each other; see
-  [Adding](@/docs/api/mutation.md#adding).
-- `remove_resolved_file`, `remove_resolved_prefix` and `remove_resolved_matching_glob` leave the
-  removed keys' parent directories recorded, so a file at one of those names is refused afterwards:
-  after `remove_resolved_file("a/b.txt")`, `push_provider("a", …)` returns `false`. `remove_winner`
-  and the other provider removals do not have this problem.
+`push_provider_batch` checks its entries against the VFS as it was, not against each other, so a
+batch can leave a VFS with a file and a directory under one name; see
+[Adding](@/docs/api/mutation.md#adding).

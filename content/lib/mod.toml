@@ -158,5 +158,6 @@ fixed = [
     "The layer index of a VFS keeps a source that never provided a key, such as an empty data directory, so its positions are the `source_index` of the VFS's provider records and `ArchiveInfo`; it dropped such sources and numbered later ones lower. A source whose providers were all removed still leaves it.",
     "A simulated reorder never lifts an archive above a loose file: `simulate`, `simulate_with_opts` and `simulate_impact` ranked every source by the new order alone, so moving an archive after a data directory reported the archive winning.",
     "`set_winner_file` and `set_winner_loose_file` record a new key's directories, so `set_winner_file(\"a/b.txt\", …)` followed by `set_winner_file(\"a\", …)` refuses the second instead of keeping a file and a directory named `a`, which no VFS can write out.",
+    "`remove_resolved_file`, `remove_resolved_prefix` and `remove_resolved_matching_glob` release the removed keys' directories: after `remove_resolved_file(\"a/b.txt\")`, `push_provider(\"a\", …)` returned `false`.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
 ]
