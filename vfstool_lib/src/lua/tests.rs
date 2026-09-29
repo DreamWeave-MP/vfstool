@@ -357,7 +357,7 @@ fn option_tables_are_strict_and_sizes_are_integers() {
     // Type errors name the field and the slot the way l3i's own conversions do.
     runtime
         .exec(
-            r#"
+            r"
             local ok, err = pcall(vfstool.VFS.fromDirectories, 42)
             assert(not ok and err:find('dirs: Lua stack index 1: expected table, got number', 1, true), err)
             ok, err = pcall(vfstool.VFS.fromDirectories, { 42 })
@@ -372,7 +372,7 @@ fn option_tables_are_strict_and_sizes_are_integers() {
             assert(not ok and err:find('fromFileLists[1].files[1]', 1, true) and err:find('expected string, got number', 1, true), err)
             ok, err = pcall(vfstool.LayerIndex.fromFileLists, 'rows')
             assert(not ok and err:find('expected table, got string', 1, true), err)
-            "#,
+            ",
         )
         .unwrap();
     runtime
