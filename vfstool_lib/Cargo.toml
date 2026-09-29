@@ -49,4 +49,4 @@ harness = false
 [[bench]]
 name = "luau_boundary"
 harness = false
-required-features = ["lua"]
+required-features = ["lua", "serialize"]

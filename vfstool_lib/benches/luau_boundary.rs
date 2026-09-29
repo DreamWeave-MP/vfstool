@@ -7,7 +7,9 @@
 //! materialises a collection. Fixtures: a 1000-file directory (`vfs`) with one 64 KiB file, and a
 //! 5000-file directory (`vfsLarge`). The l3i binding adds `read_into_64k` (the copy-free read),
 //! `keys_5000_to_table` and `entries_1000_to_table` (the old materialised shapes, which the
-//! frozen `keys_5000`/`entries_1000` scripts now measure as views), and `tree_1000_to_table`.
+//! frozen `keys_5000`/`entries_1000` scripts now measure as views), `tree_1000_to_table`, and
+//! the `serialize_*` scripts (a 5000-key list as a table and as a view, and the nested tree),
+//! which need the `serialize` feature as well.
 
 use std::{
     fs,
@@ -170,6 +172,29 @@ const SCRIPTS: &[(&str, u64, &str)] = &[
         "tree_1000_to_table",
         1,
         "return function() return vfs:tree():toTable() end",
+    ),
+    (
+        "serialize_keys_5000_table",
+        1,
+        "local keys = vfsLarge:keys():toTable() return function() return #vfstool.serialize(keys, 'json') end",
+    ),
+    (
+        "serialize_keys_5000_view",
+        1,
+        "local keys = vfsLarge:keys() return function() return #vfstool.serialize(keys, 'json') end",
+    ),
+    (
+        "serialize_tree_1000_table",
+        1,
+        "local function plain(node) \
+            local out = { files = {}, subdirs = {} } \
+            for i, row in node.files do out.files[i] = { path = row.path, isLoose = row.isLoose } end \
+            for name, sub in node.subdirs do out.subdirs[name] = plain(sub) end \
+            return out \
+        end \
+        local tree = {} \
+        for root, node in vfs:tree():toTable() do tree[root] = plain(node) end \
+        return function() return #vfstool.serialize(tree, 'json') end",
     ),
 ];
 
