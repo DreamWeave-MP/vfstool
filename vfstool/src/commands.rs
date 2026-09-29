@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     fs,
     io::{self, Result, Write},
     path::{Path, PathBuf},
@@ -593,7 +593,7 @@ fn run_provider_vfs_command(command: Commands, vfs: &VFS) -> Result<Option<Comma
 
 pub struct RunParams<'a> {
     merged_dir: PathBuf,
-    command: &'a [String],
+    command: &'a [OsString],
     keep_merged: bool,
     output: Option<PathBuf>,
     copy: bool,
@@ -695,19 +695,19 @@ fn dump_run_and_capture(
         return (Err(err), None);
     }
 
-    let substituted: Vec<String> = params
+    let substituted: Vec<&OsStr> = params
         .command
         .iter()
         .map(|arg| {
             if arg == "{}" {
-                merged.to_string_lossy().into_owned()
+                merged.as_os_str()
             } else {
-                arg.clone()
+                arg.as_os_str()
             }
         })
         .collect();
 
-    let mut cmd = std::process::Command::new(&substituted[0]);
+    let mut cmd = std::process::Command::new(substituted[0]);
     cmd.args(&substituted[1..]);
     if let Some(dir) = params.working_dir {
         cmd.current_dir(dir);

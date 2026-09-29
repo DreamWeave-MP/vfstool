@@ -911,3 +911,41 @@ fn run_with_closed_stdout_still_captures_and_removes_merged_dir() {
         assert!(fixture.data_local.join(format!("new{i}.txt")).exists());
     }
 }
+
+#[test]
+#[cfg(unix)]
+fn run_passes_a_merged_dir_and_arguments_that_are_not_utf8_through_unchanged() {
+    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
+
+    let fixture = Fixture::new("run_not_utf8");
+    let merged = fixture.root.join(OsStr::from_bytes(b"m\xe9rged dir"));
+    let argument = OsStr::from_bytes(b"caf\xe9 au lait");
+    let output = Command::new(vfstool_bin())
+        .arg("--config")
+        .arg(&fixture.config_dir)
+        .args(["run", "--copy"])
+        .arg(&merged)
+        .args([
+            "--",
+            "sh",
+            "-c",
+            "test -f \"$1/textures/a.dds\" && printf '%s' \"$2\" > \"$1/argument.txt\"",
+            "sh",
+            "{}",
+        ])
+        .arg(argument)
+        .output()
+        .expect("vfstool command should spawn");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!merged.exists(), "the merged folder should be removed");
+    assert_eq!(
+        fs::read(fixture.data_local.join("argument.txt")).expect("the argument should be captured"),
+        argument.as_bytes()
+    );
+}

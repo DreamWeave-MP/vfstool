@@ -62,7 +62,8 @@ time of copying the loose files once.
 
 Everything after `--` is the command and its arguments. It runs directly, not through a shell:
 for pipes, globs or `$1`, run a shell yourself, as the example does. `{}` is replaced only when it
-is a whole argument; `--data={}` is passed as it is.
+is a whole argument; `--data={}` is passed as it is. Arguments are passed byte for byte, and `{}`
+becomes the folder's path exactly as the system spells it, whether or not it is UTF-8.
 
 ## When things go wrong
 

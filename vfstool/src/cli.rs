@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use clap::{Parser, Subcommand, ValueEnum};
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 #[derive(Parser)]
 #[command(
@@ -221,9 +221,9 @@ pub enum Commands {
         /// Directory to dump the merged VFS into
         merged_dir: PathBuf,
 
-        /// Command and arguments to execute
+        /// Command and arguments to execute, passed as given; `{}` is the merged directory
         #[arg(trailing_var_arg = true, required = true)]
-        command: Vec<String>,
+        command: Vec<OsString>,
 
         /// Keep the merged directory after the command exits
         #[arg(long)]
