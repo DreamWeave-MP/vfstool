@@ -151,5 +151,6 @@ fixed = [
     "`collapse_into` and `dump_to_directory` into one of the VFS's own data directories leave a loose file that already is its destination where it is. They deleted it before linking or copying it.",
     "`extract_file` into the folder a loose file already lives in leaves the file there. It deleted the file, then failed to copy it.",
     "`run_finalize` and `run_finalize_tracked` leave a destination that already is the changed file, rewritten in place through a hard link from `output_dir`, as it is. They copied it onto itself, which truncated it to nothing.",
+    "`VfsFile::file_name` and `file_stem` end an archive entry's folders at `\\` as well as `/` on every platform: a Morrowind BSA's `meshes\\x\\ex_door.nif` is `ex_door.nif` on Linux and macOS too, in trees, `Display` and Luau's `file:fileName()`.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
 ]

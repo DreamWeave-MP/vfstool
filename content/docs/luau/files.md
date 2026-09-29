@@ -44,7 +44,8 @@ the directory or the archive spells it.
 {{ api_signature(value="file:fileStem() -> string?") }}
 
 The last component of `path()`, with and without its extension; `nil` when there is none, as for
-`/`.
+`/`. An archive entry's folders end at `\` as well as `/`, so a Morrowind BSA's
+`meshes\x\ex_door.nif` is `ex_door.nif` on every platform.
 
 ### parentArchivePath and parentArchiveName
 

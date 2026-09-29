@@ -267,7 +267,7 @@ impl VfsFile {
         match &self.file {
             FileType::Loose(path) => path.file_name(),
             #[cfg(any(feature = "beth-archives", feature = "zip"))]
-            FileType::Archive(archive_ref) => archive_ref.path.file_name(),
+            FileType::Archive(archive_ref) => archive_ref.last_component().file_name(),
         }
     }
 
@@ -299,7 +299,7 @@ impl VfsFile {
         match &self.file {
             FileType::Loose(path) => path.file_stem(),
             #[cfg(any(feature = "beth-archives", feature = "zip"))]
-            FileType::Archive(archive_ref) => archive_ref.path.file_stem(),
+            FileType::Archive(archive_ref) => archive_ref.last_component().file_stem(),
         }
     }
 

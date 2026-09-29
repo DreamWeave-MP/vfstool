@@ -139,6 +139,30 @@ fn generated_bethesda_archive_formats_are_readable() {
 }
 
 #[test]
+fn archive_entries_are_named_by_the_last_component_of_their_entry_path() {
+    let dir = TempDir::new("vfs_archive_entry_file_name");
+    create_tes3_bsa_archive(dir.path(), "morrowind.bsa", &["Meshes/X/Ex_Door.NIF"]);
+    create_ba2_archive(dir.path(), "fallout.ba2");
+
+    let vfs = VFS::from_directories(vec![dir.path()], Some(vec!["morrowind.bsa", "fallout.ba2"]));
+    let door = vfs.get_file("meshes/x/ex_door.nif").unwrap();
+    // Morrowind's BSAs store `meshes\x\ex_door.nif`: lowercase, with `\` between folders.
+    assert_eq!(door.file_name(), Some(std::ffi::OsStr::new("ex_door.nif")));
+    assert_eq!(door.file_stem(), Some(std::ffi::OsStr::new("ex_door")));
+    let swf = vfs.get_file("interface/main.swf").unwrap();
+    assert_eq!(swf.file_name(), Some(std::ffi::OsStr::new("main.swf")));
+
+    let tree = vfs.tree(true);
+    let x = &tree[Path::new("Data Files")].subdirs[Path::new("morrowind.bsa")].subdirs
+        [Path::new("meshes")]
+    .subdirs[Path::new("x")];
+    assert_eq!(
+        x.files[0].file_name(),
+        Some(std::ffi::OsStr::new("ex_door.nif"))
+    );
+}
+
+#[test]
 fn ba2_archive_entry_loses_to_loose_file() {
     let dir = TempDir::new("vfs_ba2_loose_priority");
     create_ba2_archive(dir.path(), "fallout.ba2");

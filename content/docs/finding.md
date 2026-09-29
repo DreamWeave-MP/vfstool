@@ -56,12 +56,12 @@ $ vfstool -c openmw find lantern
             icons:
               m:
                 .:
-                - icons\m\tx_lantern.dds
+                - tx_lantern.dds
           Tribunal.bsa:
             meshes:
               tr:
                 .:
-                - meshes\tr\tr_lantern.nif
+                - tr_lantern.nif
       mods:
         Crisp Textures:
           Textures:
@@ -87,7 +87,7 @@ to a file:
 
 ```sh
 $ vfstool -c openmw find -f json '\.nif$'
-{"/":{"tmp":{"mw":{"Morrowind":{"Data Files":{"Morrowind.bsa":{"meshes":{".":["meshes\\xbase_anim.nif"]}},"Tribunal.bsa":{"meshes":{"tr":{".":["meshes\\tr\\tr_lantern.nif"]}}}}},"mods":{"Lantern Glow":{"Meshes":{"L":{".":["Light_Com_Lantern_01.NIF"]}}}}}}}}
+{"/":{"tmp":{"mw":{"Morrowind":{"Data Files":{"Morrowind.bsa":{"meshes":{".":["xbase_anim.nif"]}},"Tribunal.bsa":{"meshes":{"tr":{".":["tr_lantern.nif"]}}}}},"mods":{"Lantern Glow":{"Meshes":{"L":{".":["Light_Com_Lantern_01.NIF"]}}}}}}}}
 ```
 
 With `-r` (`--use-relative`, before the command), the tree starts at a folder named `Data Files`
@@ -102,12 +102,12 @@ Data Files:
     icons:
       m:
         .:
-        - icons\m\tx_lantern.dds
+        - tx_lantern.dds
   Tribunal.bsa:
     meshes:
       tr:
         .:
-        - meshes\tr\tr_lantern.nif
+        - tr_lantern.nif
   meshes:
     l:
       .:
@@ -117,8 +117,8 @@ Data Files:
     - Tx_Lantern_Glow.dds
 ```
 
-On Linux and macOS, an archive entry is listed by its whole path inside the archive, with the
-archive's backslashes, as above; on Windows, by its file name.
+An archive entry is listed by the last part of its path inside the archive, as the archive spells
+it: Morrowind's BSAs store names in lowercase.
 
 ## Explain one file
 

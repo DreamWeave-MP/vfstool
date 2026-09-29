@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use std::{
     io::{self, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
@@ -46,6 +46,15 @@ impl ArchiveReference {
             zip_index: Some(zip_index),
             parent_archive,
         }
+    }
+
+    /// The entry's last path component. Archives separate folders with `\` (Morrowind's BSAs)
+    /// or `/`, whatever the host's separator is, so `Path::file_name` on the whole entry path
+    /// would keep a BSA entry's folders in its name on Linux and macOS.
+    pub(super) fn last_component(&self) -> &Path {
+        // `path` is built from a `str`, or from the entry's bytes read lossily, so it is UTF-8.
+        let name = self.path.to_str().unwrap_or_default();
+        Path::new(name.rsplit(['/', '\\']).next().unwrap_or(name))
     }
 
     pub(super) fn from_bytes(path: &[u8], parent_archive: Arc<StoredArchive>) -> Self {

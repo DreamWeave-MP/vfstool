@@ -114,15 +114,14 @@ an archive entry. Nothing replaced.
 
 {{ api_signature(value="fn file_name(&self) -> Option<&std::ffi::OsStr>") }}
 
-The last component of `path()`. For a loose file, its name in its own case: `Ex_Door.NIF`.
-
-For an archive entry the name is read with the host's separators, so an entry stored with `\`
-keeps its whole path on Linux and macOS: a Morrowind BSA's `meshes\x\ex_door.nif` has that as its
-file name there, and trees and listings show it that way. On Windows it is `ex_door.nif`.
+The last component of `path()`. For a loose file, its name in its own case: `Ex_Door.NIF`. For
+an archive entry, the part after the last `\` or `/` of its entry name, on every platform: a
+Morrowind BSA's `meshes\x\ex_door.nif` is `ex_door.nif`. `None` when there is none, as for `/`
+or an entry name that ends in a separator.
 
 {{ api_signature(value="fn file_stem(&self) -> Option<&std::ffi::OsStr>") }}
 
-`file_name` without its extension, with the same caveat for archive entries.
+`file_name` without its extension.
 
 ## Reading it
 
