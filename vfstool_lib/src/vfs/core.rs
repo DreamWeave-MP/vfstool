@@ -7,9 +7,6 @@ use crate::{LayerIndex, NormalizedPath, SourceKind, SourceMeta, VfsFile, paths::
 use std::path::{Path, PathBuf};
 
 impl VFS {
-    pub(super) const DIR_PREFIX: &str = "├── ";
-    pub(super) const FILE_PREFIX: &str = "│   ├── ";
-
     /// Create an empty VFS.
     #[must_use]
     pub fn new() -> Self {

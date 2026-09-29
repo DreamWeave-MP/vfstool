@@ -224,15 +224,16 @@ are built on it.
 
 {{ api_signature(value="fn display_filtered(&self, relative: bool, file_filter: impl Fn(&NormalizedPath, &VfsFile) -> bool) -> String") }}
 
-`tree_filtered` as text: every directory that holds files, by its own name rather than its path,
-followed by its files, depth first. A directory with only subdirectories is not printed. `VFS`'s
-`Display` is this with every file and `relative`:
+`tree_filtered` as text: every directory as a `├── name/` line, indented one `│   ` per level below
+the root, then its files a level deeper, then its subdirectories, each sorted. Nothing is written
+when no file passes. `VFS`'s `Display` is this with every file and `relative`:
 
 ```text
 ├── Data Files/
 │   ├── Morrowind.esm
-├── x/
-│   ├── Door.NIF
+│   ├── meshes/
+│   │   ├── x/
+│   │   │   ├── Door.NIF
 ```
 
 A file whose path has no file name, such as a `VfsFile::from("/")` set by hand, is listed by its
@@ -264,7 +265,7 @@ fn main() -> std::io::Result<()> {
     assert_eq!(json, r#"{"Data Files":{".":["Morrowind.esm"],"meshes":{"x":{".":["Door.NIF"]}}}}"#);
 
     let only_meshes = vfs.display_filtered(true, |key, _| key.as_bytes().starts_with(b"meshes/"));
-    assert_eq!(only_meshes, "├── x/\n│   ├── Door.NIF\n");
+    assert_eq!(only_meshes, "├── Data Files/\n│   ├── meshes/\n│   │   ├── x/\n│   │   │   ├── Door.NIF\n");
 
     fs::remove_dir_all(&root)
 }

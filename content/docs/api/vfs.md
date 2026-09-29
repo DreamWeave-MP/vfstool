@@ -313,6 +313,7 @@ data directory holding `Morrowind.esm` and `Meshes/X/Door.NIF`:
 ```text
 ├── Data Files/
 │   ├── Morrowind.esm
-├── x/
-│   ├── Door.NIF
+│   ├── meshes/
+│   │   ├── x/
+│   │   │   ├── Door.NIF
 ```

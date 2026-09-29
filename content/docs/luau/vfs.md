@@ -180,11 +180,9 @@ paths, below a root named `/`.
 
 {{ api_signature(value="vfs:display(relative: boolean?) -> string") }}
 
-The tree as text, for a quick look. Each directory that holds files directly is one
-`├── name/` line with its last component only, followed by a `│   ├── file` line per file;
-directories that hold only directories get no line. Nested and same-named directories are
-therefore hard to tell apart. `tree` has the structure. `tostring(vfs)` is
-`dream.vfs.VFS(6 files)`, not the tree.
+The tree as text, for a quick look: each directory is a `├── name/` line, indented one `│   ` per
+level below the root, followed by its files a level deeper and then its subdirectories.
+`tostring(vfs)` is `dream.vfs.VFS(6 files)`, not the tree.
 
 ### serializeTree
 

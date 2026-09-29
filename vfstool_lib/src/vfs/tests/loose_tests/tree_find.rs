@@ -176,6 +176,35 @@ fn display_lists_a_file_whose_path_has_no_file_name_by_its_path() {
     );
 }
 
+#[test]
+fn display_nests_each_folder_under_its_parent() {
+    let dir = TempDir::new("vfsloose_display_nesting");
+    dir.write("Morrowind.esm", b"esm");
+    dir.write("Meshes/X/Door.NIF", b"nif");
+    dir.write("textures/x/a.dds", b"dds");
+    let vfs = VFS::from_directories(vec![dir.path()], None);
+
+    assert_eq!(
+        vfs.to_string(),
+        "├── Data Files/\n\
+         │   ├── Morrowind.esm\n\
+         │   ├── meshes/\n\
+         │   │   ├── x/\n\
+         │   │   │   ├── Door.NIF\n\
+         │   ├── textures/\n\
+         │   │   ├── x/\n\
+         │   │   │   ├── a.dds\n"
+    );
+    assert_eq!(
+        vfs.display_filtered(true, |key, _| key.as_bytes().starts_with(b"meshes/")),
+        "├── Data Files/\n\
+         │   ├── meshes/\n\
+         │   │   ├── x/\n\
+         │   │   │   ├── Door.NIF\n"
+    );
+    assert_eq!(vfs.display_filtered(true, |_, _| false), "");
+}
+
 // ---- find_by_regex ----
 #[test]
 fn find_by_regex_matching_files_returned() {

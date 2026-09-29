@@ -101,19 +101,12 @@ impl VFS {
         tree
     }
 
-    /// String formatter for the file tree.
-    fn file_str<S: AsRef<str> + std::fmt::Display>(file: S) -> String {
-        format!("{}{}\n", Self::FILE_PREFIX, file)
-    }
-
-    /// String formatter for the file tree.
-    fn dir_str<S: AsRef<str> + std::fmt::Display>(dir: S) -> String {
-        format!("{}{}/\n", Self::DIR_PREFIX, dir)
-    }
-
     /// Returns the formatted file tree for a filtered subset.
     ///
-    /// Each file is listed by its file name, or by its whole path when the path has none.
+    /// Each directory is a `├── name/` line, indented one `│   ` per level below the root, followed
+    /// by its files, one level deeper, and then its subdirectories, each sorted. A file is listed by
+    /// its file name, or by its whole path when the path has none. Nothing is written when no file
+    /// passes the filter.
     pub fn display_filtered(
         &self,
         relative: bool,
@@ -146,22 +139,38 @@ impl VFS {
     }
 }
 
-fn write_node<W: Write>(w: &mut W, node: &DirectoryNode, dir: &Path) -> std::fmt::Result {
-    if !node.files.is_empty() {
-        write!(w, "{}", VFS::dir_str(dir.to_string_lossy()))?;
-        for file in &node.files {
-            write!(w, "{}", VFS::file_str(file.listed_name().to_string_lossy()))?;
-        }
+const BRANCH: &str = "├── ";
+const INDENT: &str = "│   ";
+
+fn write_node<W: Write>(
+    w: &mut W,
+    node: &DirectoryNode,
+    name: &Path,
+    depth: usize,
+) -> std::fmt::Result {
+    if node.files.is_empty() && node.subdirs.is_empty() {
+        return Ok(());
+    }
+    let label = name.to_string_lossy();
+    let slash = if label.ends_with(['/', '\\']) {
+        ""
+    } else {
+        "/"
+    };
+    writeln!(w, "{}{BRANCH}{label}{slash}", INDENT.repeat(depth))?;
+    let inner = INDENT.repeat(depth + 1);
+    for file in &node.files {
+        writeln!(w, "{inner}{BRANCH}{}", file.listed_name().to_string_lossy())?;
     }
     for (subdir_name, subdir_node) in &node.subdirs {
-        write_node(w, subdir_node, subdir_name)?;
+        write_node(w, subdir_node, subdir_name, depth + 1)?;
     }
     Ok(())
 }
 
 fn write_tree<W: Write>(tree: &DisplayTree, w: &mut W) -> std::fmt::Result {
     for (root_subdir, root_node) in tree {
-        write_node(w, root_node, root_subdir)?;
+        write_node(w, root_node, root_subdir, 0)?;
     }
     Ok(())
 }
