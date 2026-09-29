@@ -162,5 +162,6 @@ fixed = [
     "`push_provider_batch` checks each entry against the ones before it, so `push_directory` and `push_archive` no longer add a file and a directory with one name; `push_directory` keeps the same one `from_directories` keeps.",
     "`Display` for `VFS` and `display_filtered` list a file whose path has no file name, such as `VfsFile::from(\"/\")`, by its whole path instead of panicking, and serialized trees list it too instead of leaving it out.",
     "`Display` for `VFS`, `display_filtered` and Luau's `vfs:display()` nest each directory under its parent, one `│   ` per level, and list directories that hold only directories. Every directory was printed by its last name at one level, so `meshes/x` and `textures/x` both showed as `x/`, and an archive's folders looked like loose ones.",
+    "Luau's `serialize` writes `Entries` and `Providers` views, tree streams and `VfsFile` handles, each file as its file row's fields; it refused every userdata but `Keys` and `ProviderRecords` views, although the documentation said views serialize.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
 ]

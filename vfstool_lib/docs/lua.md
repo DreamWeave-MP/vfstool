@@ -135,7 +135,9 @@ vfstool.serialize(value, "json" | "yaml" | "toml") -> string
 ```
 
 Tables whose keys are exactly `1..n` (and empty tables) serialize as arrays, other tables as objects
-with string keys, sequence views as arrays of their `toTable()` rows; strings must be UTF-8.
+with string keys, sequence views as arrays of their `toTable()` rows, a tree stream as its
+`toTable()` shape, and a `VfsFile` as its file row's fields (`path`, `isLoose`, `isArchive`,
+`parentArchivePath`, `parentArchiveName`); strings must be UTF-8.
 
 ## `VFS`
 

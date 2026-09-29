@@ -233,6 +233,32 @@ fn lua_serialize_helper_is_available_with_serialize_feature() {
 }
 
 #[test]
+#[cfg(feature = "serialize")]
+fn lua_serialize_writes_views_that_hold_files_and_tree_streams() {
+    let dir = TempDir::new("lua_serialize_views");
+    dir.write("Textures/Rock.dds", b"rock");
+    let runtime = runtime_with(&[("dir", &dir.lua())]);
+    runtime
+        .exec(
+            r#"
+        local vfs = vfstool.VFS.fromDirectories({ dir })
+        local rock = dir .. "/Textures/Rock.dds"
+        local file = '{"isArchive":false,"isLoose":true,"path":' .. vfstool.serialize({ rock }, "json"):sub(2, -2) .. '}'
+
+        assert(vfstool.serialize(vfs:entries(), "json")
+            == '[{"file":' .. file .. ',"key":"textures/rock.dds"}]')
+        local providers = vfstool.serialize(vfs:providersFor("textures/rock.dds"), "json")
+        assert(providers:find('"file":' .. file, 1, true), providers)
+        assert(providers:find('"kind":"looseDir"', 1, true), providers)
+        local tree = vfstool.serialize(vfs:tree(), "json")
+        assert(tree:find('"textures":{"files":[' .. file .. '],"subdirs":{}}', 1, true), tree)
+        assert(vfstool.serialize({ found = vfs:getFile("textures/rock.dds") }, "yaml"):find("isLoose: true", 1, true))
+    "#,
+        )
+        .unwrap();
+}
+
+#[test]
 fn lua_vfs_keys_are_sorted() {
     let dir = TempDir::new("lua_vfs_keys_sorted");
     for index in 0..64 {

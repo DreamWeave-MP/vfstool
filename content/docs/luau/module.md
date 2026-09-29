@@ -301,9 +301,10 @@ assert(vfstool.serialize(explain, "yaml"):find("winner:", 1, true))
   sorted.
 - A number with no fraction is written as an integer; Luau integers are integers.
 - Strings, and string keys, must be UTF-8.
-- `Keys` and `ProviderRecords` views are written as the arrays their `toTable()` gives. Any other
-  userdata is an error: that includes `Entries` and `Providers` views, whose rows hold `VfsFile`
-  handles, and the tree stream.
+- Sequence views are written as the arrays their `toTable()` gives, and a tree stream as its
+  `toTable()` shape. A `VfsFile`, alone or in a row, is written as the fields of its file row:
+  `path`, `isLoose`, `isArchive`, and for an archive entry `parentArchivePath` and
+  `parentArchiveName`. Any other userdata, such as a `VFS`, is an error.
 - TOML needs a table at the top; an array there is an error.
 - Nesting is limited to 128 levels.
 
@@ -351,7 +352,7 @@ Everything else starts with `dream.vfs:`:
 | A directory that cannot be walked | `dream.vfs: IO error for operation on nope: No such file or directory (os error 2)` |
 | A negative `readInto` offset | `dream.vfs: negative buffer offset` |
 | An unknown serialization format | `dream.vfs: unknown serialization format 'xml' (expected json, yaml, or toml)` |
-| A value `serialize` cannot write | `dream.vfs: serialize: ` and the reason: `strings must be valid UTF-8`, `cannot serialize a function`, `a boolean cannot be an object key`, `a non-finite number has no representation`, `value nests deeper than 128 levels`, `userdata other than a sequence view cannot be serialized` |
+| A value `serialize` cannot write | `dream.vfs: serialize: ` and the reason: `strings must be valid UTF-8`, `cannot serialize a function`, `a boolean cannot be an object key`, `a non-finite number has no representation`, `value nests deeper than 128 levels`, `userdata other than a VfsFile, a sequence view or a tree cannot be serialized` |
 | A TOML document that is not a table | `dream.vfs: unsupported array type` |
 
 A `readInto` offset past the end of the buffer raises `buffer access out of bounds`, the text of

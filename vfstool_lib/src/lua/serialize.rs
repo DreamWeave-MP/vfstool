@@ -3,20 +3,24 @@
 //!
 //! Tables whose keys are exactly `1..n` are arrays (an empty table is an empty array, as the
 //! previous binding serialized it); other tables are objects with string keys. The module's
-//! sequence views serialize as the arrays their `toTable()` would give. Strings must be UTF-8
+//! sequence views serialize as the arrays their `toTable()` would give, a tree stream as its
+//! `toTable()` shape, and a `VfsFile` as the plain fields of its file row. Strings must be UTF-8
 //! for these text formats.
 
 use l3i::{
     Error, Result,
     bind::Call,
-    sequence::{Sequence, SequenceItem, SequenceSource},
+    sequence::{Sequence, SequenceItem, SequenceSource, Stream},
     stack::{Frame, Scope, Type, ValueView},
     userdata::receiver,
 };
 use serde_json::{Map, Number, Value};
 
-use super::views::{Entries, Keys, ProviderRecords, Providers};
-use crate::{SerializeType, serialize_value};
+use super::{
+    VfsFileHandle,
+    views::{Entries, Keys, ProviderRecords, Providers, TreeWalk},
+};
+use crate::{DirectoryNode, DisplayTree, SerializeType, VfsFile, serialize_value};
 
 const MAX_DEPTH: usize = 128;
 
@@ -88,6 +92,12 @@ fn convert(frame: &Frame<'_>, view: ValueView<'_>, depth: usize) -> Result<Value
         }
         Type::Table => table(frame, view, depth),
         Type::Userdata => {
+            if let Some(file) = receiver::<VfsFileHandle>(view) {
+                return file_object(&file.0);
+            }
+            if let Some(walk) = receiver::<Stream<TreeWalk>>(view) {
+                return tree_object(walk.0.tree());
+            }
             let probes = [
                 sequence_items::<Keys>(frame, view, depth)?,
                 sequence_items::<Entries>(frame, view, depth)?,
@@ -98,7 +108,7 @@ fn convert(frame: &Frame<'_>, view: ValueView<'_>, depth: usize) -> Result<Value
                 return Ok(value);
             }
             Err(Error::runtime(
-                "dream.vfs: serialize: userdata other than a sequence view cannot be serialized",
+                "dream.vfs: serialize: userdata other than a VfsFile, a sequence view or a tree cannot be serialized",
             ))
         }
         other => Err(Error::runtime(format!(
@@ -106,6 +116,49 @@ fn convert(frame: &Frame<'_>, view: ValueView<'_>, depth: usize) -> Result<Value
             other.name()
         ))),
     }
+}
+
+fn utf8(bytes: &[u8]) -> Result<&str> {
+    std::str::from_utf8(bytes)
+        .map_err(|_| Error::runtime("dream.vfs: serialize: strings must be valid UTF-8"))
+}
+
+/// A file as the fields of its file row, the table a tree's `toTable()` lists it by, without the
+/// handle: `path`, `isLoose`, `isArchive`, and for an archive entry `parentArchivePath` and
+/// `parentArchiveName`.
+fn file_object(file: &VfsFile) -> Result<Value> {
+    let mut object = Map::new();
+    object.insert(
+        "path".to_owned(),
+        Value::String(utf8(file.path_bytes())?.to_owned()),
+    );
+    object.insert("isLoose".to_owned(), Value::Bool(file.is_loose()));
+    object.insert("isArchive".to_owned(), Value::Bool(file.is_archive()));
+    if let Some(archive) = file.parent_archive_path() {
+        object.insert("parentArchivePath".to_owned(), Value::String(archive));
+    }
+    if let Some(name) = file.parent_archive_name() {
+        object.insert("parentArchiveName".to_owned(), Value::String(name));
+    }
+    Ok(Value::Object(object))
+}
+
+/// A tree as its `toTable()` shape, `{ [root] = { files, subdirs } }`, each file as
+/// [`file_object`].
+fn tree_object(tree: &DisplayTree) -> Result<Value> {
+    let mut object = Map::new();
+    for (name, node) in tree {
+        object.insert(name.to_string_lossy().into_owned(), node_object(node)?);
+    }
+    Ok(Value::Object(object))
+}
+
+fn node_object(node: &DirectoryNode) -> Result<Value> {
+    let files = node.files.iter().map(file_object).collect::<Result<_>>()?;
+    let mut object = Map::new();
+    object.insert("files".to_owned(), Value::Array(files));
+    object.insert("subdirs".to_owned(), tree_object(&node.subdirs)?);
+    Ok(Value::Object(object))
 }
 
 fn table(frame: &Frame<'_>, view: ValueView<'_>, depth: usize) -> Result<Value> {
