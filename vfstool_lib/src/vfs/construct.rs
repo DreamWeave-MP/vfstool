@@ -38,6 +38,11 @@ impl VFS {
     /// Construction is best-effort but the returned VFS is always materializable: unreadable
     /// traversal entries, archives that cannot be resolved or opened, unsafe keys, and keys that
     /// would create file/directory materialization conflicts are skipped.
+    // Without an archive feature there is nothing to do with the archive list.
+    #[cfg_attr(
+        not(any(feature = "beth-archives", feature = "zip")),
+        allow(clippy::needless_pass_by_value)
+    )]
     pub fn from_directories(
         search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         #[cfg_attr(
@@ -84,6 +89,11 @@ impl VFS {
     ///
     /// Construction is best-effort. Invalid/unreadable inputs are skipped; the returned VFS and
     /// derived conflict index describe the valid provider set that was actually accepted.
+    // Without an archive feature there is nothing to do with the archive list.
+    #[cfg_attr(
+        not(any(feature = "beth-archives", feature = "zip")),
+        allow(clippy::needless_pass_by_value)
+    )]
     pub fn from_directories_with_conflict_index(
         search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         #[cfg_attr(
@@ -123,6 +133,11 @@ impl VFS {
     ///
     /// Construction is best-effort. Invalid/unreadable inputs are skipped; the returned layer index
     /// describes the valid provider set that was actually accepted.
+    // Without an archive feature there is nothing to do with the archive list.
+    #[cfg_attr(
+        not(any(feature = "beth-archives", feature = "zip")),
+        allow(clippy::needless_pass_by_value)
+    )]
     pub fn from_directories_with_layer_index(
         search_dirs: impl IntoIterator<Item = impl AsRef<Path> + Sync>,
         #[cfg_attr(
