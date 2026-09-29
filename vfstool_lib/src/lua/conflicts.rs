@@ -50,8 +50,9 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
                         let row = Options::read(frame, row, &context, |o| {
                             let source =
                                 o.required_bytes("source", |source| Ok(host_path(source)))?;
+                            let files_path = format!("{}.files", o.context());
                             let files = o.required_table("files", |frame, files| {
-                                paths_from_table(frame, &files, "files")
+                                paths_from_table(frame, &files, &files_path)
                             })?;
                             Ok((source, files))
                         })?;

@@ -355,7 +355,8 @@ fn option_tables_are_strict_and_sizes_are_integers() {
         .to_string();
     assert!(error.contains("unknown source kind 'weird'"), "{error}");
     // Type errors name the argument slot the way l3i's own conversions do, and an element reached
-    // through a path names the path (`dirs[1]`, `files: files[1]` under the option's key).
+    // through a path names the path in full (`dirs[1]`, `fromFileLists[1].files[1]`), and a nested
+    // reader's context is one segment per level.
     runtime
         .exec(
             r"
@@ -366,15 +367,17 @@ fn option_tables_are_strict_and_sizes_are_integers() {
             ok, err = pcall(vfstool.VFS.fromDirectories, { dir }, { archives = 'a.bsa' })
             assert(not ok and err:find('archives', 1, true) and err:find('expected table, got string', 1, true), err)
             ok, err = pcall(vfstool.VFS.fromDirectories, { dir }, { archives = { 1 } })
-            assert(not ok and err:find('VFS.fromDirectories.archives: archives[1]: expected a string, got number', 1, true), err)
+            assert(not ok and err:find('VFS.fromDirectories.archives[1]: expected a string, got number', 1, true), err)
             ok, err = pcall(vfstool.VfsProvider.new, { path = 42, kind = 'looseDir' }, vfstool.VfsFile.from(dir))
             assert(not ok and err:find('path', 1, true) and err:find('expected string, got number', 1, true), err)
             ok, err = pcall(vfstool.LayerIndex.fromFileLists, { { source = { path = dir, kind = 'looseDir' }, files = 'nope' } })
             assert(not ok and err:find('fromFileLists[1]', 1, true) and err:find('files', 1, true) and err:find('expected table, got string', 1, true), err)
             ok, err = pcall(vfstool.ConflictIndex.fromFileLists, { { source = dir, files = { 1 } } })
-            assert(not ok and err:find('fromFileLists[1].files: files[1]: expected a string, got number', 1, true), err)
+            assert(not ok and err:find('ConflictIndex.fromFileLists[1].files[1]: expected a string, got number', 1, true), err)
+            ok, err = pcall(vfstool.LayerIndex.fromFileLists, { { source = { path = dir, kind = 'looseDir' }, files = { 1 } } })
+            assert(not ok and err:find('LayerIndex.fromFileLists[1].files[1]: expected a string, got number', 1, true), err)
             ok, err = pcall(vfstool.LayerIndex.fromFileLists, { { source = { path = dir }, files = {} } })
-            assert(not ok and err:find([[LayerIndex.fromFileLists[1].source: source: missing required option 'kind']], 1, true), err)
+            assert(not ok and err:find([[LayerIndex.fromFileLists[1].source: missing required option 'kind']], 1, true), err)
             ok, err = pcall(vfstool.LayerIndex.fromFileLists, 'rows')
             assert(not ok and err:find('expected table, got string', 1, true), err)
             ",

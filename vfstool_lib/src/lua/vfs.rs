@@ -39,8 +39,9 @@ fn archive_list(
         return Ok(None);
     };
     Options::read(scope, options, context, |o| {
+        let archives_path = format!("{}.archives", o.context());
         o.optional_table("archives", |frame, archives| {
-            let paths = paths_from_table(frame, &archives, "archives")?;
+            let paths = paths_from_table(frame, &archives, &archives_path)?;
             Ok(paths
                 .iter()
                 .map(|path| path.to_string_lossy().into_owned())

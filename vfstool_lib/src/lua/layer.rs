@@ -56,11 +56,13 @@ pub(super) fn class_table(runtime: &l3i::Runtime) -> Result<Table> {
                     sources_table.for_each_array(frame, |frame, index, row| {
                         let context = format!("LayerIndex.fromFileLists[{index}]");
                         let row = Options::read(frame, row, &context, |o| {
+                            let source_path = format!("{}.source", o.context());
                             let source = o.required_table("source", |frame, source| {
-                                source_meta(frame, source.value(), "source")
+                                source_meta(frame, source.value(), &source_path)
                             })?;
+                            let files_path = format!("{}.files", o.context());
                             let files = o.required_table("files", |frame, files| {
-                                paths_from_table(frame, &files, "files")
+                                paths_from_table(frame, &files, &files_path)
                             })?;
                             Ok((source, files))
                         })?;

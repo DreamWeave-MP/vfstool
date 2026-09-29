@@ -371,8 +371,9 @@ pub(crate) fn paths_from_array(
 }
 
 /// The array of byte strings in `table`, as host paths, walked one element at a time. `path`
-/// names the table in an element's type error (`files[2]: expected a string, got number`); an
-/// option reader wraps that under its own key, the binder's `scan.dirs: dirs[2]` form.
+/// names the table in an element's type error (`dirs[2]: expected a string, got number`); under
+/// an option reader it is the field's full path (`format!("{}.files", o.context())`), so the
+/// reader adds nothing and the error reads `LayerIndex.fromFileLists[1].files[2]: ...`.
 pub(crate) fn paths_from_table(
     frame: &Frame<'_>,
     table: &TableView<'_>,
