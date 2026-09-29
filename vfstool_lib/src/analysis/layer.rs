@@ -71,9 +71,8 @@ impl LayerIndex {
 
     /// Returns source indices that provide `path`, in load order.
     pub fn sources_containing<K: VfsKeyInput + ?Sized>(&self, path: &K) -> &[usize] {
-        let normalized = NormalizedKey::from(path.to_vfs_key());
         self.path_to_sources
-            .get(&normalized)
+            .get(path.vfs_key_bytes().as_ref())
             .map_or(&[], Vec::as_slice)
     }
 

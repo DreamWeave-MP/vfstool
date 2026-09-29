@@ -214,9 +214,8 @@ impl VFS {
         &self,
         key: &K,
     ) -> Option<impl ExactSizeIterator + DoubleEndedIterator<Item = &VfsProvider>> {
-        let key = key.to_vfs_key();
         self.providers
-            .get(&key)
+            .get(key.vfs_key_bytes().as_ref())
             .map(|providers| providers.iter().map(|entry| &entry.provider))
     }
 
@@ -277,7 +276,9 @@ impl VFS {
         prefix: &K,
     ) -> Vec<(NormalizedPath, VfsProvider)> {
         let prefix = prefix.to_vfs_key();
-        self.remove_matching_provider(|key, _| key_is_at_or_under_prefix(key, &prefix))
+        self.remove_matching_provider(|key, _| {
+            key_is_at_or_under_prefix(key.as_bytes(), prefix.as_bytes())
+        })
     }
 
     /// Remove resolved winners under `prefix`, discarding all lower-priority providers too.
@@ -289,7 +290,7 @@ impl VFS {
         let keys = self
             .providers
             .keys()
-            .filter(|key| key_is_at_or_under_prefix(key, &prefix))
+            .filter(|key| key_is_at_or_under_prefix(key.as_bytes(), prefix.as_bytes()))
             .cloned()
             .collect::<Vec<_>>();
         self.remove_resolved_keys(keys)

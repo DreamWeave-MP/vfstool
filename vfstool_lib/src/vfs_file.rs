@@ -329,4 +329,20 @@ impl VfsFile {
             FileType::Archive(archive_ref) => &archive_ref.path,
         }
     }
+
+    /// Returns the exact bytes of the file's path: the host path's encoded bytes for a loose
+    /// file, the in-archive entry name as stored for an archive entry.
+    ///
+    /// Unlike [`VfsFile::path`], which shows an archive entry through a lossy `PathBuf`, this
+    /// never substitutes replacement characters, so a byte-first consumer (the Luau binding,
+    /// an archive writer) sees the name the source actually has.
+    #[must_use]
+    pub fn path_bytes(&self) -> &[u8] {
+        match &self.file {
+            FileType::Loose(path) => path.as_os_str().as_encoded_bytes(),
+
+            #[cfg(any(feature = "beth-archives", feature = "zip"))]
+            FileType::Archive(archive_ref) => &archive_ref.raw_path,
+        }
+    }
 }

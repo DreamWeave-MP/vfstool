@@ -2,8 +2,9 @@
 use super::{MaybeFile, VFS, VFSTuple};
 use crate::{
     DisplayTree, VfsKeyInput, normalize_host_path,
-    paths::{key_is_at_or_under_prefix, key_to_string_lossy},
+    paths::{fold_needle, key_is_at_or_under_prefix, key_to_string_lossy},
 };
+use dream_path::{bstr::ByteSlice as _, is_normalized_path};
 use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 
@@ -13,8 +14,34 @@ impl VFS {
     /// Already-normalized keys skip path conversion and use their byte key
     /// directly; host paths and strings are normalized before lookup.
     pub fn get_file<P: VfsKeyInput + ?Sized>(&self, path: &P) -> MaybeFile<'_> {
-        let key = path.to_vfs_key();
-        self.file_map.get(&key)
+        self.file_map.get(path.vfs_key_bytes().as_ref())
+    }
+
+    /// Looks up a file by a key that already has the normalized spelling
+    /// ([`dream_path::is_normalized_path`]), with no normalization and no allocation.
+    ///
+    /// This is the lookup a caller uses after normalizing into its own scratch buffer
+    /// ([`dream_path::normalize_path_into`]), so a hot loop over unnormalized input allocates
+    /// nothing. A key that is not normalized is simply not found.
+    #[must_use]
+    pub fn get_file_normalized(&self, key: &[u8]) -> MaybeFile<'_> {
+        debug_assert!(
+            is_normalized_path(key),
+            "get_file_normalized takes a normalized key"
+        );
+        self.file_map.get(key)
+    }
+
+    /// Number of resolved keys in the VFS.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.file_map.len()
+    }
+
+    /// Whether the VFS resolves no keys at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.file_map.is_empty()
     }
 
     /// Search the VFS using a case-insensitive regex pattern.
@@ -75,16 +102,26 @@ impl VFS {
     }
 
     /// Given a substring, return an iterator over all paths that contain it.
+    ///
+    /// The substring is folded like a host path (`\` to `/`, ASCII lowercase) and matched
+    /// against the normalized key bytes.
     pub fn paths_matching<S: AsRef<str>>(
         &self,
         substring: S,
     ) -> impl Iterator<Item = VFSTuple<'_>> {
-        let needle = Self::normalize_substring(substring);
-        self.file_map.iter().filter_map(move |(path, file)| {
-            key_to_string_lossy(path)
-                .contains(&needle)
-                .then_some((path, file))
-        })
+        let needle = fold_needle(substring.as_ref().as_bytes()).into_owned();
+        self.file_map
+            .iter()
+            .filter(move |(path, _)| path.as_bytes().contains_str(&needle))
+    }
+
+    /// [`VFS::paths_matching`] over raw bytes: the needle may be any byte string, and keys are
+    /// compared byte for byte, so a key that is not UTF-8 matches exactly.
+    pub fn paths_matching_bytes(&self, substring: &[u8]) -> impl Iterator<Item = VFSTuple<'_>> {
+        let needle = fold_needle(substring).into_owned();
+        self.file_map
+            .iter()
+            .filter(move |(path, _)| path.as_bytes().contains_str(&needle))
     }
 
     /// Given a substring, return a parallel iterator over all paths that contain it.
@@ -92,12 +129,10 @@ impl VFS {
         &self,
         substring: S,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
-        let needle = Self::normalize_substring(substring);
-        self.file_map.par_iter().filter_map(move |(path, file)| {
-            key_to_string_lossy(path)
-                .contains(&needle)
-                .then_some((path, file))
-        })
+        let needle = fold_needle(substring.as_ref().as_bytes()).into_owned();
+        self.file_map
+            .par_iter()
+            .filter(move |(path, _)| path.as_bytes().contains_str(&needle))
     }
 
     /// Given a path prefix to a location in the VFS, return an iterator to *all* of its contents.
@@ -108,10 +143,10 @@ impl VFS {
         &self,
         prefix: &P,
     ) -> impl Iterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = prefix.to_vfs_key();
-        self.file_map.iter().filter_map(move |(path, file)| {
-            key_is_at_or_under_prefix(path, &normalized_prefix).then_some((path, file))
-        })
+        let normalized_prefix = prefix.vfs_key_bytes().into_owned();
+        self.file_map
+            .iter()
+            .filter(move |(path, _)| key_is_at_or_under_prefix(path.as_bytes(), &normalized_prefix))
     }
 
     /// Given a path prefix to a location in the VFS, return a parallel iterator to *all* of its contents.
@@ -121,16 +156,10 @@ impl VFS {
         &self,
         prefix: &P,
     ) -> impl ParallelIterator<Item = VFSTuple<'_>> {
-        let normalized_prefix = prefix.to_vfs_key();
-        self.file_map.par_iter().filter_map(move |(path, file)| {
-            key_is_at_or_under_prefix(path, &normalized_prefix).then_some((path, file))
-        })
-    }
-
-    fn normalize_substring<S: AsRef<str>>(s: S) -> String {
-        normalize_host_path(s.as_ref())
-            .to_string_lossy()
-            .into_owned()
+        let normalized_prefix = prefix.vfs_key_bytes().into_owned();
+        self.file_map
+            .par_iter()
+            .filter(move |(path, _)| key_is_at_or_under_prefix(path.as_bytes(), &normalized_prefix))
     }
 
     /// Returns `true` if the VFS contains a file at `key`.
@@ -140,8 +169,18 @@ impl VFS {
     /// are accepted. Already-normalized keys skip the allocation.
     #[must_use]
     pub fn contains<K: VfsKeyInput + ?Sized>(&self, key: &K) -> bool {
-        let key = key.to_vfs_key();
-        self.file_map.contains_key(&key)
+        self.file_map.contains_key(key.vfs_key_bytes().as_ref())
+    }
+
+    /// [`VFS::contains`] for a key that already has the normalized spelling; see
+    /// [`VFS::get_file_normalized`].
+    #[must_use]
+    pub fn contains_normalized(&self, key: &[u8]) -> bool {
+        debug_assert!(
+            is_normalized_path(key),
+            "contains_normalized takes a normalized key"
+        );
+        self.file_map.contains_key(key)
     }
 }
 

@@ -56,6 +56,12 @@ impl NormalizedKey {
     }
 }
 
+impl std::borrow::Borrow<[u8]> for NormalizedKey {
+    fn borrow(&self) -> &[u8] {
+        self.0.as_bytes()
+    }
+}
+
 impl From<NormalizedPath> for NormalizedKey {
     fn from(value: NormalizedPath) -> Self {
         Self(value)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Path normalization and safety helpers shared across VFS modules.
 
-use dream_path::NormalizedPath;
+use dream_path::{NormalizedPath, is_normalized_path, normalize_path};
 use std::{
     borrow::Cow,
     ffi::OsString,
@@ -116,12 +116,29 @@ pub(crate) fn normalized_safe_normalized_bytes(bytes: &[u8]) -> bool {
         .all(|component| component != b"." && component != b"..")
 }
 
+/// Folds a search needle the way host paths are folded: `\` to `/` and ASCII lowercase, with
+/// no separator collapsing, so a substring keeps its shape.
 #[must_use]
-pub(crate) fn key_is_at_or_under_prefix(key: &NormalizedPath, prefix: &NormalizedPath) -> bool {
-    let key = key.as_bytes();
+pub(crate) fn fold_needle(needle: &[u8]) -> Cow<'_, [u8]> {
+    if !needle.iter().any(|&b| b == b'\\' || b.is_ascii_uppercase()) {
+        return Cow::Borrowed(needle);
+    }
+    Cow::Owned(
+        needle
+            .iter()
+            .map(|&byte| match byte {
+                b'\\' => b'/',
+                b'A'..=b'Z' => byte + 32,
+                _ => byte,
+            })
+            .collect(),
+    )
+}
+
+#[must_use]
+pub(crate) fn key_is_at_or_under_prefix(key: &[u8], mut prefix: &[u8]) -> bool {
     // A directory prefix may be written with trailing separators (`meshes/`); they name the
     // same directory as `meshes`. Normalization already turned `\` into `/`.
-    let mut prefix = prefix.as_bytes();
     while let Some(trimmed) = prefix.strip_suffix(b"/") {
         prefix = trimmed;
     }
@@ -178,6 +195,7 @@ mod sealed {
     impl Sealed for PathBuf {}
     impl Sealed for str {}
     impl Sealed for String {}
+    impl Sealed for [u8] {}
 }
 
 /// Input that can be normalized into a byte-first VFS key.
@@ -187,6 +205,14 @@ mod sealed {
 pub trait VfsKeyInput: sealed::Sealed {
     /// Normalize this value into an owned VFS key.
     fn to_vfs_key(&self) -> NormalizedPath;
+
+    /// The normalized key bytes, borrowed when this value already has the normalized spelling.
+    ///
+    /// Lookups use this so a key that is already normalized (a `NormalizedPath`, or a string a
+    /// script or an index already spelled `textures/foo.dds`) costs no allocation.
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Owned(self.to_vfs_key().into())
+    }
 
     /// Normalize this value into an owned VFS key if it is safe to materialize.
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
@@ -200,6 +226,10 @@ impl<T: VfsKeyInput + ?Sized> VfsKeyInput for &T {
         (*self).to_vfs_key()
     }
 
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        (*self).vfs_key_bytes()
+    }
+
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
         (*self).to_safe_vfs_key()
     }
@@ -209,11 +239,28 @@ impl VfsKeyInput for NormalizedPath {
     fn to_vfs_key(&self) -> NormalizedPath {
         self.clone()
     }
+
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        Cow::Borrowed(self.as_bytes())
+    }
+}
+
+/// Borrows `bytes` when they already have the normalized spelling, normalizes them otherwise.
+fn key_bytes_of(bytes: &[u8]) -> Cow<'_, [u8]> {
+    if is_normalized_path(bytes) {
+        Cow::Borrowed(bytes)
+    } else {
+        Cow::Owned(normalize_path(bytes))
+    }
 }
 
 impl VfsKeyInput for Path {
     fn to_vfs_key(&self) -> NormalizedPath {
         NormalizedPath::new(self.as_os_str().as_encoded_bytes())
+    }
+
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        key_bytes_of(self.as_os_str().as_encoded_bytes())
     }
 
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
@@ -226,6 +273,10 @@ impl VfsKeyInput for PathBuf {
         self.as_path().to_vfs_key()
     }
 
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        self.as_path().vfs_key_bytes()
+    }
+
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
         self.as_path().to_safe_vfs_key()
     }
@@ -234,6 +285,10 @@ impl VfsKeyInput for PathBuf {
 impl VfsKeyInput for str {
     fn to_vfs_key(&self) -> NormalizedPath {
         NormalizedPath::new(self.as_bytes())
+    }
+
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        key_bytes_of(self.as_bytes())
     }
 
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
@@ -246,8 +301,28 @@ impl VfsKeyInput for String {
         self.as_str().to_vfs_key()
     }
 
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        self.as_str().vfs_key_bytes()
+    }
+
     fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
         self.as_str().to_safe_vfs_key()
+    }
+}
+
+/// Raw key bytes in any spelling: what a Luau string or an archive entry name is. No UTF-8 is
+/// required anywhere in the VFS key contract.
+impl VfsKeyInput for [u8] {
+    fn to_vfs_key(&self) -> NormalizedPath {
+        NormalizedPath::new(self)
+    }
+
+    fn vfs_key_bytes(&self) -> Cow<'_, [u8]> {
+        key_bytes_of(self)
+    }
+
+    fn to_safe_vfs_key(&self) -> Option<NormalizedPath> {
+        normalized_safe_key_bytes(self)
     }
 }
 
