@@ -128,9 +128,10 @@ normalized already; entries whose keys are unsafe are dropped, and so are new ke
 with what the VFS already had. Two entries with the same key both go on the stack, the later one
 winning. When nothing is added, no source is added either.
 
-Collisions are checked against the VFS as it was before the batch, not between entries of the
-batch: a batch holding both `a` and `a/b.txt` adds both. `push_directory` and `push_archive` go
-through this method and share this.
+Entries are added in order, each checked against the VFS and the entries before it: of a batch
+holding both `a` and `a/b.txt`, the first is added and the second dropped. `push_directory` and
+`push_archive` go through this method; `push_directory` sorts a directory's files by key first, as
+`from_directories` does, so both keep the same one of a file and a directory with one name.
 
 `push_directory` and `push_archive`, which add a whole directory or archive as one source, are
 under [Building one](@/docs/api/vfs.md#building-one).

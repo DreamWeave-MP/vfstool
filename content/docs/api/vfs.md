@@ -64,8 +64,7 @@ Two rules hold for the keys of every `VFS`:
 - **Every key can be written under a directory**: relative, not empty, no `.` or `..` component,
   no drive prefix, no NUL byte. Input that would break this is skipped or refused.
 - **No key is both a file and a directory**: `meshes/door.nif` and `meshes/door.nif/x.nif` are
-  never both present. Whichever arrives second is skipped or refused. One method can break this
-  today; see [Known issues](#known-issues).
+  never both present. Whichever arrives second is skipped or refused.
 
 ## Building one
 
@@ -317,9 +316,3 @@ data directory holding `Morrowind.esm` and `Meshes/X/Door.NIF`:
 ├── x/
 │   ├── Door.NIF
 ```
-
-## Known issues
-
-`push_provider_batch` checks its entries against the VFS as it was, not against each other, so a
-batch can leave a VFS with a file and a directory under one name; see
-[Adding](@/docs/api/mutation.md#adding).

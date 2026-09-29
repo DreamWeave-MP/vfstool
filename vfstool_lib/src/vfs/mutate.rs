@@ -84,9 +84,10 @@ impl VFS {
 
     /// Insert a batch of providers that share one source identity.
     ///
-    /// This is the bulk form of [`Self::push_provider`]: all entries are inserted first, winners are
-    /// refreshed for touched keys, and [`LayerIndex`](crate::LayerIndex) is rebuilt once. Rebuilding
-    /// per file is not a feature, it is just a tiny denial-of-service attack against your own CPU.
+    /// This is the bulk form of [`Self::push_provider`]: entries are inserted in order, each checked
+    /// against the VFS and the entries before it, so of a file and a directory with one name the
+    /// first is kept, and [`LayerIndex`](crate::LayerIndex) is rebuilt once. Rebuilding per file is
+    /// not a feature, it is just a tiny denial-of-service attack against your own CPU.
     #[must_use]
     pub fn push_provider_batch(
         &mut self,
@@ -102,7 +103,6 @@ impl VFS {
         }
 
         let source_index = self.push_source(source.clone());
-        let mut touched = Vec::new();
         let mut inserted = 0;
         for (key, file) in entries {
             if !self.file_map.contains_key(&key) && self.key_has_materialization_conflict(&key) {
@@ -118,11 +118,9 @@ impl VFS {
                     },
                 },
             );
-            touched.push(key);
+            // At once, so the entries after this one are checked against it too.
+            self.refresh_winner(&key);
             inserted += 1;
-        }
-        for key in &touched {
-            self.refresh_winner(key);
         }
         if inserted > 0 {
             self.rebuild_layer_index();
@@ -202,6 +200,14 @@ impl VFS {
                 },
             ));
         }
+        // In the order `from_directories` adds a directory's files, so the same one of a file and
+        // a directory with one name is kept.
+        providers.sort_by(|(left_key, left), (right_key, right)| {
+            left_key
+                .as_bytes()
+                .cmp(right_key.as_bytes())
+                .then_with(|| left.file.path().cmp(right.file.path()))
+        });
 
         Ok(providers)
     }

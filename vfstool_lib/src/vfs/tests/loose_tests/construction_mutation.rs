@@ -125,6 +125,44 @@ fn push_provider_batch_groups_entries_under_one_source() {
 }
 
 #[test]
+fn push_provider_batch_checks_its_entries_against_each_other() {
+    let mut vfs = VFS::new();
+    let source = SourceMeta {
+        path: PathBuf::from("/x"),
+        kind: crate::SourceKind::LooseDir,
+    };
+
+    let inserted = vfs.push_provider_batch(
+        &source,
+        [
+            (NormalizedPath::new(b"a"), VfsFile::from("/x/A")),
+            (NormalizedPath::new(b"a/b.txt"), VfsFile::from("/x/a/b.txt")),
+        ],
+    );
+
+    assert_eq!(inserted, 1);
+    assert!(vfs.get_file("a").is_some());
+    assert!(vfs.get_file("a/b.txt").is_none());
+}
+
+#[test]
+#[cfg(unix)]
+fn push_directory_keeps_the_key_from_directories_keeps() {
+    let dir = TempDir::new("vfsloose_push_directory_collision");
+    dir.write("A", b"file");
+    dir.write("a/b.txt", b"nested");
+
+    let built = VFS::from_directories([dir.path()], None);
+    let mut pushed = VFS::new();
+    pushed.push_directory(dir.path()).unwrap();
+
+    for vfs in [&built, &pushed] {
+        assert!(vfs.get_file("a").is_some());
+        assert!(vfs.get_file("a/b.txt").is_none());
+    }
+}
+
+#[test]
 fn push_provider_batch_rejects_unsafe_normalized_keys() {
     let dir = TempDir::new("vfsloose_batch_provider_unsafe");
     let unsafe_file = dir.write("unsafe.txt", b"unsafe");
