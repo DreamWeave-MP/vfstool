@@ -72,6 +72,7 @@ is a whole argument; `--data={}` is passed as it is.
 | The command exits with a nonzero code | Nothing is captured; vfstool exits with the same code |
 | The command cannot be started | Exit 9 |
 | The command is ended by a signal | Nothing is captured; exit 9 |
+| Ctrl+C | The command gets it too, since it shares the terminal. Nothing is captured, even if the command ignores it and succeeds; exit 9, or the command's own nonzero exit code. Pressed while the VFS is being written, the command is not started |
 
 The merged folder is deleted in each case once it exists, unless `--keep-merged` is given.
 

@@ -4,6 +4,10 @@ use std::{
     fs,
     io::{self, Result},
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use vfstool_lib::{
@@ -596,9 +600,9 @@ pub struct RunParams<'a> {
     working_dir: &'a Option<PathBuf>,
 }
 
-fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) -> Result<()> {
+fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: &RunParams<'_>) -> Result<()> {
     let cfg = load_openmw_config(resolved_config_dir);
-    let data_local: PathBuf = params.output.unwrap_or_else(|| {
+    let data_local: PathBuf = params.output.clone().unwrap_or_else(|| {
         if let Some(dir) = cfg.data_local() {
             dir.parsed().to_path_buf()
         } else {
@@ -610,7 +614,7 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
         }
     });
 
-    let merged = params.merged_dir;
+    let merged = &params.merged_dir;
     if merged
         .read_dir()
         .is_ok_and(|mut entries| entries.next().is_some())
@@ -622,66 +626,14 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
         );
         std::process::exit(VFSToolExitCode::InvalidInput.into());
     }
+    let interrupted = watch_for_ctrl_c()?;
     let (inner_result, subprocess_status) =
-        (|| -> (Result<()>, Option<std::process::ExitStatus>) {
-            eprintln!("Dumping VFS to {}...", merged.display());
-            let (count, baseline) = match run_setup_tracked(vfs, &merged, !params.copy) {
-                Ok(r) => r,
-                Err(e) => return (Err(e), None),
-            };
-            eprintln!("Dumped {count} files.");
-
-            let substituted: Vec<String> = params
-                .command
-                .iter()
-                .map(|arg| {
-                    if arg == "{}" {
-                        merged.to_string_lossy().into_owned()
-                    } else {
-                        arg.clone()
-                    }
-                })
-                .collect();
-
-            let mut cmd = std::process::Command::new(&substituted[0]);
-            cmd.args(&substituted[1..]);
-            if let Some(dir) = params.working_dir {
-                cmd.current_dir(dir);
-            }
-            let status = match cmd.status() {
-                Ok(s) => s,
-                Err(e) => return (Err(e), None),
-            };
-
-            if !status.success() {
-                eprintln!("vfstool: subprocess exited with {status}, not capturing files.");
-                return (Ok(()), Some(status));
-            }
-
-            let copied = match run_finalize_tracked(&merged, &baseline, &data_local) {
-                Ok(c) => c,
-                Err(e) => return (Err(e), Some(status)),
-            };
-
-            if copied.is_empty() {
-                eprintln!("No files changed.");
-            } else {
-                eprintln!(
-                    "Capturing {} changed file(s) to {}...",
-                    copied.len(),
-                    data_local.display()
-                );
-                for (rel, dest) in &copied {
-                    println!("{} -> {}", rel.display(), dest.display());
-                }
-            }
-            (Ok(()), Some(status))
-        })();
+        dump_run_and_capture(vfs, params, &data_local, &interrupted);
 
     let cleanup_result = if params.keep_merged {
         Ok(())
     } else {
-        fs::remove_dir_all(&merged).map_err(|e| {
+        fs::remove_dir_all(merged).map_err(|e| {
             io::Error::new(
                 e.kind(),
                 format!("failed to remove merged dir '{}': {e}", merged.display()),
@@ -702,6 +654,95 @@ fn handle_run(vfs: &VFS, resolved_config_dir: PathBuf, params: RunParams<'_>) ->
             .and_then(|s| s.code())
             .unwrap_or(VFSToolExitCode::RuntimeFailure.into()),
     );
+}
+
+/// Ctrl+C reaches the whole foreground process group: the command gets it and stops, and vfstool,
+/// instead of dying with it and leaving the merged folder behind, notes it and captures nothing.
+fn watch_for_ctrl_c() -> Result<Arc<AtomicBool>> {
+    let interrupted = Arc::new(AtomicBool::new(false));
+    let handler_flag = Arc::clone(&interrupted);
+    ctrlc::set_handler(move || handler_flag.store(true, Ordering::SeqCst))
+        .map_err(|e| io::Error::other(format!("failed to install the Ctrl+C handler: {e}")))?;
+    Ok(interrupted)
+}
+
+/// Dumps the VFS into the merged folder, runs the command on it, and captures what it changed,
+/// stopping at the first failure or once Ctrl+C was pressed. The status is the command's, once it
+/// ran; the caller removes the merged folder either way.
+fn dump_run_and_capture(
+    vfs: &VFS,
+    params: &RunParams<'_>,
+    data_local: &Path,
+    interrupted: &AtomicBool,
+) -> (Result<()>, Option<std::process::ExitStatus>) {
+    let merged = &params.merged_dir;
+    let was_interrupted = |stage: &str| {
+        interrupted.load(Ordering::SeqCst).then(|| {
+            io::Error::new(
+                io::ErrorKind::Interrupted,
+                format!("interrupted {stage}, not capturing files"),
+            )
+        })
+    };
+
+    eprintln!("Dumping VFS to {}...", merged.display());
+    let (count, baseline) = match run_setup_tracked(vfs, merged, !params.copy) {
+        Ok(r) => r,
+        Err(e) => return (Err(e), None),
+    };
+    eprintln!("Dumped {count} files.");
+    if let Some(err) = was_interrupted("before the command started") {
+        return (Err(err), None);
+    }
+
+    let substituted: Vec<String> = params
+        .command
+        .iter()
+        .map(|arg| {
+            if arg == "{}" {
+                merged.to_string_lossy().into_owned()
+            } else {
+                arg.clone()
+            }
+        })
+        .collect();
+
+    let mut cmd = std::process::Command::new(&substituted[0]);
+    cmd.args(&substituted[1..]);
+    if let Some(dir) = params.working_dir {
+        cmd.current_dir(dir);
+    }
+    let status = match cmd.status() {
+        Ok(s) => s,
+        Err(e) => return (Err(e), None),
+    };
+
+    if !status.success() {
+        eprintln!("vfstool: subprocess exited with {status}, not capturing files.");
+        return (Ok(()), Some(status));
+    }
+    if let Some(err) = was_interrupted("while the command ran") {
+        return (Err(err), Some(status));
+    }
+
+    let copied = match run_finalize_tracked(merged, &baseline, data_local) {
+        Ok(c) => c,
+        Err(e) => return (Err(e), Some(status)),
+    };
+
+    if copied.is_empty() {
+        eprintln!("No files changed.");
+    } else {
+        eprintln!(
+            "Capturing {} changed file(s) to {}...",
+            copied.len(),
+            data_local.display()
+        );
+        for (rel, dest) in &copied {
+            println!("{} -> {}", rel.display(), dest.display());
+        }
+    }
+    (Ok(()), Some(status))
 }
 
 fn handle_conflicts(
@@ -854,7 +895,7 @@ fn run_core_vfs_command(
             handle_run(
                 vfs,
                 resolved_config_dir,
-                RunParams {
+                &RunParams {
                     merged_dir,
                     command: &command,
                     keep_merged,

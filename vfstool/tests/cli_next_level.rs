@@ -828,3 +828,51 @@ fn run_passes_through_child_exit_code() {
 
     assert_eq!(output.status.code(), Some(42));
 }
+
+#[test]
+#[cfg(unix)]
+fn run_interrupted_with_ctrl_c_removes_merged_dir_and_captures_nothing() {
+    use std::{
+        io::{BufRead, BufReader},
+        os::unix::process::CommandExt,
+        process::Stdio,
+    };
+
+    let fixture = Fixture::new("run_interrupted");
+    let merged = fixture.path("merged");
+    let mut run = Command::new(vfstool_bin())
+        .arg("--config")
+        .arg(&fixture.config_dir)
+        .args(["run", "--copy"])
+        .arg(&merged)
+        .args([
+            "--",
+            "sh",
+            "-c",
+            "printf lost > \"$1/generated.txt\"; echo started; sleep 10",
+            "sh",
+            "{}",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .expect("vfstool command should spawn");
+
+    let mut line = String::new();
+    BufReader::new(run.stdout.take().expect("stdout is piped"))
+        .read_line(&mut line)
+        .expect("the child should start");
+    assert_eq!(line.trim(), "started");
+    // Ctrl+C at a terminal signals the whole foreground process group.
+    let kill = Command::new("kill")
+        .args(["-INT", "--", &format!("-{}", run.id())])
+        .status()
+        .expect("kill should run");
+    assert!(kill.success());
+
+    let status = run.wait().expect("vfstool should exit");
+    assert_eq!(status.code(), Some(9));
+    assert!(!merged.exists(), "the merged folder should be removed");
+    assert!(!fixture.data_local.join("generated.txt").exists());
+}
