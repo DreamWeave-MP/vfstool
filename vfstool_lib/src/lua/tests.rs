@@ -102,6 +102,7 @@ fn the_plan_tags_the_hot_types_only_and_requires_dream_path() {
     assert!(error.contains("requires 'dream.path'"), "{error}");
 }
 
+#[cfg(feature = "luau-analysis")]
 #[test]
 fn the_declared_types_check_and_a_strict_script_type_checks() {
     let plan = plan();
@@ -179,6 +180,7 @@ fn the_declared_types_check_and_a_strict_script_type_checks() {
 }
 
 /// Type checks `script` in strict mode against the plan's definitions and module stubs.
+#[cfg(feature = "luau-analysis")]
 fn check_strict_script(plan: &Rc<RuntimePlan>, script: &str) {
     use l3i::analysis::{
         Analysis, AnalysisOptions, Definitions, Mode, ModuleConfig, SourceCode, SourceProvider,

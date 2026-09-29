@@ -27,8 +27,6 @@ walkdir = "2.5.0"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-# The definitions gate (`RuntimePlan::check_definitions`) needs Luau's analysis frontend.
-l3i = { version = "0.1", path = "../../dream-binder", features = ["analysis"] }
 
 [features]
 default = []
@@ -36,6 +34,10 @@ beth-archives = ["dep:dream_archive"]
 zip = ["dep:zip"]
 serialize = ["dep:serde", "dep:serde_json", "dep:serde_yaml", "dep:toml"]
 lua = ["dep:l3i", "dream-path/lua"]
+# The definitions gate (`RuntimePlan::check_definitions`) needs Luau's analysis frontend. Cargo
+# has no optional dev-dependencies, so the typed tests build behind this feature
+# (`cargo test -p vfstool_lib --features luau-analysis`) and a plain `--features lua` run skips them.
+luau-analysis = ["lua", "l3i/analysis"]
 
 [package.metadata.docs.rs]
 features = ["beth-archives", "zip", "serialize", "lua"]

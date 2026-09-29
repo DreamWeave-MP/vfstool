@@ -31,7 +31,8 @@ vfstool_lib = { version = "0.11", features = ["lua"] }
 
 A host that built a `VFS` in Rust hands it to scripts with `vfstool_lib::lua::Vfs::push`. The
 plan's `type_definitions()` is the `.d.luau` for the whole composition, and the crate's tests
-type check a strict script against it, so the declared API and the runtime cannot drift apart.
+type check a strict script against it (behind the `luau-analysis` feature, which builds Luau's
+analysis frontend), so the declared API and the runtime cannot drift apart.
 
 ## Scope
 
