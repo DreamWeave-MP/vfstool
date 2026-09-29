@@ -39,10 +39,7 @@ impl VFS {
                 provider: VfsProvider { source, file },
             },
         );
-        self.file_map.insert(
-            normalized.clone(),
-            self.providers[&normalized][0].provider.file.clone(),
-        );
+        self.refresh_winner(&normalized);
         self.rebuild_layer_index();
         previous
     }

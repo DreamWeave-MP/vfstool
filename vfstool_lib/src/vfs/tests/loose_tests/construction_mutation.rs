@@ -325,6 +325,27 @@ fn set_winner_loose_file_rejects_descendant_under_existing_file() {
 }
 
 #[test]
+fn set_winner_file_rejects_a_file_named_like_a_new_keys_folder() {
+    let mut vfs = VFS::new();
+    assert!(
+        vfs.set_winner_file("a/b.txt", VfsFile::from("/x/b.txt"))
+            .is_none()
+    );
+    vfs.set_winner_file("a", VfsFile::from("/x/a"));
+
+    assert!(vfs.get_file("a/b.txt").is_some());
+    assert!(vfs.get_file("a").is_none(), "a is a folder of a/b.txt");
+    let provider = VfsProvider::new(
+        SourceMeta {
+            path: PathBuf::from("/x"),
+            kind: crate::SourceKind::LooseDir,
+        },
+        VfsFile::from("/x/a"),
+    );
+    assert!(!vfs.push_provider("a", provider));
+}
+
+#[test]
 fn set_winner_loose_file_rejects_child_when_ancestor_exists() {
     let dir = TempDir::new("vfsloose_materialization_plan_non_adjacent_conflict");
     let file = dir.write("file_source", b"a");

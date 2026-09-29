@@ -106,8 +106,8 @@ its own: the archive's path for an archive entry, and the file's parent director
 file. Returns the file that was the winner before.
 
 `None` means either that the key was new or that it was refused, being unsafe or colliding with a
-directory; check `contains(key)` to tell them apart. See the [known issue](@/docs/api/vfs.md#known-issues)
-about new keys and directories.
+file or directory already there; check `contains(key)` to tell them apart. A new key's directories
+are recorded, so a later file by one of their names is refused.
 
 {{ api_signature(value="fn set_winner_loose_file<K: VfsKeyInput + ?Sized, P: AsRef<Path>>(&mut self, key: &K, physical_path: P) -> Option<VfsFile>") }}
 

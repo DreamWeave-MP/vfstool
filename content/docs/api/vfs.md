@@ -64,7 +64,7 @@ Two rules hold for the keys of every `VFS`:
 - **Every key can be written under a directory**: relative, not empty, no `.` or `..` component,
   no drive prefix, no NUL byte. Input that would break this is skipped or refused.
 - **No key is both a file and a directory**: `meshes/door.nif` and `meshes/door.nif/x.nif` are
-  never both present. Whichever arrives second is skipped or refused. Two methods can break this
+  never both present. Whichever arrives second is skipped or refused. One method can break this
   today; see [Known issues](#known-issues).
 
 ## Building one
@@ -323,9 +323,8 @@ data directory holding `Morrowind.esm` and `Meshes/X/Door.NIF`:
 Two kinds of change can leave a VFS with a file and a directory under one name, or make it refuse
 a name that is free:
 
-- `set_winner_file` and `set_winner_loose_file` on a key the VFS does not have yet do not record
-  that key's parent directories, so a later file named like one of them is accepted:
-  `set_winner_file("a/b.txt", …)` followed by `set_winner_file("a", …)` keeps both.
+- `push_provider_batch` checks its entries against the VFS as it was, not against each other; see
+  [Adding](@/docs/api/mutation.md#adding).
 - `remove_resolved_file`, `remove_resolved_prefix` and `remove_resolved_matching_glob` leave the
   removed keys' parent directories recorded, so a file at one of those names is refused afterwards:
   after `remove_resolved_file("a/b.txt")`, `push_provider("a", …)` returns `false`. `remove_winner`
