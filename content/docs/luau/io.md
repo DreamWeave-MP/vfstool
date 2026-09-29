@@ -1,6 +1,6 @@
 +++
 title = "Writing files and host I/O"
-description = "The lua-write feature: a write root, writeFile, openWrite and the Writer, mkdir, remove and rename that stay under it and register what they wrote. The lua-host feature: the host table, files and directories on any host path. The safety rules, and what each costs."
+description = "The lua-write feature: a write root, writeFile, openWrite and the Writer, mkdir, remove and rename that stay under it and register what they wrote. The lua-host feature: the host table, files and directories on any host path. The runtime capabilities that switch each on, the containment rules, and what each costs."
 weight = 35
 
 [extra]
@@ -8,17 +8,58 @@ kind = "api"
 +++
 
 Luau has no `io` library. With the `lua` feature alone, scripts read files through
-[`VfsFile`](@/docs/luau/files.md) and write nothing. Two more Cargo features add writing, each a
-deliberate grant by the host that builds the crate:
+[`VfsFile`](@/docs/luau/files.md) and write nothing. Two more Cargo features add writing, and each
+is switched on per runtime by a capability the host's policy grants:
 
-| Feature | Adds | For |
-|---|---|---|
-| `lua-write` | A write root on the VFS, `vfs:writeFile`, `vfs:openWrite`, `vfs:mkdir`, `vfs:remove`, `vfs:rename`, `vfs:writeRoot`, `vfs:setWriteRoot`, and the `writeRoot` constructor option | Scripts that produce files that belong in the VFS: a generated texture, a patched mesh, a merged plugin |
-| `lua-host` | `vfstool.host`, files and directories on any host path | Tools with the run of the machine, like the command line itself |
+| Feature | Capability | Adds | For |
+|---|---|---|---|
+| `lua-write` | `filesystem.write` | A write root on the VFS, `vfs:writeFile`, `vfs:openWrite`, `vfs:mkdir`, `vfs:remove`, `vfs:rename`, `vfs:writeRoot`, `vfs:setWriteRoot`, and the `writeRoot` constructor option | Scripts that produce files that belong in the VFS: a generated texture, a patched mesh, a merged plugin |
+| `lua-host` | `filesystem.host` | `vfstool.host`, files and directories on any host path | Tools with the run of the machine, like the command line itself |
 
-Both add the `Writer` type. Neither is on by default, and a runtime built without one has none of
-its members: `vfs.writeFile` is `nil`, `vfstool.host` is `nil`, and `writeRoot` is an unknown
-option. The examples run against the [example install](@/docs/luau/module.md#the-example-install).
+Both add the `Writer` type. Neither feature is on by default, and a runtime built without one has
+none of its members: `vfs.writeFile` is `nil`, `vfstool.host` is `nil`, and `writeRoot` is an
+unknown option. The examples run against the [example
+install](@/docs/luau/module.md#the-example-install).
+
+## Capabilities
+
+A Cargo feature decides what the compiled crate can do; the capability decides what one runtime
+may do with it, so the same binary serves a trusted tool and a sandboxed session. The host grants
+them on the plan's policy, by the constants `vfstool_lib::lua::WRITE_CAPABILITY` and
+`HOST_CAPABILITY`:
+
+```rust
+use l3i::extension::{RuntimePlan, RuntimePolicy};
+use vfstool_lib::lua::{HOST_CAPABILITY, VfsExtension, WRITE_CAPABILITY};
+
+let trusted = RuntimePolicy::new().capability(WRITE_CAPABILITY).capability(HOST_CAPABILITY);
+let plan = RuntimePlan::builder()
+    .policy(trusted)
+    .extension(dream_path::lua::PathExtension)
+    .extension(VfsExtension)
+    .finalize()?;
+```
+
+A runtime whose policy grants neither keeps the module's shape, with the features' members in
+place, and refuses at the point where authority would be handed out:
+
+- Without `filesystem.write`, a VFS a script builds never gets a write root. The `writeRoot`
+  option raises `dream.vfs: VFS.fromDirectories.writeRoot requires the 'filesystem.write'
+  capability, which this runtime does not grant`, `vfs:setWriteRoot` raises `dream.vfs:
+  setWriteRoot requires the 'filesystem.write' capability, which this runtime does not grant`, and
+  every write method then fails with the usual `this VFS has no write root`. A VFS the host
+  [hands in from Rust](@/docs/luau/extension.md#vfs) keeps the write root the host set, whatever
+  the runtime grants: the host is trusted, and scripts cannot move that root unless the host lets
+  them (`WriteRootGrant::Scripts`).
+- Without `filesystem.host`, `vfstool.host` is a frozen table with the same fourteen functions,
+  and each one raises `dream.vfs: host.readFile requires the 'filesystem.host' capability, which
+  this runtime does not grant`, naming itself, before it touches a path.
+
+Reads are never gated: `VfsFile`, the readers and every query work in any runtime. The capabilities
+cover the two write surfaces on this page only; the materialization functions on
+[VFS](@/docs/luau/vfs.md) (`collapseInto`, `dumpToDirectory`, `extractFile`) and the [run
+workflow](@/docs/luau/module.md#the-run-workflow) write wherever the process can, as [Embedding
+Luau](@/docs/luau-hosts.md#what-scripts-get) says.
 
 ## Writes into the VFS
 
@@ -33,15 +74,17 @@ option. The examples run against the [example install](@/docs/luau/module.md#the
 Every write goes to `<writeRoot>/<key>`. A VFS without a write root refuses to write:
 `dream.vfs: writeFile: this VFS has no write root (build it with writeRoot, or call
 vfs:setWriteRoot)`. The three `fromDirectories` constructors take it as an option; a VFS built any
-other way gets one from `setWriteRoot`. The directory is created when the first write needs it,
-and need not be one of the VFS's data directories; when it is the highest one, what scripts write
-is exactly what OpenMW would load.
+other way gets one from `setWriteRoot`. Both need the `filesystem.write`
+[capability](#capabilities). The directory is created at once if it is absent, and the VFS keeps
+its canonical path, links resolved, which is what `writeRoot()` returns and what every written
+file's `path()` starts with. It need not be one of the VFS's data directories; when it is the
+highest one, what scripts write is exactly what OpenMW would load.
 
 ```lua
 local vfstool = require("@dream/vfs")
 
 local vfs = vfstool.VFS.fromDirectories({ "Data Files", "mods/Wood Retexture" }, { writeRoot = "out" })
-assert(vfs:writeRoot() == "out")
+assert(vfs:writeRoot():find("/out", 1, true), "the canonical, absolute path of out/")
 local plain = vfstool.VFS.fromDirectories({ "Data Files" })
 assert(plain:writeRoot() == nil)
 local ok, err = pcall(plain.writeFile, plain, "a.txt", "x")
@@ -50,12 +93,29 @@ assert(not ok and err:find("has no write root", 1, true))
 
 ### Keys stay under the root
 
-A key that could leave the write root is refused before anything touches the disk:
-`dream.vfs: writeFile: key '../x' escapes the write root (a key is relative, with no '..', root,
-drive letter or NUL)`. Refused: an empty key, `..` or `.` components, a leading `/` or `\`, a
-drive letter (`C:\x`), a NUL byte. `\` is a separator, as in every key. The file is written under
-the key's own spelling (`Textures/Tx_New.dds` makes `out/Textures/Tx_New.dds`), and registered
-under the normalized key.
+The write root is a containment boundary: `writeFile`, `openWrite`, `mkdir`, `remove` and both
+ends of `rename` resolve their key under it and refuse, before anything touches the disk, a key
+that would reach outside it. Two checks, in order:
+
+1. **Lexically.** `dream.vfs: writeFile: key '../x' escapes the write root (a key is relative,
+   with no '..', root, drive letter or NUL)`. Refused: an empty key, `..` or `.` components, a
+   leading `/` or `\`, a drive letter (`C:\x`), a NUL byte. `\` is a separator, as in every key.
+   The file is written under the key's own spelling (`Textures/Tx_New.dds` makes
+   `out/Textures/Tx_New.dds`), and registered under the normalized key.
+2. **On disk, without following links.** Every existing component from the root down to the
+   target is looked at with `symlink_metadata`, and a symbolic link anywhere on the way is
+   refused, naming it: `dream.vfs: writeFile: 'textures/link' is a symbolic link; the write root
+   does not follow links`. That holds for a link to a directory, a link to a file, the target
+   itself (`remove` will not delete a link either), and a link that points back inside the root.
+   The deepest component that does exist is then canonicalized and must start with the canonical
+   root, or the key is refused as escaping it. Components that do not exist yet are created by
+   the write, as plain directories.
+
+What the root does not defend against: another writer with its own access to the directory,
+racing the check and the write, can put a link in place between the two. That writer already has
+the host's authority over the root, which is outside the sandbox's threat model; the boundary is
+against what a script can do through this API. Hard links are not links to the root: a file that
+is also linked elsewhere is written in place.
 
 `remove` and `rename` only ever touch `<writeRoot>/<key>`: a key whose file is somewhere else in
 the VFS is not theirs, and they say so: `dream.vfs: remove: 'textures/tx_stone.dds' is not under
@@ -85,7 +145,7 @@ local vfstool = require("@dream/vfs")
 
 local vfs = vfstool.VFS.fromDirectories({ "Data Files", "mods/Wood Retexture" }, { writeRoot = "out" })
 local written = vfs:writeFile("textures/tx_wood_01.dds", "painted wood")
-assert(written:path() == "out/textures/tx_wood_01.dds")
+assert(written:path() == vfs:writeRoot() .. "/textures/tx_wood_01.dds")
 assert(vfs:getFile("textures/tx_wood_01.dds"):readAll() == "painted wood")
 assert(#vfs:providersFor("textures/tx_wood_01.dds") == 1)
 
@@ -127,7 +187,7 @@ VFS as it was.
 | `close() -> VfsFile?` | Flushes, closes, makes the file the key's winner and returns it; `nil` from a second `close` and from a `host.openWrite` writer |
 
 A closed writer refuses every method but `tell`: `dream.vfs: Writer.write: the writer over
-out/log.txt is closed`. A writer that is collected without `close` still flushes, and registers
+<writeRoot>/logs/run.txt is closed`. A writer that is collected without `close` still flushes, and registers
 nothing. `tostring(writer)` is `dream.vfs.Writer(<path>)`.
 
 ```lua
@@ -183,7 +243,10 @@ assert(not ok and err:find("is not under the write root", 1, true))
 
 With `lua-host`, a frozen table of functions over host paths: byte strings, exact on Unix,
 converted where the OS insists on Unicode, as everywhere in the module. Nothing here consults or
-changes a VFS.
+changes a VFS, and nothing contains the paths: this is the run of the machine, for a runtime whose
+policy grants the `filesystem.host` [capability](#capabilities). In one that does not, the table
+is there with every function in it, and each raises `dream.vfs: host.<name> requires the
+'filesystem.host' capability, which this runtime does not grant`.
 
 | Function | Does |
 |---|---|

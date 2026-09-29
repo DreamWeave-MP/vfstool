@@ -207,9 +207,9 @@ declare extern type dream_vfs_VFS with
     function materializationPlan(self, dest: string, options: { allowCopying: boolean?, extractArchives: boolean?, useSymlinks: boolean? }?): { actions: { { [string]: string? } }, issues: { { [string]: string? } } }
     function layerIndex(self): dream_vfs_LayerIndex
     function serializeTree(self, relative: boolean?, format: string): string
-    -- The directory writes go under, or nil when this VFS refuses writes.
+    -- The directory writes go under, as the canonical path, or nil when this VFS refuses writes.
     function writeRoot(self): string?
-    -- Makes dir the write root; it is created when the first write needs it.
+    -- Makes dir the write root, created if absent and kept as its canonical path. Needs the filesystem.write capability.
     function setWriteRoot(self, dir: string)
     -- Writes data to <writeRoot>/<key>, creating directories, then makes that file the key's winner and returns it. offset writes in place without truncating; append adds at the end; create = false refuses a file that does not exist.
     function writeFile(self, key: string, data: buffer | string, options: { offset: number?, append: boolean?, create: boolean? }?): dream_vfs_VfsFile
@@ -316,7 +316,7 @@ export type Module__dream_vfs = {
     VfsProvider: { new: (source: { path: string, kind: string }, file: dream_vfs_VfsFile) -> dream_vfs_VfsProvider },
     LayerIndex: { fromFileLists: (sources: { { source: { path: string, kind: string }, files: { string } } }) -> dream_vfs_LayerIndex },
     ConflictIndex: { fromDirectories: (dirs: { string }) -> dream_vfs_ConflictIndex, fromFileLists: (sources: { { source: string, files: { string } } }) -> dream_vfs_ConflictIndex, fromLayerIndex: (layer: dream_vfs_LayerIndex) -> dream_vfs_ConflictIndex },
-    -- Files and directories on host paths, with no VFS in between (the lua-host feature).
+    -- Files and directories on host paths, with no VFS in between (the lua-host feature); every function needs the filesystem.host capability.
     host: { readFile: (path: string) -> buffer, readFileString: (path: string) -> string, readAt: (path: string, offset: number, length: number) -> buffer, writeFile: (path: string, data: buffer | string, options: { append: boolean? }?) -> number, open: (path: string) -> dream_vfs_Reader, openWrite: (path: string, options: { append: boolean?, truncate: boolean? }?) -> dream_vfs_Writer, stat: (path: string) -> { size: number, isFile: boolean, isDir: boolean, modified: number?, readonly: boolean }?, exists: (path: string) -> boolean, list: (path: string, options: { recursive: boolean? }?) -> dream_vfs_HostEntries, mkdir: (path: string, options: { recursive: boolean? }?) -> (), remove: (path: string, options: { recursive: boolean? }?) -> (), rename: (from: string, to: string) -> (), copy: (from: string, to: string) -> number, canonicalize: (path: string) -> string },
 }
 declare vfstool: Module__dream_vfs

@@ -87,8 +87,9 @@ assert(vfs:getFile("textures/tx_extra.dds"):parentArchiveName() == "Extras.zip")
   and `remaining` return a [tree stream](@/docs/luau/views.md#tree). Reports are plain tables,
   described on [Report tables](@/docs/luau/reports.md).
 - **No `io`.** Luau has no `io` library. Scripts read files through `VfsFile`, and write only
-  what the host allowed by building the crate with `lua-write` (into a VFS's write root) or
-  `lua-host` (any host path); [Writing files and host I/O](@/docs/luau/io.md) has both.
+  what the host allowed twice over: by building the crate with `lua-write` (into a VFS's write
+  root) or `lua-host` (any host path), and by granting the runtime the `filesystem.write` or
+  `filesystem.host` capability; [Writing files and host I/O](@/docs/luau/io.md) has both.
 - **Features.** `vfs:pushArchive` exists only when the crate is built with `beth-archives` (BSA
   and BA2) or `zip` (ZIP, and renamed ZIPs: PK3 and JPK); without either, archive lists are
   ignored and an archive is a plain file. `serialize` and `vfs:serializeTree` exist only with
@@ -108,7 +109,7 @@ Signatures on these pages name the module's types by their short names: `VFS`, `
 | `vfstool.VfsProvider` | `new` | [VfsFile and VfsProvider](@/docs/luau/files.md) |
 | `vfstool.LayerIndex` | `fromFileLists` | [LayerIndex, VfsLock and ConflictIndex](@/docs/luau/indexes.md) |
 | `vfstool.ConflictIndex` | `fromDirectories`, `fromFileLists`, `fromLayerIndex` | [LayerIndex, VfsLock and ConflictIndex](@/docs/luau/indexes.md) |
-| `vfstool.host` (with `lua-host`) | `readFile`, `readFileString`, `readAt`, `writeFile`, `open`, `openWrite`, `stat`, `exists`, `list`, `mkdir`, `remove`, `rename`, `copy`, `canonicalize` | [Writing files and host I/O](@/docs/luau/io.md#host-paths) |
+| `vfstool.host` (with `lua-host`, and the `filesystem.host` capability) | `readFile`, `readFileString`, `readAt`, `writeFile`, `open`, `openWrite`, `stat`, `exists`, `list`, `mkdir`, `remove`, `rename`, `copy`, `canonicalize` | [Writing files and host I/O](@/docs/luau/io.md#host-paths) |
 
 ## Paths and globs
 
@@ -355,7 +356,8 @@ Everything else starts with `dream.vfs:`:
 | A negative `readInto` offset | `dream.vfs: negative buffer offset` |
 | A `readAt`, `readRange`, reader or writer argument outside the file, the buffer or the data | `dream.vfs: readAt: fileOffset 1001 past the end (size 1000)` and the other texts on [VfsFile](@/docs/luau/files.md#readat) and [Writer](@/docs/luau/io.md#openwrite-and-the-writer) |
 | A read on a closed reader, a write on a closed writer | `dream.vfs: Reader.read: the reader over <path> is closed` |
-| A write without a write root, a key that escapes it | `dream.vfs: writeFile: this VFS has no write root (build it with writeRoot, or call vfs:setWriteRoot)`, `dream.vfs: writeFile: key '../x' escapes the write root (a key is relative, with no '..', root, drive letter or NUL)` |
+| A write without a write root, a key that escapes it, a key through a symbolic link | `dream.vfs: writeFile: this VFS has no write root (build it with writeRoot, or call vfs:setWriteRoot)`, `dream.vfs: writeFile: key '../x' escapes the write root (a key is relative, with no '..', root, drive letter or NUL)`, `dream.vfs: writeFile: 'textures/link' is a symbolic link; the write root does not follow links` |
+| A capability the runtime does not grant | `dream.vfs: setWriteRoot requires the 'filesystem.write' capability, which this runtime does not grant`, `dream.vfs: VFS.fromDirectories.writeRoot requires the 'filesystem.write' capability, which this runtime does not grant`, `dream.vfs: host.readFile requires the 'filesystem.host' capability, which this runtime does not grant` |
 | An unknown serialization format | `dream.vfs: unknown serialization format 'xml' (expected json, yaml, or toml)` |
 | A value `serialize` cannot write | `dream.vfs: serialize: ` and the reason: `strings must be valid UTF-8`, `cannot serialize a function`, `a boolean cannot be an object key`, `a non-finite number has no representation`, `value nests deeper than 128 levels`, `userdata other than a VfsFile, a sequence view or a tree cannot be serialized` |
 | A TOML document that is not a table | `dream.vfs: unsupported array type` |

@@ -93,6 +93,12 @@ fn main() -> l3i::Result<()> {
 The examples on this page run from the folder that holds the [example
 install](@/docs/luau/module.md#the-example-install).
 
+With the `lua-write` and `lua-host` features, the policy decides per runtime whether scripts may
+write: `RuntimePolicy::new().capability(vfstool_lib::lua::WRITE_CAPABILITY)` lets a VFS a script
+builds take a write root, and `.capability(vfstool_lib::lua::HOST_CAPABILITY)` switches on the
+`host` table. A runtime granted neither reads only; [Writing files and host
+I/O](@/docs/luau/io.md#capabilities) has what its scripts see.
+
 ## Handing scripts a VFS
 
 A host that already built its VFS, from the user's `openmw.cfg` for instance, pushes it as
@@ -204,7 +210,8 @@ files into buffers, and takes a lock, so the declared API and the runtime cannot
 - **The disk, read and write.** Scripts can read any file a VFS or `VfsFile.from` points at, and
   write wherever the process can: `collapseInto`, `dumpToDirectory`, `extractFile` and
   `runFinalize` create files, and `runSetup` deletes its target directory first, whatever it
-  holds. A host that runs scripts it does not trust must not give them this module.
+  holds. Only the [write root and the `host` table](@/docs/luau/io.md#capabilities) sit behind
+  capabilities. A host that runs scripts it does not trust must not give them this module.
 - **Handles for the big things, tables for the rest.** The VFS, files, providers, indexes, locks
   and snapshots are userdata; lists are views over native memory; reports are plain tables.
 - **Bytes in, bytes out.** Paths are byte strings, with no UTF-8 requirement, and keys are

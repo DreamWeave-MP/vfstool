@@ -22,7 +22,27 @@ not finalize, and the error says `requires 'dream.path'`.
 
 When a runtime is made from the plan, the extension fills in the module's constructor tables,
 `VFS`, `VfsFile`, `VfsProvider`, `LayerIndex` and `ConflictIndex`, and freezes them. It never
-creates a runtime, takes no capabilities, and installs no global.
+creates a runtime, requires no capability, and installs no global.
+
+### Capabilities
+
+The extension declares two optional capabilities, one per write feature, and reads them at
+install, so one compiled crate serves a trusted tool and a sandboxed session from the same plan
+shape:
+
+| Constant | Capability | Feature | Grants |
+|---|---|---|---|
+| `WRITE_CAPABILITY` | `filesystem.write` | `lua-write` | The `writeRoot` constructor option and `vfs:setWriteRoot`, so a VFS a script builds can have a write root at all |
+| `HOST_CAPABILITY` | `filesystem.host` | `lua-host` | The functions of `vfstool.host` |
+
+A host grants them on the policy: `RuntimePolicy::new().capability(WRITE_CAPABILITY)`. Without
+the grant the module keeps its shape (the type definitions do not change), and the gated members
+raise a permission error naming the capability: `dream.vfs: setWriteRoot requires the
+'filesystem.write' capability, which this runtime does not grant`, `dream.vfs: host.readFile
+requires the 'filesystem.host' capability, which this runtime does not grant`. The `VFS`
+constructors are installed per runtime and carry its grant into every VFS they make; a `Vfs` the
+host makes in Rust carries the host's own grant instead (below). [Writing files and host
+I/O](@/docs/luau/io.md#capabilities) has the script's view.
 
 The plan gives a tag to the types scripts touch most, so that calls on them dispatch without a
 metatable lookup:
@@ -34,8 +54,9 @@ metatable lookup:
 | `dream.vfs.VfsProvider`, `dream.vfs.LayerIndex`, `dream.vfs.ConflictIndex`, `dream.vfs.VfsLock`, `dream.vfs.Snapshot`, `dream.vfs.MetadataSnapshot`, `dream.vfs.Providers`, `dream.vfs.ProviderRecords`, `dream.vfs.Tree`, `dream.vfs.Writer`, `dream.vfs.HostEntries` | Never |
 
 With the `lua-write` feature the extension adds the write methods to `dream.vfs.VFS` and the
-`writeRoot` constructor option; with `lua-host` it fills the module's `host` table at install.
-[Writing files and host I/O](@/docs/luau/io.md) describes both. It never installs a `require`
+`writeRoot` constructor option; with `lua-host` it fills the module's `host` table at install,
+with the functions or with stubs as the runtime's policy says. [Writing files and host
+I/O](@/docs/luau/io.md) describes both. It never installs a `require`
 navigator; [require over the VFS](@/docs/luau/require.md) is the host's call.
 
 ## Constants
@@ -52,6 +73,12 @@ The path scripts `require`.
 
 The conventional global, for a host that wants one:
 `RuntimePolicy::new().compat_global(MODULE, MODULE_NAME)`. The extension never sets it.
+
+{{ api_signature(value='const WRITE_CAPABILITY: &str = "filesystem.write"') }}
+
+{{ api_signature(value='const HOST_CAPABILITY: &str = "filesystem.host"') }}
+
+The [capabilities](#capabilities) the policy grants with `RuntimePolicy::capability`.
 
 ## Vfs
 
@@ -97,9 +124,27 @@ changed.
 
 {{ api_signature(value="fn write_root(&self) -> Option<PathBuf>") }}
 
-{{ api_signature(value="fn set_write_root(&self, root: Option<PathBuf>)") }}
+{{ api_signature(value="fn set_write_root(&self, root: Option<PathBuf>) -> io::Result<()>") }}
 
-With `lua-write`: the directory writes go under, and how a host grants or withdraws it.
+With `lua-write`: the directory writes go under, and how a host grants or withdraws it. The
+directory is created if absent and kept in canonical form, which is what `write_root` returns;
+the error is the creation's or canonicalization's, and leaves the root as it was. A root the host
+sets works in any runtime, whatever its capabilities: the host is trusted.
+
+{{ api_signature(value="fn write_root_grant(&self) -> WriteRootGrant") }}
+
+{{ api_signature(value="fn set_write_root_grant(&self, grant: WriteRootGrant)") }}
+
+With `lua-write`: who may give this VFS its write root from a script, an enum of three:
+
+| `WriteRootGrant` | Meaning | Set by |
+|---|---|---|
+| `Scripts` | `setWriteRoot` and the `writeRoot` option work | The constructors, in a runtime that grants `filesystem.write`; a host that wants scripts to move the root of a VFS it pushed |
+| `Refused` | Both raise the capability error, and the VFS never has a root | The constructors, in a runtime without the grant |
+| `Host` | `setWriteRoot` raises `dream.vfs: setWriteRoot: the host made this VFS in Rust and keeps its write root; only the host sets it` | `Vfs::new` |
+
+A `Vfs` the host pushes therefore never hands scripts a root they did not have, in any runtime,
+unless the host says `Scripts`.
 
 These borrows can only overlap when host code runs Luau from inside `with` or `with_mut`; the
 module's own methods never do.

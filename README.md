@@ -55,7 +55,10 @@ let wood = vfs.get_file(r"Textures\Tx_Wood_01.dds");
 With the `lua` feature, `vfstool_lib::lua::VfsExtension` is an
 [l3i](https://github.com/DreamWeave-MP/l3i) extension providing the module `@dream/vfs`: the VFS,
 its files with positional reads and a sequential reader, indexes, views and reports. `lua-write`
-adds writes under a VFS write root and `lua-host` a `host` table over any host path, both opt-in;
+adds writes under a VFS write root, which contains keys lexically and does not follow symbolic
+links, and `lua-host` a `host` table over any host path; both are opt-in features, and each
+runtime gets them only when its policy grants the `filesystem.write` or `filesystem.host`
+capability;
 `VfsRequireNavigator` gives scripts `require` over the VFS with OpenMW's script template cache.
 
 ## Where to read next

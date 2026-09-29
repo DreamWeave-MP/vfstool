@@ -26,6 +26,10 @@
 //! - Reports are plain tables with camelCase fields. Indices in them are 1-based. Byte sizes are
 //!   Luau integers.
 //! - Option tables are strict: an unknown key is an error, never a silently ignored default.
+//! - Writes are twice opt-in: the `lua-write` and `lua-host` features compile them, and the
+//!   runtime's policy grants them per runtime with the [`WRITE_CAPABILITY`] and
+//!   [`HOST_CAPABILITY`] capabilities. A write root contains keys lexically and does not follow
+//!   symbolic links beneath it.
 //!
 //! ```no_run
 //! use l3i::Runtime;

@@ -42,7 +42,9 @@ found or opened is left out, and so is a file whose key would be unsafe or would
 another key needs a directory. What is left can always be written out.
 
 `writeRoot` exists with the `lua-write` feature: the directory `vfs:writeFile` and the other
-[writes](@/docs/luau/io.md) go under. Without the feature it is an unknown option.
+[writes](@/docs/luau/io.md) go under, created if absent and kept as its canonical path. Without
+the feature it is an unknown option; in a runtime that does not grant the `filesystem.write`
+[capability](@/docs/luau/io.md#capabilities) it is refused.
 
 ```lua
 local vfstool = require("@dream/vfs")

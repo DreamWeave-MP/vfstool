@@ -261,7 +261,15 @@ vfstool.host.canonicalize(path) -> string
 ```
 
 A key that could leave the write root (`..`, absolute, a drive letter, NUL) is refused before the
-disk is touched. Neither feature is on by default; without them the members do not exist.
+disk is touched, and so is a key that passes through a symbolic link beneath the root, which is
+kept canonical (`dream.vfs: writeFile: 'textures/link' is a symbolic link; the write root does not
+follow links`). Neither feature is on by default; without them the members do not exist. With
+them, the runtime's policy still has to grant a capability: `filesystem.write`
+(`lua::WRITE_CAPABILITY`) for the `writeRoot` option and `setWriteRoot`, without which a VFS a
+script builds never has a write root, and `filesystem.host` (`lua::HOST_CAPABILITY`) for the
+`host` functions, which otherwise raise `dream.vfs: host.<name> requires the 'filesystem.host'
+capability, which this runtime does not grant`. A `Vfs` the host pushes from Rust keeps the write
+root the host set in any runtime (`Vfs::set_write_root`, `WriteRootGrant`).
 
 ## `require` over the VFS
 
