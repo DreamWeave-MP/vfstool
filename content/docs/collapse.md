@@ -119,8 +119,8 @@ $ vfstool -c openmw extract icons/m/tx_lantern.dds /tmp/mw/out
 
 The file lands directly in the folder, under the last part of its key: `/tmp/mw/out/tx_lantern.dds`.
 The folder is created if it is missing, and a file of the same name is replaced. It is always a
-copy. As with `collapse`, the file there is deleted first: extracting a loose file into the folder
-it already lives in deletes it. A path that is not in the VFS exits with 1:
+copy, except that a loose file extracted into the folder it already lives in stays as it is. A
+path that is not in the VFS exits with 1:
 
 ```sh
 $ vfstool -c openmw extract meshes/nothing.nif /tmp/mw/out

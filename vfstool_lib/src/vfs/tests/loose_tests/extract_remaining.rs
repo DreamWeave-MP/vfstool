@@ -46,6 +46,21 @@ fn extract_file_uses_normalized_key_for_destination_filename() {
 }
 
 #[test]
+fn extract_file_into_the_folder_the_file_lives_in_keeps_it() {
+    let src = TempDir::new("vfs_newmethods_extract_into_own_folder");
+    let own = src.write("textures/a.dds", b"texture");
+    let vfs = VFS::from_directories(vec![src.path()], None);
+
+    let extracted = vfs
+        .extract_file(Path::new("textures/a.dds"), &src.path().join("textures"))
+        .unwrap()
+        .expect("file should be found");
+
+    assert_eq!(extracted, own);
+    assert_eq!(fs::read(&own).unwrap(), b"texture");
+}
+
+#[test]
 #[cfg(unix)]
 fn extract_file_does_not_follow_existing_destination_symlink() {
     let src = TempDir::new("vfs_newmethods_extract_symlink_src");

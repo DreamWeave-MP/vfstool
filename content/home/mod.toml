@@ -198,6 +198,7 @@ changed = [
 ]
 fixed = [
     "`collapse` into one of the cfg's own data directories leaves that directory's loose files where they are. It deleted each one before linking it, then failed.",
+    "`extract` into the folder a loose file already lives in leaves the file there. It deleted the file, then failed to copy it.",
 ]
 known_issues = [
     "On Linux and macOS, when a file name in the VFS is not UTF-8, `explain`, `duplicates`, `conflicts`, `shadowed --list-files`, `lock`, `drift` and `collapse --dry-run` stop with `path contains invalid UTF-8 characters` and exit code 9.",

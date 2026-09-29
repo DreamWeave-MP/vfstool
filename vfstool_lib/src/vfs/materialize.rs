@@ -306,7 +306,9 @@ impl VFS {
     /// Extract a single VFS file into `dest_dir`.
     ///
     /// Returns the path of the extracted file on success. Returns `None` if
-    /// `vfs_path` is not found in the VFS.
+    /// `vfs_path` is not found in the VFS. A file already at the destination is
+    /// replaced, unless it already is the loose file being extracted, as when
+    /// `dest_dir` is the folder it lives in: that one is left as it is.
     ///
     /// # Errors
     ///
@@ -328,7 +330,9 @@ impl VFS {
         Self::ensure_output_parent_safe(dest_dir, &dest)?;
 
         if file.is_loose() {
-            Self::copy_replacing_output(file.path(), &dest)?;
+            if !Self::destination_is_source(file.path(), &dest)? {
+                Self::copy_replacing_output(file.path(), &dest)?;
+            }
         } else {
             Self::remove_existing_output_file(&dest)?;
             let mut reader = file.open()?;

@@ -502,7 +502,8 @@ assert(merged:getFile("textures/tx_extra.dds"):readAll() == "extra")
 
 Writes the winner for one key into `destDir`, under its own file name only, and returns the path
 written: `nil` when the key is unknown. `destDir` is created if needed, and a file already there is
-replaced.
+replaced, unless it is the loose file itself, because `destDir` is the folder it lives in; that
+one stays as it is.
 
 ```lua
 local vfstool = require("@dream/vfs")
