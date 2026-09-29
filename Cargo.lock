@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "dream-path"
-version = "0.3.1"
+version = "1.0.0"
 dependencies = [
  "bstr",
  "l3i",
@@ -654,7 +654,7 @@ dependencies = [
 
 [[package]]
 name = "l3i"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "cc",
  "dream-net",
@@ -1191,7 +1191,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vfstool"
-version = "0.11.3"
+version = "1.0.0"
 dependencies = [
  "clap",
  "criterion",
@@ -1202,12 +1202,12 @@ dependencies = [
 
 [[package]]
 name = "vfstool_lib"
-version = "0.11.3"
+version = "1.0.0"
 dependencies = [
  "ahash",
  "blake3",
  "criterion",
- "dream-path 0.3.1",
+ "dream-path 1.0.0",
  "dream_archive",
  "l3i",
  "rayon",
