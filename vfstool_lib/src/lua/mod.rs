@@ -344,12 +344,14 @@ pub(crate) fn source_kind_name(kind: crate::SourceKind) -> &'static str {
     }
 }
 
+/// Parses a source kind for an option reader, which prefixes the field it read it from, so the
+/// message carries no prefix of its own.
 pub(crate) fn source_kind_from_name(name: &str) -> Result<crate::SourceKind> {
     match name {
         "looseDir" => Ok(crate::SourceKind::LooseDir),
         "archive" => Ok(crate::SourceKind::Archive),
         other => Err(Error::runtime(format!(
-            "dream.vfs: unknown source kind '{other}' (expected 'looseDir' or 'archive')"
+            "unknown source kind '{other}' (expected 'looseDir' or 'archive')"
         ))),
     }
 }

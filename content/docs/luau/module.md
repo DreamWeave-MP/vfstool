@@ -339,7 +339,7 @@ An option table names the function and the field:
 | `vfs:collapseInto(dest, { allow_copying = true })` | `vfs:collapseInto: unknown option 'allow_copying'; known options are allowCopying, extractArchives, useSymlinks` |
 | `vfs:materializationPlan(dest, { extractArchives = "yes" })` | `vfs:materializationPlan.extractArchives: expected boolean, got string` |
 | `LayerIndex.fromFileLists({ { source = { path = "x" }, files = {} } })` | `LayerIndex.fromFileLists[1].source: missing required option 'kind'` |
-| `VfsProvider.new({ path = "x", kind = "zip" }, file)` | `VfsProvider.new.kind: dream.vfs: unknown source kind 'zip' (expected 'looseDir' or 'archive')` |
+| `VfsProvider.new({ path = "x", kind = "zip" }, file)` | `VfsProvider.new.kind: unknown source kind 'zip' (expected 'looseDir' or 'archive')` |
 | `layer:semanticConflicts(vfs, { archiveHashMode = "sometimes" })` | `layer:semanticConflicts.archiveHashMode: expected 'disabled', 'winnerOnly', or 'allProviders', got 'sometimes'` |
 
 Everything else starts with `dream.vfs:`:

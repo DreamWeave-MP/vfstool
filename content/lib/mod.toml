@@ -164,5 +164,6 @@ fixed = [
     "`Display` for `VFS`, `display_filtered` and Luau's `vfs:display()` nest each directory under its parent, one `│   ` per level, and list directories that hold only directories. Every directory was printed by its last name at one level, so `meshes/x` and `textures/x` both showed as `x/`, and an archive's folders looked like loose ones.",
     "Luau's `serialize` writes `Entries` and `Providers` views, tree streams and `VfsFile` handles, each file as its file row's fields; it refused every userdata but `Keys` and `ProviderRecords` views, although the documentation said views serialize.",
     "`collapse_into` with `use_symlinks` links to each file's absolute path. A VFS built from relative directories made links that resolved from the output folder instead, and dangled.",
+    "In Luau, an unknown source kind in `VfsProvider.new` reads `VfsProvider.new.kind: unknown source kind 'zip' (...)`, without a second `dream.vfs:` inside it.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
 ]

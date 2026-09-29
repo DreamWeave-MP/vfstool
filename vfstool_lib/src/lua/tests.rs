@@ -353,7 +353,12 @@ fn option_tables_are_strict_and_sizes_are_integers() {
         .exec("vfstool.VfsProvider.new({ path = dir, kind = 'weird' }, vfstool.VfsFile.from(dir))")
         .unwrap_err()
         .to_string();
-    assert!(error.contains("unknown source kind 'weird'"), "{error}");
+    assert!(
+        error.contains(
+            "VfsProvider.new.kind: unknown source kind 'weird' (expected 'looseDir' or 'archive')"
+        ),
+        "the option reader names the field once, with no second prefix: {error}"
+    );
     // A direct argument's type error names the argument slot the way l3i's own conversions do; a
     // value reached through a path names the path in full (`dirs[1]`, `fromFileLists[1].files[1]`,
     // `VfsProvider.new.path`) with Luau's own type names, and a nested reader's context is one
