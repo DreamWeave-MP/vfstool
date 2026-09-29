@@ -271,6 +271,12 @@ impl VfsFile {
         }
     }
 
+    /// The name trees list the file by: its file name, or its whole path when that has none, as
+    /// for `VfsFile::from("/")`.
+    pub(crate) fn listed_name(&self) -> &std::ffi::OsStr {
+        self.file_name().unwrap_or_else(|| self.path().as_os_str())
+    }
+
     ///
     /// Retrieves the file name (i.e., the last component of the path), without
     /// extensions.

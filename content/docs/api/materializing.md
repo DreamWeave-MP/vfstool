@@ -235,7 +235,8 @@ followed by its files, depth first. A directory with only subdirectories is not 
 │   ├── Door.NIF
 ```
 
-It panics on a file whose path has no file name, such as a `VfsFile::from("/")` set by hand.
+A file whose path has no file name, such as a `VfsFile::from("/")` set by hand, is listed by its
+whole path, here and in serialized trees.
 
 {{ api_signature(value="fn serialize_from_tree(tree: &DisplayTree, write_type: SerializeType) -> Result<String>") }}
 

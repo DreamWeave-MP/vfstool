@@ -113,9 +113,7 @@ impl VFS {
 
     /// Returns the formatted file tree for a filtered subset.
     ///
-    /// # Panics
-    ///
-    /// Panics only if formatting a `String` fails, which should not occur.
+    /// Each file is listed by its file name, or by its whole path when the path has none.
     pub fn display_filtered(
         &self,
         relative: bool,
@@ -152,11 +150,7 @@ fn write_node<W: Write>(w: &mut W, node: &DirectoryNode, dir: &Path) -> std::fmt
     if !node.files.is_empty() {
         write!(w, "{}", VFS::dir_str(dir.to_string_lossy()))?;
         for file in &node.files {
-            write!(
-                w,
-                "{}",
-                VFS::file_str(file.path().file_name().unwrap().to_string_lossy())
-            )?;
+            write!(w, "{}", VFS::file_str(file.listed_name().to_string_lossy()))?;
         }
     }
     for (subdir_name, subdir_node) in &node.subdirs {

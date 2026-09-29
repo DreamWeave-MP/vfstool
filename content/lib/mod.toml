@@ -160,5 +160,6 @@ fixed = [
     "`set_winner_file` and `set_winner_loose_file` record a new key's directories, so `set_winner_file(\"a/b.txt\", …)` followed by `set_winner_file(\"a\", …)` refuses the second instead of keeping a file and a directory named `a`, which no VFS can write out.",
     "`remove_resolved_file`, `remove_resolved_prefix` and `remove_resolved_matching_glob` release the removed keys' directories: after `remove_resolved_file(\"a/b.txt\")`, `push_provider(\"a\", …)` returned `false`.",
     "`push_provider_batch` checks each entry against the ones before it, so `push_directory` and `push_archive` no longer add a file and a directory with one name; `push_directory` keeps the same one `from_directories` keeps.",
+    "`Display` for `VFS` and `display_filtered` list a file whose path has no file name, such as `VfsFile::from(\"/\")`, by its whole path instead of panicking, and serialized trees list it too instead of leaving it out.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
 ]

@@ -159,6 +159,23 @@ fn tree_filtered_all_included_matches_full_tree() {
     );
 }
 
+#[test]
+fn display_lists_a_file_whose_path_has_no_file_name_by_its_path() {
+    let mut vfs = VFS::new();
+    vfs.set_winner_file("root", VfsFile::from("/"));
+
+    assert_eq!(vfs.to_string(), "├── Data Files/\n│   ├── /\n");
+    assert!(
+        vfs.display_filtered(false, |_, _| true)
+            .ends_with("├── /\n")
+    );
+    #[cfg(feature = "serialize")]
+    assert_eq!(
+        VFS::serialize_from_tree(&vfs.tree(true), crate::SerializeType::Json).unwrap(),
+        r#"{"Data Files":{".":["/"]}}"#
+    );
+}
+
 // ---- find_by_regex ----
 #[test]
 fn find_by_regex_matching_files_returned() {
