@@ -728,7 +728,13 @@ fn dump_run_and_capture(
     }
     let status = match cmd.status() {
         Ok(s) => s,
-        Err(e) => return (Err(e), None),
+        Err(e) => {
+            let message = format!(
+                "failed to start '{}': {e}",
+                Path::new(substituted[0]).display()
+            );
+            return (Err(io::Error::new(e.kind(), message)), None);
+        }
     };
 
     if !status.success() {

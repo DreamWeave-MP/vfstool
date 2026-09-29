@@ -73,7 +73,7 @@ becomes the folder's path exactly as the system spells it, whether or not it is 
 | `MERGED_DIR` exists and is not an empty folder: a folder with files in it, a file, or a symbolic link | Exit 8 before anything is written, and it is left alone |
 | No `data-local` in the cfg and no `--output` | Exit 8 before anything is written |
 | The command exits with a nonzero code | Nothing is captured; vfstool exits with the same code |
-| The command cannot be started | Exit 9 |
+| The command cannot be started | `vfstool: failed to start 'COMMAND': REASON`; exit 9 |
 | The command is ended by a signal | Nothing is captured; exit 9 |
 | Ctrl+C | The command gets it too, since it shares the terminal. Nothing is captured, even if the command ignores it and succeeds; exit 9, or the command's own nonzero exit code. Pressed while the VFS is being written, the command is not started |
 

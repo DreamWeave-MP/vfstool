@@ -1014,3 +1014,26 @@ fn run_rejects_a_merged_dir_that_is_a_file_or_a_symbolic_link() {
     assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
     assert!(empty.is_dir());
 }
+
+#[test]
+fn run_names_a_command_that_cannot_be_started() {
+    let fixture = Fixture::new("run_cannot_start");
+    let merged = fixture.path("merged");
+    let missing = fixture.path("no-such-tool");
+    let output = fixture.run(&[
+        "run",
+        "--copy",
+        merged.to_str().expect("merged path should be utf-8"),
+        "--",
+        missing.to_str().expect("tool path should be utf-8"),
+        "{}",
+    ]);
+
+    assert_eq!(output.status.code(), Some(9));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!("failed to start '{}'", missing.display())),
+        "{stderr}"
+    );
+    assert!(!merged.exists(), "the merged folder should be removed");
+}
