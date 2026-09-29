@@ -153,5 +153,6 @@ fixed = [
     "`run_finalize` and `run_finalize_tracked` leave a destination that already is the changed file, rewritten in place through a hard link from `output_dir`, as it is. They copied it onto itself, which truncated it to nothing.",
     "`VfsFile::file_name` and `file_stem` end an archive entry's folders at `\\` as well as `/` on every platform: a Morrowind BSA's `meshes\\x\\ex_door.nif` is `ex_door.nif` on Linux and macOS too, in trees, `Display` and Luau's `file:fileName()`.",
     "`ConflictIndex::diff_report` compares the keys the index holds for each source, found by exact spelling or with case and separators folded, so archives, indexes built from file lists and sources spelled in another case compare correctly; it read both paths from disk as typed. A path the index does not have is still read from disk.",
+    "`conflicts_report` and `shadowed_report` without `use_relative` join a loose source's path with each file's own spelling, instead of the lowercase key, so every path names a file that exists. `ConflictIndex::from_directories` records those spellings.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
 ]

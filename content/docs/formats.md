@@ -101,9 +101,8 @@ Each provider:
 | `overrides` | Its files that a lower source also has |
 | `overridden_by` | Its files that a higher source also has |
 
-Files are keys with `-r`. Without it, a data directory's files are its path joined with the
-lowercase key, which on Linux may differ from the file's real name, and an archive's are
-`<archive>::<key>`.
+Files are keys with `-r`. Without it, a data directory's files are their paths on disk, spelled as
+the files are, and an archive's are `<archive>::<key>`.
 
 ## shadowed
 

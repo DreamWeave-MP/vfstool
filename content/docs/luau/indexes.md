@@ -257,8 +257,8 @@ source provides is not a conflict and gives an empty table.
 {{ api_signature(value="conflicts:conflictsReport(relative: boolean?) -> ConflictsReport") }}
 
 Every source with the keys it overrides and the keys it is overridden on. With `relative`, the
-default, paths are keys; with `false`, each is the source path joined with the key, and an
-archive's are written `archive::key`.
+default, paths are keys; with `false`, each is the source path joined with the file's own
+spelling inside it, and an archive's are written `archive::key`.
 
 ### shadowedReport
 

@@ -139,9 +139,8 @@ One entry per source, lowest priority first, including sources with nothing to r
 the keys it overrides and the keys overridden in it, sorted.
 
 With `use_relative`, the lists hold keys. Without it, a loose source's entries are its path joined
-with the key, and an archive's are `ARCHIVE::KEY`. The key is the normalized, lowercase spelling,
-so on a case-sensitive file system a joined path names the real file only when the file is spelled
-that way on disk.
+with each file's own spelling inside it, as the index recorded it, so each names a file that exists;
+an archive's are `ARCHIVE::KEY`.
 
 {{ api_signature(value="fn shadowed_report(&self, use_relative: bool) -> ShadowedReport") }}
 

@@ -90,6 +90,10 @@ pub struct ConflictIndex {
     ///
     /// Use [`ConflictIndex::sources_containing`] for the conflicting ones.
     pub(super) path_to_sources: AHashMap<NormalizedPath, Vec<usize>>,
+
+    /// Each conflicting key's path inside a loose source as that source spells it, where it is
+    /// spelled otherwise than the key, for absolute report paths that exist on disk.
+    pub(super) original_paths: AHashMap<(usize, NormalizedPath), PathBuf>,
 }
 
 impl ConflictIndex {
@@ -99,6 +103,7 @@ impl ConflictIndex {
         let sources = layer.sources.clone();
         let mut source_file_counts = vec![0; sources.len()];
         let mut path_to_sources: AHashMap<NormalizedPath, Vec<usize>> = AHashMap::new();
+        let mut original_paths = AHashMap::new();
 
         for key in layer.keys() {
             let providers = layer.sources_containing(&key);
@@ -117,18 +122,28 @@ impl ConflictIndex {
             for &source_idx in &unique_sources {
                 source_file_counts[source_idx] += 1;
             }
+            if unique_sources.len() > 1 {
+                for &source_idx in &unique_sources {
+                    if let Some(original) = layer.provider_original_path(source_idx, &key)
+                        && original.as_os_str().as_encoded_bytes() != key.as_bytes()
+                    {
+                        original_paths.insert((source_idx, key.clone()), original.to_path_buf());
+                    }
+                }
+            }
             if !unique_sources.is_empty() {
                 path_to_sources.insert(key, unique_sources);
             }
         }
 
-        Self::from_provider_map(sources, source_file_counts, path_to_sources)
+        Self::from_provider_map(sources, source_file_counts, path_to_sources, original_paths)
     }
 
     fn from_provider_map(
         source_meta: Vec<SourceMeta>,
         source_file_counts: Vec<usize>,
         path_to_sources: AHashMap<NormalizedPath, Vec<usize>>,
+        original_paths: AHashMap<(usize, NormalizedPath), PathBuf>,
     ) -> Self {
         let mut conflicts: Vec<SourceConflicts> = (0..source_meta.len())
             .map(|_| SourceConflicts::default())
@@ -163,10 +178,12 @@ impl ConflictIndex {
             conflicts,
             source_file_counts,
             path_to_sources,
+            original_paths,
         }
     }
 
-    /// Walk a single directory and return normalized, materialization-safe relative paths.
+    /// Walk a single directory and return the relative paths of its files that make
+    /// materialization-safe keys, spelled as on disk; the index normalizes them into keys.
     pub(super) fn walk_dir(dir: &Path) -> Vec<PathBuf> {
         WalkDir::new(dir)
             .follow_links(true)
@@ -179,7 +196,9 @@ impl ConflictIndex {
                     .strip_prefix(dir)
                     .expect("entry must be prefixed by scan dir")
                     .to_path_buf();
-                normalized_safe_key(&relative).and_then(|key| key_to_path_buf_bytes(&key))
+                normalized_safe_key(&relative)
+                    .and_then(|key| key_to_path_buf_bytes(&key))
+                    .map(|_| relative)
             })
             .collect()
     }

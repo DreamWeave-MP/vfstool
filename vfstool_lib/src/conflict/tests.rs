@@ -622,3 +622,36 @@ fn diff_report_reads_a_directory_the_index_does_not_have_from_disk() {
     assert_eq!(report.only_in_b, ["g.txt"]);
     assert_eq!(report.higher_priority, outside.path());
 }
+
+#[test]
+fn absolute_report_paths_keep_each_file_as_its_source_spells_it() {
+    let base = TempDir::new("ci_report_spelling_base");
+    let patch = TempDir::new("ci_report_spelling_patch");
+    base.write("Textures/Rock.DDS", b"");
+    patch.write("textures/ROCK.dds", b"");
+
+    let (_, from_vfs) =
+        crate::VFS::from_directories_with_conflict_index(vec![base.path(), patch.path()], None);
+    let walked = ConflictIndex::from_directories(vec![base.path(), patch.path()]);
+    for index in [from_vfs, walked] {
+        let report = index.conflicts_report(false);
+        assert_eq!(
+            report.sources[0].overridden_by,
+            [base.path().join("Textures/Rock.DDS")]
+        );
+        assert_eq!(
+            report.sources[1].overrides,
+            [patch.path().join("textures/ROCK.dds")]
+        );
+        let shadowed = index.shadowed_report(false);
+        assert_eq!(
+            shadowed.sources[0].shadowed_files,
+            [base.path().join("Textures/Rock.DDS")]
+        );
+        let relative = index.conflicts_report(true);
+        assert_eq!(
+            relative.sources[0].overridden_by,
+            [PathBuf::from("textures/rock.dds")]
+        );
+    }
+}

@@ -60,10 +60,10 @@ sources:
 ```
 
 Every source with at least one file is listed, in load order. With the global `-r` (`--use-relative`),
-files are keys, as here. Without it, each is the source's path joined with the key, and an
-archive's with `::` between them: `/tmp/mw/Morrowind/Data Files/Morrowind.bsa::textures/tx_wood_01.dds`.
-The key is lowercase, so on Linux the joined path is not always the file's real name:
-`/tmp/mw/mods/Crisp Textures/textures/tx_wood_01.dds` for `Textures/Tx_Wood_01.dds`.
+files are keys, as here. Without it, each is the file's path on disk, the source's path joined with
+the file's own spelling, `/tmp/mw/mods/Crisp Textures/Textures/Tx_Wood_01.dds`, and an archive's is
+the archive and the key with `::` between them:
+`/tmp/mw/Morrowind/Data Files/Morrowind.bsa::textures/tx_wood_01.dds`.
 
 ## Mods that do nothing
 

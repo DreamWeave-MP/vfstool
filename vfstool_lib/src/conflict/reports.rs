@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use super::ConflictIndex;
 use crate::{
-    SourceKind, SourceMeta,
+    SourceKind, SourceMeta, VfsKeyInput,
     reports::{ConflictSourceEntry, ConflictsReport, ShadowedReport, ShadowedSource},
 };
 use std::path::{Path, PathBuf};
@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 impl ConflictIndex {
     /// Build a [`ConflictsReport`] listing every source's overrides and overridden files.
     ///
-    /// When `use_relative` is `true`, paths are relative VFS keys; otherwise
-    /// they are joined with the source directory to form absolute paths.
+    /// When `use_relative` is `true`, paths are relative VFS keys; otherwise a loose source's are
+    /// its path joined with each file's own spelling inside it, and an archive's `ARCHIVE::KEY`.
     #[must_use]
     pub fn conflicts_report(&self, use_relative: bool) -> ConflictsReport {
         let sources = self
@@ -18,7 +18,7 @@ impl ConflictIndex {
             .iter()
             .enumerate()
             .map(|(i, source)| {
-                let resolve = |p: &PathBuf| -> PathBuf { report_path(source, p, use_relative) };
+                let resolve = |key: &PathBuf| self.report_path(i, source, key, use_relative);
                 let mut overrides: Vec<PathBuf> =
                     self.conflicts[i].overrides.iter().map(resolve).collect();
                 let mut overridden_by: Vec<PathBuf> = self.conflicts[i]
@@ -69,7 +69,7 @@ impl ConflictIndex {
                     return None;
                 }
                 let shadowed_files = if list_files {
-                    let resolve = |p: &PathBuf| -> PathBuf { report_path(source, p, use_relative) };
+                    let resolve = |key: &PathBuf| self.report_path(i, source, key, use_relative);
                     let mut shadowed_files: Vec<PathBuf> = self.conflicts[i]
                         .overridden_by
                         .iter()
@@ -90,12 +90,28 @@ impl ConflictIndex {
     }
 }
 
-fn report_path(source: &SourceMeta, key: &Path, use_relative: bool) -> PathBuf {
-    if use_relative {
-        return key.to_path_buf();
+impl ConflictIndex {
+    /// `key` as a report shows it: the key itself when `use_relative`; for an archive,
+    /// `ARCHIVE::key`; for a loose source, the file's path on disk, joined from the source path
+    /// and the file's own spelling inside it, which on a case-sensitive file system is the only
+    /// one that exists.
+    fn report_path(
+        &self,
+        source_index: usize,
+        source: &SourceMeta,
+        key: &Path,
+        use_relative: bool,
+    ) -> PathBuf {
+        if use_relative {
+            return key.to_path_buf();
+        }
+        if source.kind == SourceKind::Archive {
+            return PathBuf::from(format!("{}::{}", source.path.display(), key.display()));
+        }
+        let original = self
+            .original_paths
+            .get(&(source_index, key.to_vfs_key()))
+            .map_or(key, PathBuf::as_path);
+        source.path.join(original)
     }
-    if source.kind == SourceKind::Archive {
-        return PathBuf::from(format!("{}::{}", source.path.display(), key.display()));
-    }
-    source.path.join(key)
 }
