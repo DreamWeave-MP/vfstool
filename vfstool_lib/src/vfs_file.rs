@@ -276,6 +276,7 @@ impl VfsFile {
     /// Reads up to `dst.len()` bytes from `offset` of an archive entry stored without
     /// compression, straight from the archive: `Ok(None)` for a loose file or an entry that must
     /// be decompressed as a whole first. Returns the count read, short only at the entry's end.
+    #[cfg(feature = "lua")]
     #[cfg_attr(
         not(any(feature = "beth-archives", feature = "zip")),
         allow(unused_variables)

@@ -4,7 +4,9 @@
 
 use std::{borrow::Cow, fs, path::PathBuf};
 
-use vfstool_lib::{VFS, VfsFile, VfsKeyInput};
+#[cfg(unix)]
+use vfstool_lib::VfsFile;
+use vfstool_lib::{VFS, VfsKeyInput};
 
 struct TempDir(PathBuf);
 

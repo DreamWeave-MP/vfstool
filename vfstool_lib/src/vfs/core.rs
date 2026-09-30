@@ -94,6 +94,7 @@ impl VFS {
     }
 
     /// Whether `key` names a directory some resolved key sits under.
+    #[cfg(feature = "lua")]
     pub(crate) fn has_directory(&self, key: &NormalizedPath) -> bool {
         self.dir_prefix_counts.contains_key(key)
     }

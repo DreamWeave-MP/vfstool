@@ -158,6 +158,8 @@ pub(super) fn open(archive_ref: &ArchiveReference) -> io::Result<Box<dyn Read + 
 /// sum of a BA2 entry's chunk sizes, or a ZIP central directory entry. `None` when only
 /// decompressing tells (a TES4 BSA stores the compressed size, and the true size inside the
 /// data block), and for an entry the archive does not know.
+// Only the ZIP lookup can fail; without that feature the signature stays the same.
+#[cfg_attr(not(feature = "zip"), allow(clippy::unnecessary_wraps))]
 pub(super) fn known_size(archive_ref: &ArchiveReference) -> io::Result<Option<u64>> {
     match archive_ref.parent_archive.handle() {
         #[cfg(feature = "beth-archives")]
@@ -195,6 +197,7 @@ pub(super) fn known_size(archive_ref: &ArchiveReference) -> io::Result<Option<u6
 /// from the archive: a TES3 BSA entry, or a ZIP entry with the `Stored` method. `Ok(None)` for
 /// any other entry, whose bytes only exist once the whole entry is decompressed. Returns the
 /// number of bytes read, short only at the entry's end.
+#[cfg(feature = "lua")]
 pub(super) fn read_stored_at(
     archive_ref: &ArchiveReference,
     offset: u64,
@@ -231,6 +234,7 @@ pub(super) fn read_stored_at(
 }
 
 /// Skips `offset` bytes of `reader` and fills `dst` from there, stopping at the end.
+#[cfg(feature = "lua")]
 fn read_from(mut reader: impl Read, offset: u64, dst: &mut [u8]) -> io::Result<usize> {
     io::copy(&mut reader.by_ref().take(offset), &mut io::sink())?;
     let mut filled = 0;
