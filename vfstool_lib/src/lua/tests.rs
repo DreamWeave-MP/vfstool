@@ -26,7 +26,7 @@ impl TempDir {
         ));
         fs::create_dir_all(&dir).unwrap();
         // Canonical, as a write root is kept, so that paths compare as text.
-        Self(fs::canonicalize(&dir).unwrap())
+        Self(super::canonical(&dir).unwrap())
     }
 
     fn write(&self, rel: &str, data: &[u8]) -> PathBuf {
@@ -367,7 +367,8 @@ fn paths_are_bytes_and_read_into_fills_a_buffer() {
         "Data/Big.bin",
         &(0..=255u8).cycle().take(1000).collect::<Vec<u8>>(),
     );
-    #[cfg(unix)]
+    // Linux only: macOS refuses file names that are not UTF-8.
+    #[cfg(target_os = "linux")]
     {
         use std::os::unix::ffi::OsStrExt;
         let odd = dir.0.join(std::ffi::OsStr::from_bytes(b"odd/\xff.dat"));
@@ -401,7 +402,7 @@ fn paths_are_bytes_and_read_into_fills_a_buffer() {
             ",
         )
         .unwrap();
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     runtime
         .exec(
             r"
@@ -1118,6 +1119,8 @@ fn require_reloads_a_rewritten_module_only_when_told() {
 
 #[cfg(feature = "lua-write")]
 #[test]
+// The scripts spell host paths as POSIX text; Windows joins them with a backslash.
+#[cfg(not(windows))]
 fn writes_go_under_the_write_root_and_register_winners() {
     let data = TempDir::new("write_data");
     data.write("textures/a.dds", b"old");
@@ -1203,6 +1206,8 @@ fn writes_go_under_the_write_root_and_register_winners() {
 
 #[cfg(feature = "lua-write")]
 #[test]
+// The scripts spell host paths as POSIX text; Windows joins them with a backslash.
+#[cfg(not(windows))]
 fn directory_writes_stay_under_the_root_and_move_the_winners() {
     let data = TempDir::new("write_dirs_data");
     data.write("textures/a.dds", b"old");
@@ -1252,6 +1257,8 @@ fn directory_writes_stay_under_the_root_and_move_the_winners() {
 
 #[cfg(all(feature = "lua-write", unix))]
 #[test]
+// The scripts spell host paths as POSIX text; Windows joins them with a backslash.
+#[cfg(not(windows))]
 fn the_write_root_does_not_follow_symbolic_links() {
     let out = TempDir::new("symlink_root");
     let outside = TempDir::new("symlink_outside");
@@ -1456,6 +1463,8 @@ fn a_runtime_without_lua_write_has_no_write_methods() {
 
 #[cfg(feature = "lua-host")]
 #[test]
+// The scripts spell host paths as POSIX text; Windows joins them with a backslash.
+#[cfg(not(windows))]
 fn host_io_reads_writes_lists_and_moves_host_paths() {
     let dir = TempDir::new("host");
     let payload: Vec<u8> = (0..=255u8).cycle().take(1000).collect();
@@ -1530,7 +1539,8 @@ fn host_io_reads_writes_lists_and_moves_host_paths() {
             ",
         )
         .unwrap();
-    #[cfg(unix)]
+    // Linux only: macOS refuses file names that are not UTF-8.
+    #[cfg(target_os = "linux")]
     runtime
         .exec(
             r"
@@ -1545,6 +1555,8 @@ fn host_io_reads_writes_lists_and_moves_host_paths() {
 
 #[cfg(feature = "lua-host")]
 #[test]
+// The scripts spell host paths as POSIX text; Windows joins them with a backslash.
+#[cfg(not(windows))]
 fn without_the_host_capability_every_host_function_raises() {
     let dir = TempDir::new("ungranted_host");
     dir.write("in.txt", b"secret");

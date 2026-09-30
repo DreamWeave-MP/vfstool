@@ -188,7 +188,8 @@ fn lock_then_drift_detects_hash_change_and_exits_four() {
     );
 }
 
-#[cfg(unix)]
+// Linux only: macOS refuses file names that are not UTF-8.
+#[cfg(target_os = "linux")]
 #[test]
 fn reports_hold_file_names_that_are_not_utf8_and_a_lock_of_them_does_not_drift() {
     use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
@@ -913,7 +914,7 @@ fn run_with_closed_stdout_still_captures_and_removes_merged_dir() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn run_passes_a_merged_dir_and_arguments_that_are_not_utf8_through_unchanged() {
     use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
 

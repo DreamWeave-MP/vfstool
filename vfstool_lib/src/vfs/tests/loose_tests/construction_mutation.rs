@@ -145,8 +145,9 @@ fn push_provider_batch_checks_its_entries_against_each_other() {
     assert!(vfs.get_file("a/b.txt").is_none());
 }
 
+// Linux only: `A` and `a/` are one name on macOS and Windows.
 #[test]
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn push_directory_keeps_the_key_from_directories_keeps() {
     let dir = TempDir::new("vfsloose_push_directory_collision");
     dir.write("A", b"file");

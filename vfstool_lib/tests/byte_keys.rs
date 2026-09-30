@@ -4,7 +4,7 @@
 
 use std::{borrow::Cow, fs, path::PathBuf};
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use vfstool_lib::VfsFile;
 use vfstool_lib::{VFS, VfsKeyInput};
 
@@ -83,7 +83,8 @@ fn lookups_accept_bytes_normalized_keys_and_report_length() {
     assert_eq!(vfs.paths_with(&b"Textures\\"[..]).count(), 1);
 }
 
-#[cfg(unix)]
+// Linux only: macOS refuses file names that are not UTF-8.
+#[cfg(target_os = "linux")]
 #[test]
 fn keys_and_paths_that_are_not_utf8_survive_byte_for_byte() {
     use std::os::unix::ffi::OsStrExt;
@@ -104,7 +105,7 @@ fn keys_and_paths_that_are_not_utf8_survive_byte_for_byte() {
     assert_eq!(VfsFile::from("/a/b.txt").path_bytes(), b"/a/b.txt");
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn analysis_reports_carry_keys_that_are_not_utf8_exactly() {
     use std::os::unix::ffi::OsStrExt;
@@ -146,7 +147,7 @@ fn analysis_reports_carry_keys_that_are_not_utf8_exactly() {
     assert_eq!(vfs.remove_resolved_matching_glob("odd/*").len(), 1);
 }
 
-#[cfg(all(unix, feature = "serialize"))]
+#[cfg(all(target_os = "linux", feature = "serialize"))]
 #[test]
 fn reports_holding_keys_that_are_not_utf8_serialize_and_a_lock_reads_back_without_drift() {
     use std::os::unix::ffi::OsStrExt;
