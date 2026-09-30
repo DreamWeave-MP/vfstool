@@ -1230,9 +1230,15 @@ fn global_options_work_after_the_command_too() {
         "{}",
         String::from_utf8_lossy(&found.stderr)
     );
+    // Joined a component at a time: the tool prints the path as the platform spells it.
     assert_eq!(
         String::from_utf8_lossy(&found.stdout).trim(),
-        fixture.high.join("textures/a.dds").display().to_string()
+        fixture
+            .high
+            .join("textures")
+            .join("a.dds")
+            .display()
+            .to_string()
     );
 
     let low = fixture.low.to_str().expect("path should be utf-8");
