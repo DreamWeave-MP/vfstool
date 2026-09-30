@@ -1,0 +1,393 @@
+{
+  "schema_version": "2",
+  "document": "lock",
+  "project": "b5412bc5-4c2c-49d6-b488-dd772a1046fa",
+  "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
+  "releases": [
+    {
+      "version": "0.1.0",
+      "locked_from": "",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.1.0.crate",
+          "media_type": "application/gzip",
+          "size": 19761,
+          "digests": {
+            "sha256": "fe2a196a33e3fa420a612a5f5d12dd9c60907d87044e835aabf9e8b841c16e0b"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.2.0",
+      "locked_from": "97b8b72e1e3f1eddaa91d0766cbd0015dc775a50",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.2.0.crate",
+          "media_type": "application/gzip",
+          "size": 20027,
+          "digests": {
+            "sha256": "167e9debaf4b0f4f545e90139c4081363a56f8882425efac2afbf10c7a637df0"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.2.1",
+      "locked_from": "f897022e02798365fa7405872c8ea9e6cf97ba64",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.2.1.crate",
+          "media_type": "application/gzip",
+          "size": 31305,
+          "digests": {
+            "sha256": "002946c537e63df036d10e5cbf2023792e42bbeb46bb19969b0ee0dcfe235147"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.2.3",
+      "locked_from": "93532af372c53b45dee34c8f32f45a037c3a2bbe",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.2.3.crate",
+          "media_type": "application/gzip",
+          "size": 31320,
+          "digests": {
+            "sha256": "b78ae7af1167db8bc737d8774d5ab696478d7dfadc5e5bbfeab01a39c61ceeec"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.9.0",
+      "locked_from": "d840a0f222c5eed097aba6e20472799fe8551693",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.9.0.crate",
+          "media_type": "application/gzip",
+          "size": 133398,
+          "digests": {
+            "sha256": "58e7a4910009fc3506a67bb5649a64ca3b2eaa4fd5660e788c112d27f09a0617"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.9.1",
+      "locked_from": "3beebe557589f50c982dd57dbe6d572c095572da",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.9.1.crate",
+          "media_type": "application/gzip",
+          "size": 135064,
+          "digests": {
+            "sha256": "743edd3c4cee4dbf770783631c042e258f1503c545c9d09137df3aa3dfb07170"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.0",
+      "locked_from": "5de3318eaa8e98bd416beea65df725e625bbee7b",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.10.0.crate",
+          "media_type": "application/gzip",
+          "size": 135062,
+          "digests": {
+            "sha256": "9930d1d68621a753f9c3dee804e6a5c8d49261d889362ca8d91ea19b9acdfc01"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.1",
+      "locked_from": "d00c04d5dd3499b122de7b1c6ae5de589eec1839",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.10.1.crate",
+          "media_type": "application/gzip",
+          "size": 135076,
+          "digests": {
+            "sha256": "e2e0aadc44235b50617f29b3c32f1da6ad28aea01fb2c02970b8a0ae2a90bbd2"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.2",
+      "locked_from": "7ec4c060b6a504fb9fbfe4b665e884718e1cb408",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.10.2.crate",
+          "media_type": "application/gzip",
+          "size": 135093,
+          "digests": {
+            "sha256": "fa683d03c638112193eccf6bd9aed7218e3fded4ae2fa8025dd600d56b8aa2b2"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.3",
+      "locked_from": "14c4cb6885884a5b759736929bc75e0a6d20c7c1",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.10.3.crate",
+          "media_type": "application/gzip",
+          "size": 135739,
+          "digests": {
+            "sha256": "04709ff10f4c9558c81231bbc2022f17717b0aadaf104c6ec36a7d14dd151bce"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.4",
+      "locked_from": "dada4ea5bc37c1febc99217d20d7400849e95396",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-0.10.4.crate",
+          "media_type": "application/gzip",
+          "size": 140075,
+          "digests": {
+            "sha256": "a6ae5a21d9a820c15d62ce94e52966886a9f6cf6e853777985486eedef3bbdef"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    }
+  ]
+}

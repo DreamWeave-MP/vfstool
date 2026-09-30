@@ -1,0 +1,676 @@
+{
+  "schema_version": "2",
+  "document": "lock",
+  "project": "34fc442a-5060-4b77-8c64-ca5ea9861a10",
+  "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
+  "releases": [
+    {
+      "version": "0.9.0",
+      "locked_from": "d840a0f222c5eed097aba6e20472799fe8551693",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1561515,
+          "digests": {
+            "sha256": "12e7da7b5cf7bc947d8938de613d1cfcbf2127e7416258be84023286e3c5a725"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1683732,
+          "digests": {
+            "sha256": "c12374f2529c86e78c60429889a28bf8c91e4db7764d22208a8418b9cda8312d"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1793871,
+          "digests": {
+            "sha256": "2474d29282d9e6d8300f4dd6896b0f2c7153c6fd3ab2e84edf93a069ab7446b7"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1918945,
+          "digests": {
+            "sha256": "69876a7035404cf33d59e846c0c3b3816509dbb61887e42f4a5ba6fdd85379fe"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.9.1",
+      "locked_from": "3beebe557589f50c982dd57dbe6d572c095572da",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1560858,
+          "digests": {
+            "sha256": "f51b4673e0dab41a708113954e2bb18cb8d9ed25141ff0581b90575e511b5def"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1669434,
+          "digests": {
+            "sha256": "c4b41cd9c98784693939fadcc6f0bcf34ad6281a308add9fb491ad3bca73e9fd"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1770523,
+          "digests": {
+            "sha256": "2ecedc3b83edddbe2bbca680a5c9d28c9887ed9d5a03a778a6c3d72d0e5efc6b"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.0",
+      "locked_from": "5de3318eaa8e98bd416beea65df725e625bbee7b",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1560863,
+          "digests": {
+            "sha256": "88c15102caaa158941d4487a414d7cecfa6702ad33129a775b1f48e7d3fb9313"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1669727,
+          "digests": {
+            "sha256": "8544e61497a6d2396f714bce5d174154e15862a93c0ae98ca4c1753867d6d167"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1770661,
+          "digests": {
+            "sha256": "10faa44a54b1cf40bcf1ddd60468d865e1a356e430ddf1b9d07518ed908e3c53"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1905818,
+          "digests": {
+            "sha256": "83936cddd4104d33d7a667bb43916ddce9add687207977ef8efe3d76a031257d"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.1",
+      "locked_from": "d00c04d5dd3499b122de7b1c6ae5de589eec1839",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1560617,
+          "digests": {
+            "sha256": "a2d31fa6d6420110e11d446258fbfd11045a9942203fd246dec9096b9c3cadeb"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1669337,
+          "digests": {
+            "sha256": "e7aa1c314e22720e3baa35e493ea2bf0801c13af40b621429392c5b4aff74361"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1771455,
+          "digests": {
+            "sha256": "d84733d9493daa0693eba4125dd418357b2df6bd26a301340e2e9f9b0b92680f"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1906561,
+          "digests": {
+            "sha256": "ff7bfa22a7ff1d2d99f644120cb5d92b6f13b00b793c980aca1698a7927c684b"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.2",
+      "locked_from": "7ec4c060b6a504fb9fbfe4b665e884718e1cb408",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1560724,
+          "digests": {
+            "sha256": "e99196f7fc072cc55eef80f51fb6d10e20c2e864082312183b21d13e38977d67"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1670179,
+          "digests": {
+            "sha256": "f8762dd7fc35190b572dc6aeea7b67623a77e64c83f01879de4fcbcd177b5916"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1771432,
+          "digests": {
+            "sha256": "c70966a6f922589ea18011f0c23364d6bcf72d1147b049059bb85992a5c6cd21"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1906990,
+          "digests": {
+            "sha256": "d837cdae3ae226ad1af257daf4152c0a44d9ef646270bdfacb8a94c6cdab8101"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.3",
+      "locked_from": "14c4cb6885884a5b759736929bc75e0a6d20c7c1",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1560864,
+          "digests": {
+            "sha256": "520968f41d13381c8e64dd32d54ccdd3b66a361e9bc63b0c124c85967e3f1f16"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1669418,
+          "digests": {
+            "sha256": "2b8f295966f7be9ff30ef0da123e20621cb9bbdcbcfbce1bf5658697e19b909f"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1771385,
+          "digests": {
+            "sha256": "40814d14ad4763307dd282424e16c2206b780835fa76bb82566b4bef38fa7430"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1906909,
+          "digests": {
+            "sha256": "2bd40b940b762934569b269c3db0fddc5ba06a1d55862c874c39b6b508dcd72e"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "0.10.4",
+      "locked_from": "dada4ea5bc37c1febc99217d20d7400849e95396",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1560867,
+          "digests": {
+            "sha256": "9226d06c008819bb228ffb1c00c84e5e4397d630791b0dfcab1a48925941dcbe"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1669653,
+          "digests": {
+            "sha256": "ce7455dec1539dcc8426135778b69660e3f99f4ff6ab9f648dad7089c4094af7"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1771593,
+          "digests": {
+            "sha256": "a9008c64bb1532e8e9d016ab844b7cd968846b023af186c2829af5c2724c745d"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1906768,
+          "digests": {
+            "sha256": "856e9964a020caddae6eb4678b76856aa0ea3bee1b755c116a39d8aa2c85956c"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    }
+  ]
+}
