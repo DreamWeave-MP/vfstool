@@ -484,6 +484,8 @@ dependencies = [
 [[package]]
 name = "dream-path"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "141f666f9371f98d5e88a37bc388413a5acc77fae4f82d8d114e0297683010de"
 dependencies = [
  "bstr",
  "l3i",
@@ -492,6 +494,8 @@ dependencies = [
 [[package]]
 name = "dream_archive"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe94718bdde6117e633510a184a036c88bad99d0a745c0d18de21301743d2225"
 dependencies = [
  "dream-path",
  "encoding_rs",
@@ -688,6 +692,8 @@ dependencies = [
 [[package]]
 name = "l3i"
 version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "134fabf2180017b64f9d361f2e42374aed00c22257285cc5030743aa29fbc11d"
 dependencies = [
  "cc",
  "dream-net",
@@ -822,9 +828,9 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "openmw-config"
-version = "1.1.0"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "016350068cba3d4d4f93c85448c1ad9d1d34934a56c11bd2813dcb57f88dd849"
+checksum = "f0fe76e8e1e03e0651bad34b5989d61a6524e3b36372eb77da89f1363bda9562"
 dependencies = [
  "windows-sys",
 ]

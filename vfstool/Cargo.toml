@@ -14,7 +14,7 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 clap = { version = "4.6.7", features = ["derive"] }
 # `run` survives Ctrl+C while the command it started gets it, so the merged folder is removed.
 ctrlc = "3.5.2"
-openmw-config = "1.1.0"
+openmw-config = "3.0.1"
 vfstool_lib = { path = "../vfstool_lib", version = "1.0.0", features = [
     "serialize",
     "beth-archives",
