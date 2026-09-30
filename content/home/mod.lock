@@ -671,6 +671,104 @@
       "groups": [],
       "extensions": {},
       "critical_extensions": []
+    },
+    {
+      "version": "1.0.0",
+      "locked_from": "1a4193604e822f0e79cd1ae8da560d200157b556",
+      "artifacts": [
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 1531774,
+          "digests": {
+            "sha256": "87a080a9cc27834b43643a6dc7d53dfd0490fe50302555f68fd6f71845a14d75"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 1729054,
+          "digests": {
+            "sha256": "5a8e7f02cfa54da4b67ed2985dca10d73f7ce8ccc070487510eb3824edd99faf"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 1830465,
+          "digests": {
+            "sha256": "2fda3f041187f273ba35d9e3129a84cfa0f1cdf6c97eee71baac6c50ebbd9d18"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 1942538,
+          "digests": {
+            "sha256": "7b14089f7720862c94f5265bbb15c0cfc20303c7b87c38c9ca58b0f3d52a7aee"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
     }
   ]
 }

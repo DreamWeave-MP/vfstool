@@ -388,6 +388,41 @@
       "groups": [],
       "extensions": {},
       "critical_extensions": []
+    },
+    {
+      "version": "1.0.0",
+      "locked_from": "1a4193604e822f0e79cd1ae8da560d200157b556",
+      "artifacts": [
+        {
+          "id": "crate",
+          "format": "crate",
+          "filename": "vfstool_lib-1.0.0.crate",
+          "media_type": "application/gzip",
+          "size": 216746,
+          "digests": {
+            "sha256": "db40ecfedfb73886364eeecf08f09124a888426636616e03d73137c12ecaeff0"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
     }
   ]
 }
