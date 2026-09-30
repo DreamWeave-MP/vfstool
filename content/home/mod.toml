@@ -222,3 +222,12 @@ fixed = [
     "Messages are colored only on a terminal, and not when `NO_COLOR` is set: ANSI codes were written into pipes, files and logs too.",
     "On Linux and macOS, every report writes a file or folder name that is not UTF-8 with U+FFFD in place of its invalid bytes, instead of stopping with `path contains invalid UTF-8 characters` and exit code 9, and `drift` reads a lock of such a name back without drift.",
 ]
+
+[[releases]]
+version = "1.0.1"
+date = 2026-09-30
+summary = "Built on l3i 1.1.0 and the MIT OR Apache-2.0 releases of dream-path and dream_archive."
+changed = [
+    "vfstool_lib and vfstool are 1.0.1; l3i 1.1.0 comes from crates.io. No command, option or Luau function changed.",
+    "Requires dream-path 1.1 and dream_archive 1.1, their first MIT OR Apache-2.0 releases; the GPL releases up to 1.0.0 are no longer admitted.",
+]

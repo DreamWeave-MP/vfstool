@@ -1,6 +1,6 @@
 [package]
 name = "vfstool"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.92"
 description = "A command-line tool for constructing, manipulating, and introspecting virtual file systems in Rust, based on OpenMW's VFS implementation."
@@ -15,14 +15,14 @@ clap = { version = "4.6.7", features = ["derive"] }
 # `run` survives Ctrl+C while the command it started gets it, so the merged folder is removed.
 ctrlc = "3.5.2"
 openmw-config = "3.0.1"
-vfstool_lib = { path = "../vfstool_lib", version = "1.0.0", features = [
+vfstool_lib = { path = "../vfstool_lib", version = "1.0.1", features = [
     "serialize",
     "beth-archives",
 ] }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
-dream_archive = { version = "1.0.0", default-features = false, features = ["bsa"] }
+dream_archive = { version = "1.1.0", default-features = false, features = ["bsa"] }
 
 [[bench]]
 name = "validate_chain"

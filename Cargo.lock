@@ -483,9 +483,9 @@ dependencies = [
 
 [[package]]
 name = "dream-path"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "141f666f9371f98d5e88a37bc388413a5acc77fae4f82d8d114e0297683010de"
+checksum = "b254e95d7f08989cb61e67c804a461ceb37e8411db5e6443159dfecdaa730ecb"
 dependencies = [
  "bstr",
  "l3i",
@@ -493,9 +493,9 @@ dependencies = [
 
 [[package]]
 name = "dream_archive"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe94718bdde6117e633510a184a036c88bad99d0a745c0d18de21301743d2225"
+checksum = "ef05ce9b63b87ff34e29708aa5d58829608063a64cf236420adbba101dbc24c7"
 dependencies = [
  "dream-path",
  "encoding_rs",
@@ -691,9 +691,9 @@ dependencies = [
 
 [[package]]
 name = "l3i"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "134fabf2180017b64f9d361f2e42374aed00c22257285cc5030743aa29fbc11d"
+checksum = "24d35931d97c63da75ae56371bf67577f401dafe2e6546d5c2a174a8d01d18bc"
 dependencies = [
  "cc",
  "dream-net",
@@ -1266,7 +1266,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vfstool"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "clap",
  "criterion",
@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "vfstool_lib"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "ahash",
  "blake3",

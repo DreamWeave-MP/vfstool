@@ -1,6 +1,6 @@
 [package]
 name = "vfstool_lib"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2024"
 rust-version = "1.92"
 description = "A library for constructing and manipulating virtual file systems in Rust, based on OpenMW's VFS implementation."
@@ -13,9 +13,9 @@ keywords = ["vfs", "openmw", "gamedev", "modding", "bethesda"]
 [dependencies]
 ahash = "0.8"
 blake3 = "1"
-dream-path = "1.0.0"
-dream_archive = { version = "1.0.0", optional = true, default-features = false, features = ["ba2", "bsa", "parallel"] }
-l3i = { version = "1.0.0", optional = true }
+dream-path = "1.1.0"
+dream_archive = { version = "1.1.0", optional = true, default-features = false, features = ["ba2", "bsa", "parallel"] }
+l3i = { version = "1.1.0", optional = true }
 # Positional reads of loose files in Luau map the file once (pure Rust); a file that cannot be
 # mapped falls back to positional reads on the handle.
 memmap2 = { version = "0.9", optional = true }
