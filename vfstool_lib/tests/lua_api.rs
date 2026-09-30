@@ -234,6 +234,8 @@ fn lua_serialize_helper_is_available_with_serialize_feature() {
 
 #[test]
 #[cfg(feature = "serialize")]
+// The script spells the file's host path as POSIX text; Windows reports it with a backslash.
+#[cfg(not(windows))]
 fn lua_serialize_writes_views_that_hold_files_and_tree_streams() {
     let dir = TempDir::new("lua_serialize_views");
     dir.write("Textures/Rock.dds", b"rock");
@@ -310,6 +312,8 @@ fn a_host_can_fill_a_keys_view() {
 }
 
 #[test]
+// The script spells the file's host path as POSIX text; Windows reports it with a backslash.
+#[cfg(not(windows))]
 fn lua_write_outs_return_what_they_leave_out() {
     let dir = TempDir::new("lua_write_out_skips");
     dir.write("kept.txt", b"kept");
