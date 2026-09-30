@@ -358,7 +358,7 @@ fn granted_table(runtime: &l3i::Runtime) -> Result<Table> {
                 .map_err(io_error)
         })?;
         class_function(runtime, table, "host", "canonicalize", |path: &[u8]| {
-            fs::canonicalize(host_path(path))
+            super::canonical(&host_path(path))
                 .map(|path| path_bytes(&path).to_vec())
                 .map_err(io_error)
         })

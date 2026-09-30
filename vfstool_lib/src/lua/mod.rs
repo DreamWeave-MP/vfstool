@@ -371,6 +371,27 @@ pub(crate) fn host_path(bytes: &[u8]) -> PathBuf {
     }
 }
 
+/// `fs::canonicalize` for a path a script sees again: Windows answers with the verbatim
+/// `\\?\C:\...` spelling, which the Win32 API will not join with `/`; the plain drive or
+/// UNC spelling is what the script joins and compares, so that is what comes back.
+pub(crate) fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    let path = std::fs::canonicalize(path)?;
+    #[cfg(windows)]
+    {
+        if let Some(text) = path.to_str() {
+            if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+                return Ok(PathBuf::from(format!(r"\\{rest}")));
+            }
+            if let Some(rest) = text.strip_prefix(r"\\?\")
+                && rest.as_bytes().get(1) == Some(&b':')
+            {
+                return Ok(PathBuf::from(rest));
+            }
+        }
+    }
+    Ok(path)
+}
+
 /// The bytes a host path is pushed as.
 pub(crate) fn path_bytes(path: &Path) -> &[u8] {
     path.as_os_str().as_encoded_bytes()

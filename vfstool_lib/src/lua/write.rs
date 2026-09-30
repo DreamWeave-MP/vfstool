@@ -431,7 +431,7 @@ fn contain(what: &str, root: &Path, relative: &[u8]) -> Result<()> {
         }
         deepest = current;
     }
-    let resolved = std::fs::canonicalize(&deepest).map_err(io_error)?;
+    let resolved = super::canonical(&deepest).map_err(io_error)?;
     if !resolved.starts_with(root) {
         return Err(Error::runtime(format!(
             "dream.vfs: {what}: key '{}' escapes the write root ({} resolves to {})",

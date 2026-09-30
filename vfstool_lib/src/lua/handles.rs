@@ -167,7 +167,7 @@ impl Vfs {
         let root = match root {
             Some(root) => {
                 std::fs::create_dir_all(&root)?;
-                Some(std::fs::canonicalize(&root)?)
+                Some(super::canonical(&root)?)
             }
             None => None,
         };
