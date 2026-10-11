@@ -1,0 +1,46 @@
+--!strict
+--!native
+-- SPDX-License-Identifier: MIT OR Apache-2.0
+-- The types the VFS port shares.
+local archive = require '@dream-archive'
+
+export type Kind = 'looseDir' | 'archive'
+
+--- A source: a loose data directory or an archive, by host path.
+export type Source = { path: string, kind: Kind }
+
+--- An opened archive the VFS reads entries from, by the host path it was opened with.
+export type Archive = archive.Archive
+export type ArchiveRef = { path: string, handle: Archive }
+
+--- What a file is: a loose file by host path, or an archive entry by its stored name and index.
+--- Provider stacks hold these with the 1-based position of their source (`source`, 0 for a file
+--- that isn't in a VFS); a key's winner is the top one. A loose file found by walking its data
+--- directory keeps its path below it in `rel`.
+export type Entry = {
+  path: string,
+  archive: ArchiveRef?,
+  index: number?,
+  source: number,
+  rel: string?,
+}
+
+--- A VFS's state; `files` is the winner of every key and `count` how many there are.
+export type State = {
+  files: { [string]: Entry },
+  count: number,
+  revision: number,
+  providers: { [string]: { Entry } },
+  --- `files` and `providers` again, by key token (`keys.luau`), for lookups by any spelling.
+  winners: { [number]: Entry },
+  stacks: { [number]: { Entry } },
+  sources: { Source },
+  provided: { boolean },
+  directories: { [string]: number },
+  keys: { string }?,
+  layer: unknown?,
+  writeRoot: string?,
+  grant: 'scripts' | 'refused' | 'host',
+}
+
+return table.freeze {}

@@ -1,0 +1,27 @@
+manifest_version = 1
+
+[package]
+id = "org.dreamweave.vfs"
+version = "0.1.0"
+jess_api = "1"
+include = ["src"]
+
+[dependencies]
+"org.dreamweave.dream-archive" = "0.1"
+
+[modules]
+"@vfs" = "src/init.luau"
+# Exported for vfstool, whose command line is built from these five; they are not the VFS API.
+"@vfs/serialize" = "src/internal/serialize.luau"
+"@vfs/paths" = "src/internal/paths.luau"
+"@vfs/layer" = "src/internal/layer.luau"
+"@vfs/encode" = "src/internal/encode.luau"
+"@vfs/core" = "src/internal/vfs.luau"
+
+# Every module here is inert API: it does nothing until something requires it, and runs with the
+# authority of whatever calls it.
+
+[[layer]]
+id = "vfs.core"
+requires = ["dream-archive.core"]
+exports = ["@vfs", "@vfs/serialize", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]
