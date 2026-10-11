@@ -44,7 +44,10 @@ local function isInteger(value: unknown, expected: number): boolean
   return typeof(value) == 'integer' and tostring(value) == tostring(expected)
 end
 
+--- The message `call` raises with. Every caller hands in a call the port has to refuse (a bad
+--- argument, a path outside the write root, a closed handle), so going through is the failure.
 local function refused(call: (...any) -> ...any, ...: any): string
+  -- The call raises its refusal with `error`; the message is what the case reads.
   local ok, err = pcall(call, ...)
   assert(not ok, 'the call went through')
   return tostring(err)
@@ -228,6 +231,7 @@ suite.describe('views', function()
     local layer = vfs:layerIndex()
     assert(layer:sourcesContaining('dir0/file0.txt')[1] == 1 and layer:sourceIdForPath(dir) == 1)
     assert(layer:sourceById(1).path == dir and layer:sourceById(2) == nil)
+    -- `sourceById` raises for an id below 1: source ids are 1-based, so 0 names nothing.
     assert(not pcall(function() return layer:sourceById(0) end), 'zero is not an index')
     assert(layer:providerChain('dir0/file0.txt')[1].providerIndex == 1)
     expect(tostring(vfs)).toBe 'dream.vfs.VFS(1 files)'
@@ -251,16 +255,19 @@ suite.describe('files', function()
     assert(file, 'found in another spelling')
     assert(#file:readAll() == 1000, 'readAll')
     assert(file:fileName() == 'Big.bin' and file:fileStem() == 'Big')
-    local buf = buffer.create(1000)
-    assert(file:readInto(buf) == 1000)
-    assert(buffer.readu8(buf, 255) == 255 and buffer.readu8(buf, 256) == 0, 'contents')
+    local whole = buffer.create(1000)
+    assert(file:readInto(whole) == 1000)
+    assert(buffer.readu8(whole, 255) == 255 and buffer.readu8(whole, 256) == 0, 'contents')
     local small = buffer.create(64)
     assert(file:readInto(small, 32) == 32, 'reads at most the space after the offset')
     assert(buffer.readu8(small, 32) == 0 and buffer.readu8(small, 63) == 31)
+    -- `readInto` raises for an offset past the end of the buffer and for a negative one, and
+    -- `getFile` with the binder's message for a path that isn't a string.
     assert(not pcall(file.readInto, file, small, 65), 'offset past the end')
     assert(not pcall(file.readInto, file, small, -1), 'negative offset')
     assert(not pcall(vfs.getFile, vfs, 42), 'a path is a string')
     local missing = vfstool.VfsFile.from '/definitely/missing'
+    -- `readAll` raises the OS's error for a file that isn't there.
     assert(not pcall(missing.readAll, missing))
   end)
 
@@ -286,17 +293,17 @@ suite.describe('files', function()
     local vfs = vfstool.VFS.fromDirectories { dir }
     local file = vfs:getFile 'data/big.bin'
     assert(file:size() == 1000, 'size from metadata')
-    local buf = buffer.create(64)
-    assert(file:readAt(buf, 0) == 64, 'fills the buffer by default')
-    assert(buffer.readu8(buf, 0) == 0 and buffer.readu8(buf, 63) == 63)
-    assert(file:readAt(buf, 100, 16, 8) == 16, 'length and bufferOffset')
+    local into = buffer.create(64)
+    assert(file:readAt(into, 0) == 64, 'fills the buffer by default')
+    assert(buffer.readu8(into, 0) == 0 and buffer.readu8(into, 63) == 63)
+    assert(file:readAt(into, 100, 16, 8) == 16, 'length and bufferOffset')
     assert(
-      buffer.readu8(buf, 8) == 100
-        and buffer.readu8(buf, 23) == 115
-        and buffer.readu8(buf, 24) == 24
+      buffer.readu8(into, 8) == 100
+        and buffer.readu8(into, 23) == 115
+        and buffer.readu8(into, 24) == 24
     )
-    assert(file:readAt(buf, 990) == 10, 'short at the end of the file')
-    assert(file:readAt(buf, 1000) == 0, 'the end reads nothing')
+    assert(file:readAt(into, 990) == 10, 'short at the end of the file')
+    assert(file:readAt(into, 1000) == 0, 'the end reads nothing')
     for _, case in
       {
         { { 1001 }, 'dream.vfs: readAt: fileOffset 1001 past the end (size 1000)' },
@@ -315,11 +322,11 @@ suite.describe('files', function()
       } :: { { any } }
 
     do
-      local err = refused(file.readAt, file, buf, table.unpack(case[1]))
+      local err = refused(file.readAt, file, into, table.unpack(case[1]))
       assert(string.find(err, case[2], 1, true), err)
     end
 
-    local err = refused(file.readAt, file, buf, 0, nil, 65)
+    local err = refused(file.readAt, file, into, 0, nil, 65)
     assert(
       string.find(
         err,
@@ -347,12 +354,13 @@ suite.describe('files', function()
     assert(buffer.len(whole) == 1000 and buffer.readu8(whole, 999) == 231, 'readAllBuffer')
     local empty = vfs:getFile 'data/empty.bin'
     assert(
-      empty:size() == 0 and buffer.len(empty:readAllBuffer()) == 0 and empty:readAt(buf, 0) == 0
+      empty:size() == 0 and buffer.len(empty:readAllBuffer()) == 0 and empty:readAt(into, 0) == 0
     )
     local missing = vfstool.VfsFile.from(`{dir}/missing.bin`)
     err = refused(missing.size, missing)
     assert(string.find(err, 'dream.vfs: ', 1, true), err)
-    assert(not pcall(missing.readAt, missing, buf, 0))
+    -- `readAt` raises the OS's error for a file that isn't there, as `size` just did.
+    assert(not pcall(missing.readAt, missing, into, 0))
   end)
 
   suite.it('open readers that walk sequentially and refuse use after close', function()
@@ -366,12 +374,12 @@ suite.describe('files', function()
     )
     local first = reader:read(16)
     assert(buffer.len(first) == 16 and buffer.readu8(first, 15) == 15 and reader:tell() == 16)
-    local buf = buffer.create(32)
-    assert(reader:readInto(buf) == 32 and buffer.readu8(buf, 0) == 16 and reader:tell() == 48)
+    local into = buffer.create(32)
+    assert(reader:readInto(into) == 32 and buffer.readu8(into, 0) == 16 and reader:tell() == 48)
     assert(
-      reader:readInto(buf, 8, 4) == 4
-        and buffer.readu8(buf, 8) == 48
-        and buffer.readu8(buf, 12) == 28,
+      reader:readInto(into, 8, 4) == 4
+        and buffer.readu8(into, 8) == 48
+        and buffer.readu8(into, 12) == 28,
       'window'
     )
     reader:skip(200)
@@ -382,7 +390,7 @@ suite.describe('files', function()
     reader:seek(10)
     assert(reader:tell() == 10 and buffer.readu8(reader:read(1), 0) == 10)
     reader:seek(300)
-    assert(reader:readInto(buf) == 0)
+    assert(reader:readInto(into) == 0)
     local err = refused(reader.seek, reader, 301)
     assert(
       string.find(err, 'dream.vfs: Reader.seek: position 301 past the end (size 300)', 1, true),
@@ -403,7 +411,7 @@ suite.describe('files', function()
     )
     err = refused(reader.read, reader, -1)
     assert(string.find(err, 'dream.vfs: Reader.read: length -1 is negative', 1, true), err)
-    err = refused(reader.readInto, reader, buf, 33)
+    err = refused(reader.readInto, reader, into, 33)
     assert(
       string.find(
         err,
@@ -430,14 +438,14 @@ suite.describe('files', function()
     local chunk = buffer.create(64)
     local total, checksum = 0, 0
     while true do
-      local n = walk:readInto(chunk)
-      if n == 0 then break end
+      local read = walk:readInto(chunk)
+      if read == 0 then break end
 
-      for index = 0, n - 1 do
+      for index = 0, read - 1 do
         checksum += buffer.readu8(chunk, index)
       end
 
-      total += n
+      total += read
     end
 
     assert(total == 300 and checksum == 255 * 128 + 44 * 43 / 2, tostring(checksum))
@@ -452,9 +460,9 @@ suite.describe('files', function()
     local file = vfs:getFile 'meshes/x/door.nif'
     assert(file and file:isArchive() and file:size() == 3000)
     expect(file:parentArchiveName()).toBe 'Morrowind.bsa'
-    local buf = buffer.create(8)
-    assert(file:readAt(buf, 512) == 8 and buffer.readu8(buf, 0) == 0 and buffer.readu8(buf, 7) == 7)
-    assert(file:readAt(buf, 2996) == 4)
+    local into = buffer.create(8)
+    assert(file:readAt(into, 512) == 8 and buffer.readu8(into, 0) == 0 and buffer.readu8(into, 7) == 7)
+    assert(file:readAt(into, 2996) == 4)
     assert(buffer.len(file:readRange(2990, 100)) == 10)
     local reader = file:open()
     reader:skip(2999)
@@ -572,16 +580,18 @@ suite.describe('serialize', function()
     expect(string.find(vfstool.serialize({ answer = 42 }, 'json'), 'answer', 1, true) ~= nil).toBe(
       true
     )
+    -- `serialize` raises for a handle that is no file, view or tree: there is nothing to write.
     assert(not pcall(vfstool.serialize, vfs, 'json'), 'a VFS handle is not serializable')
     local err = refused(vfstool.serialize, {}, 'xml')
     assert(string.find(err, 'unknown serialization format \'xml\'', 1, true), err)
   end)
 
   suite.it('writes TOML tables and YAML documents', function()
-    expect(string.find(vfstool.serialize({ a = { b = true } }, 'toml'), '[a]', 1, true) ~= nil).toBe(
-      true
-    )
-    expect(vfstool.serialize({ a = 1 }, 'yaml')).toBe 'a: 1\n'
+    expect(
+      string.find(vfstool.serialize({ section = { enabled = true } }, 'toml'), '[section]', 1, true)
+        ~= nil
+    ).toBe(true)
+    expect(vfstool.serialize({ count = 1 }, 'yaml')).toBe 'count: 1\n'
     expect(vfstool.serialize({ list = { 'x', 'y' } }, 'yaml')).toBe 'list:\n- x\n- y\n'
     expect(vfstool.serialize({ text = 'true' }, 'yaml')).toBe 'text: \'true\'\n'
   end)
@@ -634,15 +644,31 @@ suite.describe('semantic analysis', function()
       byKey[entry.key] = entry
     end
 
-    local a, b = byKey['a.txt'], byKey['b.json']
-    assert(a.winner.path == high and a.winner.kind == 'looseDir', a.winner.path)
-    assert(#a.providers == 2 and a.allIdentical == true and a.distinctVersions == 1)
-    assert(a.providers[1].source.path == low and a.providers[1].relation == 'identicalToWinner')
-    assert(isInteger(a.providers[1].size, 4) and #a.providers[1].hashBlake3 == 64)
-    assert(a.providers[2].semanticDeltaToWinner.kind == 'noOpEquivalent')
-    assert(b.allIdentical == false and b.distinctVersions == 2 and b.assetClass == 'json')
-    assert(b.providers[1].relation == 'differentFromWinner')
-    assert(b.providers[1].semanticDeltaToWinner.kind == 'cosmeticOnly')
+    local identical, cosmetic = byKey['a.txt'], byKey['b.json']
+    assert(
+      identical.winner.path == high and identical.winner.kind == 'looseDir',
+      identical.winner.path
+    )
+    assert(
+      #identical.providers == 2
+        and identical.allIdentical == true
+        and identical.distinctVersions == 1
+    )
+    assert(
+      identical.providers[1].source.path == low
+        and identical.providers[1].relation == 'identicalToWinner'
+    )
+    assert(
+      isInteger(identical.providers[1].size, 4) and #identical.providers[1].hashBlake3 == 64
+    )
+    assert(identical.providers[2].semanticDeltaToWinner.kind == 'noOpEquivalent')
+    assert(
+      cosmetic.allIdentical == false
+        and cosmetic.distinctVersions == 2
+        and cosmetic.assetClass == 'json'
+    )
+    assert(cosmetic.providers[1].relation == 'differentFromWinner')
+    assert(cosmetic.providers[1].semanticDeltaToWinner.kind == 'cosmeticOnly')
     local err = refused(layer.semanticConflicts, layer, vfs, { archiveHashMode = 'sometimes' })
     assert(
       string.find(err, 'archiveHashMode', 1, true)
@@ -979,36 +1005,36 @@ suite.describe('writes', function()
   suite.it('through writers, registered on close', function()
     local out = scratch 'writer-root'
     local vfs = vfstool.VFS.fromDirectories({}, { writeRoot = out })
-    local w = vfs:openWrite 'log.txt'
-    assert(tostring(w) == `dream.vfs.Writer({out}/log.txt)`, tostring(w))
-    assert(w:write 'hello ' == 6 and w:tell() == 6)
-    assert(w:write(buffer.fromstring 'xxworldxx', 2, 5) == 5 and w:tell() == 11)
-    assert(w:writeAt(0, 'J') == 1 and w:tell() == 11, 'writeAt does not move')
-    w:seek(6)
-    w:write 'W'
-    w:truncate(5)
-    assert(w:tell() == 5, 'a position past the new end moves to it')
-    w:flush()
+    local writer = vfs:openWrite 'log.txt'
+    assert(tostring(writer) == `dream.vfs.Writer({out}/log.txt)`, tostring(writer))
+    assert(writer:write 'hello ' == 6 and writer:tell() == 6)
+    assert(writer:write(buffer.fromstring 'xxworldxx', 2, 5) == 5 and writer:tell() == 11)
+    assert(writer:writeAt(0, 'J') == 1 and writer:tell() == 11, 'writeAt does not move')
+    writer:seek(6)
+    writer:write 'W'
+    writer:truncate(5)
+    assert(writer:tell() == 5, 'a position past the new end moves to it')
+    writer:flush()
     assert(not vfs:contains 'log.txt', 'registered on close only')
-    local closed = w:close()
+    local closed = writer:close()
     assert(closed and closed:readAll() == 'Jello' and vfs:getFile('log.txt'):readAll() == 'Jello')
-    assert(w:close() == nil, 'closing again is nothing')
-    local err = refused(w.write, w, 'x')
+    assert(writer:close() == nil, 'closing again is nothing')
+    local err = refused(writer.write, writer, 'x')
     assert(
       string.find(err, 'dream.vfs: Writer.write: the writer over ', 1, true)
         and string.find(err, 'log.txt is closed', 1, true),
       err
     )
-    local a = vfs:openWrite('log.txt', { append = true })
-    assert(a:tell() == 5, 'an append writer starts at the end')
-    a:write '!'
-    err = refused(a.writeAt, a, 0, 'x')
+    local appender = vfs:openWrite('log.txt', { append = true })
+    assert(appender:tell() == 5, 'an append writer starts at the end')
+    appender:write '!'
+    err = refused(appender.writeAt, appender, 0, 'x')
     assert(string.find(err, 'appends, so it cannot write at a position', 1, true), err)
-    a:close()
+    appender:close()
     assert(vfs:getFile('log.txt'):readAll() == 'Jello!')
-    local k = vfs:openWrite('log.txt', { truncate = false })
-    k:write 'H'
-    k:close()
+    local inPlace = vfs:openWrite('log.txt', { truncate = false })
+    inPlace:write 'H'
+    inPlace:close()
     assert(vfs:getFile('log.txt'):readAll() == 'Hello!')
     err = refused(vfs.openWrite, vfs, 'log.txt', { mode = 'w' })
     assert(string.find(err, 'vfs:openWrite: unknown option \'mode\'', 1, true), err)
@@ -1203,15 +1229,15 @@ suite.describe('the host table', function()
     assert(#deep:toTable() == 3)
     err = refused(host.list, `{dir}/in`, { deep = true })
     assert(string.find(err, 'host.list: unknown option \'deep\'', 1, true), err)
-    local w = host.openWrite(`{dir}/written.bin`)
-    assert(w:write(buffer.fromstring '0123456789') == 10)
-    w:writeAt(0, 'AB')
-    w:truncate(4)
-    assert(w:close() == nil, 'a host writer registers nothing')
+    local writer = host.openWrite(`{dir}/written.bin`)
+    assert(writer:write(buffer.fromstring '0123456789') == 10)
+    writer:writeAt(0, 'AB')
+    writer:truncate(4)
+    assert(writer:close() == nil, 'a host writer registers nothing')
     assert(host.readFileString(`{dir}/written.bin`) == 'AB23')
-    local a = host.openWrite(`{dir}/written.bin`, { append = true })
-    a:write '!'
-    a:close()
+    local appender = host.openWrite(`{dir}/written.bin`, { append = true })
+    appender:write '!'
+    appender:close()
     assert(host.readFileString(`{dir}/written.bin`) == 'AB23!')
   end)
 
@@ -1220,6 +1246,8 @@ suite.describe('the host table', function()
     local host = vfstool.host
     host.mkdir(`{dir}/a/b/c`, { recursive = true })
     assert(host.stat(`{dir}/a/b/c`).isDir)
+    -- `host.mkdir` raises the OS's error for a folder whose parent isn't there, unless asked to
+    -- make the parents too.
     assert(not pcall(host.mkdir, `{dir}/x/y`), 'mkdir without recursive needs the parent')
     host.mkdir(`{dir}/x`)
     host.rename(`{dir}/out.txt`, `{dir}/x/out.txt`)
@@ -1228,6 +1256,8 @@ suite.describe('the host table', function()
     assert(host.readFileString(`{dir}/x/copy.txt`) == 'abcdef')
     host.remove(`{dir}/x/copy.txt`)
     assert(not host.exists(`{dir}/x/copy.txt`))
+    -- `host.remove` raises the OS's error for a folder that still holds something, unless asked
+    -- to remove what is in it.
     assert(not pcall(host.remove, `{dir}/x`), 'a directory with content needs recursive')
     host.remove(`{dir}/x`, { recursive = true })
     assert(not host.exists(`{dir}/x`))
