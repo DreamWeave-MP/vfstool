@@ -168,20 +168,20 @@ end
 local function comparePaths(left: string, right: string): number
   if left == right then return 0 end
 
-  local a, b = components(left), components(right)
-  for index = 1, math.min(#a, #b) do
-    local x, y = a[index], b[index]
-    if x ~= y then
-      local rx, ry = rank(x), rank(y)
-      if rx ~= ry then return if rx < ry then -1 else 1 end
+  local leftParts, rightParts = components(left), components(right)
+  for index = 1, math.min(#leftParts, #rightParts) do
+    local leftPart, rightPart = leftParts[index], rightParts[index]
+    if leftPart == rightPart then continue end
 
-      return if x < y then -1 else 1
-    end
+    local leftRank, rightRank = rank(leftPart), rank(rightPart)
+    if leftRank ~= rightRank then return if leftRank < rightRank then -1 else 1 end
+
+    return if leftPart < rightPart then -1 else 1
   end
 
-  if #a == #b then return 0 end
+  if #leftParts == #rightParts then return 0 end
 
-  return if #a < #b then -1 else 1
+  return if #leftParts < #rightParts then -1 else 1
 end
 
 local function pathLess(left: string, right: string): boolean return comparePaths(left, right) < 0 end
@@ -197,16 +197,16 @@ local function sortPaths(paths: { string })
   local keys = {}
 
   for _, path in paths do
-    if not keys[path] then
-      local parts = components(path)
-      local spelled = table.create(#parts)
+    if keys[path] then continue end
 
-      for index, part in parts do
-        spelled[index] = string.char(rank(part)) .. part
-      end
+    local parts = components(path)
+    local spelled = table.create(#parts)
 
-      keys[path] = table.concat(spelled, '\0')
+    for index, part in parts do
+      spelled[index] = string.char(rank(part)) .. part
     end
+
+    keys[path] = table.concat(spelled, '\0')
   end
 
   table.sort(paths, function(left, right) return keys[left] < keys[right] end)
