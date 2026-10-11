@@ -266,10 +266,10 @@ suite.describe('files', function()
 
   suite.it('take keys that are not UTF-8', function()
     local dir = scratch 'odd-bytes'
-    local wrote = pcall(
-      function() support.writeTree(dir, { ['odd/\255.dat'] = 'odd', ['a.txt'] = '' }) end
-    )
-    if not wrote then return end
+    support.writeTree(dir, { ['odd/\255.dat'] = 'odd', ['a.txt'] = '' })
+    -- A filesystem that holds no name that isn't UTF-8 refused the write, and `@dream/fs` answers
+    -- nil for that instead of raising: there is no such key to test there.
+    if not fs.exists(`{dir}/odd/\255.dat`) then return end
 
     local vfs = vfstool.VFS.fromDirectories { dir }
     local odd = vfs:getFile 'ODD/\255.DAT'
@@ -1072,12 +1072,11 @@ suite.describe('writes', function()
     local out = scratch 'symlink-root'
     local outside = tree('symlink-outside', { ['keep/victim.txt'] = 'untouched' })
     fs.mkdir(`{out}/textures`)
-    local linked = pcall(function()
-      fs.symlink(`{outside}/keep`, `{out}/textures/link`, { directory = true })
-      fs.symlink(`{outside}/keep/victim.txt`, `{out}/victim.txt`)
-      fs.symlink(`{out}/textures`, `{out}/inside`, { directory = true })
-    end)
-
+    local linked = fs.symlink(`{outside}/keep`, `{out}/textures/link`, { directory = true })
+      and fs.symlink(`{outside}/keep/victim.txt`, `{out}/victim.txt`)
+      and fs.symlink(`{out}/textures`, `{out}/inside`, { directory = true })
+    -- A host that makes no symbolic links answers nil for the first one instead of raising: there
+    -- is no link to refuse there.
     if not linked then return end
 
     local vfs = vfstool.VFS.new()
