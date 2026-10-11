@@ -9,7 +9,7 @@
 local check = require './check'
 local file = require './file'
 local paths = require './paths'
-local serialize = require './serialize'
+local serialize = require '@jess/data/value'
 local tree = require './tree'
 local types = require './types'
 local views = require './views'

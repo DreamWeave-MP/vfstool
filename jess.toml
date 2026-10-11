@@ -12,8 +12,7 @@ tests = ["tests/run.luau", "tests/style.luau"]
 
 [modules]
 "@vfs" = "src/init.luau"
-# Exported for vfstool, whose command line is built from these five; they are not the VFS API.
-"@vfs/serialize" = "src/internal/serialize.luau"
+# Exported for vfstool, whose command line is built from these four; they are not the VFS API.
 "@vfs/paths" = "src/internal/paths.luau"
 "@vfs/layer" = "src/internal/layer.luau"
 "@vfs/encode" = "src/internal/encode.luau"
@@ -25,4 +24,4 @@ tests = ["tests/run.luau", "tests/style.luau"]
 [[layer]]
 id = "vfs.core"
 requires = ["dream-archive.core"]
-exports = ["@vfs", "@vfs/serialize", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]
+exports = ["@vfs", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]

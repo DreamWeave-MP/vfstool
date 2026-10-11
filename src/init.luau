@@ -16,7 +16,7 @@ local paths = require '@self/internal/paths'
 local registry = require '@self/internal/registry'
 local run = require '@self/internal/run'
 local semantic = require '@self/internal/semantic'
-local serialize = require '@self/internal/serialize'
+local serialize = require '@jess/data/value'
 local vfs = require '@self/internal/vfs'
 
 export type VfsFile = typeof(vfs.VfsFile.from '')
