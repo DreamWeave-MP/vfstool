@@ -4,6 +4,7 @@ manifest_version = 1
 id = "org.dreamweave.vfstool"
 version = "0.1.0"
 jess_api = "1"
+default_target = "vfstool"
 include = ["src"]
 tests = ["tests/run.luau"]
 
@@ -21,3 +22,12 @@ tests = ["tests/run.luau"]
 id = "vfstool.core"
 requires = ["openmw-config.core", "vfs.core"]
 exports = ["@vfstool"]
+
+# The command line itself. It reads the configuration, data folders, archives, and lock files;
+# writes reports, collapsed and extracted files, and `run`'s merged folder; reads OPENMW_CONFIG and
+# NO_COLOR; and `run` starts the command it is given.
+[targets.vfstool]
+kind = "command"
+command = "vfstool"
+entry = "src/main.luau"
+capabilities = ["filesystem.read", "filesystem.write", "process.environment", "process.spawn"]
