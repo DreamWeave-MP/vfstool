@@ -433,11 +433,11 @@ local function drift(
 
   table.sort(
     found,
-    function(a: { key: string, kind: number }, b: { key: string, kind: number }): boolean
-      local order = paths.comparePaths(a.key, b.key)
+    function(left: { key: string, kind: number }, right: { key: string, kind: number }): boolean
+      local order = paths.comparePaths(left.key, right.key)
       if order ~= 0 then return order < 0 end
 
-      return a.kind < b.kind
+      return left.kind < right.kind
     end
   )
 

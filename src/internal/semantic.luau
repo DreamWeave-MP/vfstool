@@ -258,10 +258,10 @@ end
 local function toml(left: string, right: string): Delta
   if left == right then return { kind = 'noOpEquivalent' } end
 
-  local a, b = tomlValue(left), tomlValue(right)
-  if not a or not b then return { kind = 'unknown' } end
+  local leftValue, rightValue = tomlValue(left), tomlValue(right)
+  if not leftValue or not rightValue then return { kind = 'unknown' } end
 
-  if a == b then return { kind = 'cosmeticOnly' } end
+  if leftValue == rightValue then return { kind = 'cosmeticOnly' } end
 
   return behavior 'TOML semantic values differ'
 end
@@ -269,10 +269,10 @@ end
 local function jsonDelta(left: string, right: string): Delta
   if left == right then return { kind = 'noOpEquivalent' } end
 
-  local a, b = json.decode(left), json.decode(right)
-  if not a or not b then return { kind = 'unknown' } end
+  local leftValue, rightValue = json.decode(left), json.decode(right)
+  if not leftValue or not rightValue then return { kind = 'unknown' } end
 
-  if json.equal(a, b) then return { kind = 'cosmeticOnly' } end
+  if json.equal(leftValue, rightValue) then return { kind = 'cosmeticOnly' } end
 
   return behavior 'JSON semantic values differ'
 end
@@ -303,20 +303,20 @@ end
 
 --- The asset class of `path` and how `right` differs from `left`.
 local function analyze(path: string, left: buffer | string, right: buffer | string): (string, Delta)
-  local a = if type(left) == 'buffer' then buffer.tostring(left) else left
-  local b = if type(right) == 'buffer' then buffer.tostring(right) else right
-  local kind = class(path, a, b)
-  if kind == 'ini' then return kind, ini(a, b) end
+  local leftBytes = if type(left) == 'buffer' then buffer.tostring(left) else left
+  local rightBytes = if type(right) == 'buffer' then buffer.tostring(right) else right
+  local kind = class(path, leftBytes, rightBytes)
+  if kind == 'ini' then return kind, ini(leftBytes, rightBytes) end
 
-  if kind == 'toml' then return kind, toml(a, b) end
+  if kind == 'toml' then return kind, toml(leftBytes, rightBytes) end
 
-  if kind == 'json' then return kind, jsonDelta(a, b) end
+  if kind == 'json' then return kind, jsonDelta(leftBytes, rightBytes) end
 
   if kind == 'luaScript' or kind == 'mwScriptLike' or kind == 'text' then
-    return kind, text(a, b)
+    return kind, text(leftBytes, rightBytes)
   end
 
-  if kind == 'binary' then return kind, binary(a, b) end
+  if kind == 'binary' then return kind, binary(leftBytes, rightBytes) end
 
   return kind, { kind = 'unknown' }
 end

@@ -42,17 +42,17 @@ local function sortNode(target: Node)
     order[index] = { entry = entry, index = index, name = fileName(entry) }
   end
 
-  table.sort(order, function(a: Row, b: Row): boolean
-    local x, y = a.name, b.name
-    if x ~= y then
-      if x == nil then return true end
+  table.sort(order, function(left: Row, right: Row): boolean
+    local leftName, rightName = left.name, right.name
+    if leftName ~= rightName then
+      if leftName == nil then return true end
 
-      if y == nil then return false end
+      if rightName == nil then return false end
 
-      return (x :: string) < (y :: string)
+      return (leftName :: string) < (rightName :: string)
     end
 
-    return a.index < b.index
+    return left.index < right.index
   end)
 
   for index, row in order do

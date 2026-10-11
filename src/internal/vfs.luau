@@ -205,7 +205,9 @@ local function looseSource(root: string): LooseSource
 
   table.sort(order)
   for _, list in byKey do
-    if #list > 1 then table.sort(list, function(a, b) return paths.pathLess(a.path, b.path) end) end
+    if #list > 1 then
+      table.sort(list, function(left, right) return paths.pathLess(left.path, right.path) end)
+    end
   end
 
   return { source = { path = root, kind = 'looseDir' }, keys = keys, entries = byKey, order = order }
@@ -756,10 +758,10 @@ function Methods.pushDirectory(self: VFS, root: string)
 
   table.sort(
     list,
-    function(a: { key: string, entry: Entry }, b: { key: string, entry: Entry }): boolean
-      if a.key ~= b.key then return a.key < b.key end
+    function(left: { key: string, entry: Entry }, right: { key: string, entry: Entry }): boolean
+      if left.key ~= right.key then return left.key < right.key end
 
-      return paths.pathLess(a.entry.path, b.entry.path)
+      return paths.pathLess(left.entry.path, right.entry.path)
     end
   )
   pushBatch(vfs, { path = dir, kind = 'looseDir' }, list)
@@ -1039,7 +1041,10 @@ function Methods.diffDirectory(self: VFS, dir: string)
       table.insert(unreadable, { path = problem.path, error = problem.message })
     end
 
-    table.sort(unreadable, function(a, b) return paths.pathLess(a.path, b.path) end)
+    table.sort(
+      unreadable,
+      function(left, right) return paths.pathLess(left.path, right.path) end
+    )
   end
 
   return { conflicts = conflicts, additions = additions, unreadable = unreadable }
@@ -1149,11 +1154,11 @@ function Methods.archives(self: VFS): { ArchiveInfo }
     position[row] = index
   end
 
-  table.sort(rows, function(a: ArchiveInfo, b: ArchiveInfo): boolean
-    local order = paths.comparePaths(a.path, b.path)
+  table.sort(rows, function(left: ArchiveInfo, right: ArchiveInfo): boolean
+    local order = paths.comparePaths(left.path, right.path)
     if order ~= 0 then return order < 0 end
 
-    return position[a] < position[b]
+    return position[left] < position[right]
   end)
   return rows
 end
@@ -1183,17 +1188,17 @@ local function archiveRows(vfs: State, path: string): { ArchiveEntry }
     end
   end
 
-  table.sort(rows, function(a: ArchiveEntry, b: ArchiveEntry): boolean
-    local order = paths.comparePaths(a.key, b.key)
+  table.sort(rows, function(left: ArchiveEntry, right: ArchiveEntry): boolean
+    local order = paths.comparePaths(left.key, right.key)
     if order ~= 0 then return order < 0 end
 
-    order = paths.comparePaths(a.archivePath, b.archivePath)
+    order = paths.comparePaths(left.archivePath, right.archivePath)
     if order ~= 0 then return order < 0 end
 
-    order = paths.comparePaths(a.originalPath, b.originalPath)
+    order = paths.comparePaths(left.originalPath, right.originalPath)
     if order ~= 0 then return order < 0 end
 
-    return not a.wins and b.wins
+    return not left.wins and right.wins
   end)
   return rows
 end

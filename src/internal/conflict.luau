@@ -284,9 +284,9 @@ end
 function Methods.diffReport(self: ConflictIndex, sourceA: string, sourceB: string)
   local index = indexOf(self, 'diffReport')
   local what = 'dream.vfs.ConflictIndex.diffReport'
-  local a, b = check.string(what, sourceA, 1, 2), check.string(what, sourceB, 2, 3)
-  local foundA, foundB = positions(index, a), positions(index, b)
-  local keysA, keysB = keysOf(index, foundA, a), keysOf(index, foundB, b)
+  local askedA, askedB = check.string(what, sourceA, 1, 2), check.string(what, sourceB, 2, 3)
+  local foundA, foundB = positions(index, askedA), positions(index, askedB)
+  local keysA, keysB = keysOf(index, foundA, askedA), keysOf(index, foundB, askedB)
   local shared, onlyA, onlyB = {}, {}, {}
   for key in keysA do
     table.insert(if keysB[key] then shared else onlyA, key)
@@ -300,8 +300,8 @@ function Methods.diffReport(self: ConflictIndex, sourceA: string, sourceB: strin
   table.sort(onlyA)
   table.sort(onlyB)
   local topA, topB = highest(foundA), highest(foundB)
-  local spelledA = if topA then index.meta[topA].path else a
-  local spelledB = if topB then index.meta[topB].path else b
+  local spelledA = if topA then index.meta[topA].path else askedA
+  local spelledB = if topB then index.meta[topB].path else askedB
   return {
     sourceA = spelledA,
     sourceB = spelledB,

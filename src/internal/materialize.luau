@@ -167,7 +167,7 @@ local function sortedKeys(vfs: State): { string }
 end
 
 local function sortSkips(skipped: { Skip })
-  table.sort(skipped, function(a: Skip, b: Skip): boolean return a.key < b.key end)
+  table.sort(skipped, function(left: Skip, right: Skip): boolean return left.key < right.key end)
 end
 
 --- `dump_to_directory`: every winner into `dir`, hard linked or copied, archive entries

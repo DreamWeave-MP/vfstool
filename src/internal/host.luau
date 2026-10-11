@@ -314,7 +314,10 @@ local function list(path: string, options: unknown?): views.View<HostEntry>
     }
   end
 
-  table.sort(rows, function(a: HostEntry, b: HostEntry): boolean return a.path < b.path end)
+  table.sort(
+    rows,
+    function(left: HostEntry, right: HostEntry): boolean return left.path < right.path end
+  )
   return views.lazy(#rows, function(index: number): HostEntry
     local row = rows[index]
     return { path = row.path, isDir = row.isDir, size = row.size }
