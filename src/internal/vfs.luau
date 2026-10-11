@@ -70,23 +70,65 @@ export type Tree = {
   toTable: (self: Tree) -> { [string]: unknown },
 }
 
+--- What `diffDirectory` finds a folder would do to the VFS: the keys it would replace, the keys it
+--- would add, and what in it couldn't be read.
+export type DirectoryDiff = {
+  conflicts: { { key: string, incoming: VfsFile, current: VfsFile } },
+  additions: { { key: string, file: VfsFile } },
+  unreadable: { { path: string, error: string } },
+}
+
+--- Every method a VFS has, in the order they are defined below.
 export type VFS = {
+  len: (self: VFS) -> number,
+  revision: (self: VFS) -> number,
+  isEmpty: (self: VFS) -> boolean,
+  keys: (self: VFS, limit: number?, descending: boolean?) -> views.View<string>,
+  entries: (self: VFS, limit: number?, descending: boolean?) -> views.View<EntryRow>,
   getFile: (self: VFS, path: string) -> VfsFile?,
   contains: (self: VFS, path: string) -> boolean,
   findByRegex: (self: VFS, pattern: string, relative: boolean?) -> Tree,
   remaining: (self: VFS, path: string, replacementsOnly: boolean, dirs: { string }, relative: boolean?) -> Tree,
-  materializationPlan: (self: VFS, dest: string, options: unknown?) -> MaterializationPlan,
+  pathsMatching: (self: VFS, substring: string) -> views.View<EntryRow>,
+  pathsStartingWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> views.View<EntryRow>,
+  keysStartingWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> views.View<string>,
+  pathsWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> views.View<EntryRow>,
+  setWinnerLooseFile: (self: VFS, key: string, physicalPath: string) -> VfsFile?,
+  setWinnerFile: (self: VFS, key: string, value: VfsFile) -> VfsFile?,
+  pushDirectory: (self: VFS, root: string) -> (),
+  pushProvider: (self: VFS, key: string, provider: VfsProvider) -> boolean,
+  pushArchive: (self: VFS, path: string) -> boolean,
+  removeWinner: (self: VFS, key: string) -> VfsProvider?,
+  removeResolvedFile: (self: VFS, key: string) -> VfsFile?,
+  removeProviderPrefix: (self: VFS, prefix: string) -> (),
+  removeResolvedPrefix: (self: VFS, prefix: string) -> (),
+  removeProvider: (self: VFS, key: string, sourcePath: string) -> { ProviderRow },
+  removeSource: (self: VFS, sourcePath: string) -> (),
+  removeResolvedMatchingGlob: (self: VFS, pattern: string) -> (),
+  tree: (self: VFS, relative: boolean?) -> Tree,
+  display: (self: VFS, relative: boolean?) -> string,
+  dumpToDirectory: (self: VFS, dir: string, useHardlinks: boolean) -> (number, { materialize.Skip }),
   collapseInto: (self: VFS, dest: string, options: unknown?) -> { materialize.Skip },
   extractFile: (self: VFS, path: string, target: string) -> string?,
+  diffDirectory: (self: VFS, dir: string) -> DirectoryDiff,
+  providerRecordsFor: (self: VFS, path: string) -> views.View<ProviderRecord>,
   explain: (self: VFS, path: string) -> { key: string, winner: ProviderRecord, overridden: { ProviderRecord } }?,
+  providersFor: (self: VFS, path: string) -> views.View<ProviderRow>?,
   duplicates: (self: VFS, pattern: string?) -> DuplicateReport,
   archives: (self: VFS) -> { ArchiveInfo },
   archiveEntries: (self: VFS, archive: string) -> { ArchiveEntry },
+  filesFromArchive: (self: VFS, archive: string) -> views.View<string>,
   sourceContributions: (self: VFS) -> ContributionReport,
+  materializationPlan: (self: VFS, dest: string, options: unknown?) -> MaterializationPlan,
   layerIndex: (self: VFS) -> layer.LayerIndex,
-  providersFor: (self: VFS, path: string) -> views.View<ProviderRow>?,
-  keys: (self: VFS) -> views.View<string>,
-  isEmpty: (self: VFS) -> boolean,
+  serializeTree: (self: VFS, relative: boolean?, format: string) -> string,
+  writeRoot: (self: VFS) -> string?,
+  setWriteRoot: (self: VFS, dir: string) -> (),
+  writeFile: (self: VFS, key: string, data: buffer | string, options: unknown?) -> VfsFile,
+  openWrite: (self: VFS, key: string, options: unknown?) -> host.Writer,
+  mkdir: (self: VFS, key: string) -> (),
+  remove: (self: VFS, key: string) -> (),
+  rename: (self: VFS, from: string, to: string) -> (),
 }
 
 export type VFSClass = {
@@ -1016,7 +1058,7 @@ function Methods.extractFile(self: VFS, vfsPath: string, destDir: string): strin
   return materialize.extractFile(vfs, key, target)
 end
 
-function Methods.diffDirectory(self: VFS, dir: string)
+function Methods.diffDirectory(self: VFS, dir: string): DirectoryDiff
   local vfs = receiver(self, 'diffDirectory')
   local root = keyArgument('diffDirectory', dir)
   local walk, message = fs.walk(root, { followLinks = true, include = 'files', skipErrors = true })
