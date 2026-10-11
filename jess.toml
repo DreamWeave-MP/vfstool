@@ -5,7 +5,7 @@ id = "org.dreamweave.vfs"
 version = "0.1.0"
 jess_api = "1"
 include = ["src"]
-tests = ["tests/run.luau"]
+tests = ["tests/run.luau", "tests/style.luau"]
 
 [dependencies]
 "org.dreamweave.dream-archive" = "0.1"
