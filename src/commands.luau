@@ -273,7 +273,7 @@ function commands.archives(options: Options): number
     items[index] = cli.Shapes.archive(row)
   end
 
-  return finished(cli.writeList(options, 'archives', (require '@vfs/serialize').array(items)))
+  return finished(cli.writeList(options, 'archives', (require '@jess/data/value').array(items)))
 end
 
 export type ArchiveListOptions = Options & { archive: string?, sourceIndex: number? }
@@ -362,7 +362,7 @@ function commands.archiveList(options: ArchiveListOptions): number
     items[index] = cli.Shapes.archiveEntry(entry)
   end
 
-  return finished(cli.writeList(options, 'entries', (require '@vfs/serialize').array(items)))
+  return finished(cli.writeList(options, 'entries', (require '@jess/data/value').array(items)))
 end
 
 --- What each source provides, wins, overrides, and loses.
@@ -380,7 +380,7 @@ function commands.validate(options: ValidateOptions): number
   local config, code = loaded(options)
   if not config then return code end
 
-  local serialize = require '@vfs/serialize'
+  local serialize = require '@jess/data/value'
   local issues = {}
   local function issue(kind: string, fields: { { unknown } })
     table.insert(issues, serialize.variant(kind, serialize.struct(fields)))

@@ -8,7 +8,7 @@ local fs = require '@dream/fs'
 local openmwConfig = require '@openmw-config'
 local paths = require '@vfs/paths'
 local process = require '@dream/process'
-local serialize = require '@vfs/serialize'
+local serialize = require '@jess/data/value'
 local vfs = require '@vfs'
 
 type Value = serialize.Value
