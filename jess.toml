@@ -6,7 +6,7 @@ version = "0.1.0"
 jess_api = "1"
 default_target = "vfstool"
 include = ["src"]
-tests = ["tests/run.luau"]
+tests = ["tests/run.luau", "tests/style.luau"]
 
 [dependencies]
 "org.dreamweave.openmw-config" = "0.1"
