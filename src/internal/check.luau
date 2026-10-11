@@ -31,7 +31,12 @@ end
 
 local function method(class: string, name: string): string return `dream.vfs.{class}.{name}` end
 
-local function str(what: string, value: unknown, position: number, stack: number): string
+local function stringArgument(
+  what: string,
+  value: unknown,
+  position: number,
+  stack: number
+): string
   if type(value) == 'string' then return value end
 
   return argument(what, position, stack, 'string', `expected string, got {typeof(value)}`)
@@ -39,7 +44,7 @@ end
 
 --- A `&str` argument: a string that is UTF-8.
 local function text(what: string, value: unknown, position: number, stack: number): string
-  local found = str(what, value, position, stack)
+  local found = stringArgument(what, value, position, stack)
   if not utf8.len(found) then
     fail(`{what}: bad argument #{position} (expected string): Lua string is not valid UTF-8`)
   end
@@ -87,10 +92,15 @@ local function optionalString(
 ): string?
   if value == nil then return nil end
 
-  return str(what, value, position, stack)
+  return stringArgument(what, value, position, stack)
 end
 
-local function buf(what: string, value: unknown, position: number, stack: number): buffer
+local function bufferArgument(
+  what: string,
+  value: unknown,
+  position: number,
+  stack: number
+): buffer
   if type(value) == 'buffer' then return value end
 
   return argument(what, position, stack, 'buffer', `expected buffer, got {typeof(value)}`)
@@ -258,13 +268,13 @@ return table.freeze {
   argument = argument,
   receiver = receiver,
   method = method,
-  str = str,
+  string = stringArgument,
   text = text,
   userdata = userdata,
   boolean = boolean,
   optionalBoolean = optionalBoolean,
   optionalString = optionalString,
-  buf = buf,
+  buffer = bufferArgument,
   exact = exact,
   optionalExact = optionalExact,
   tableArgument = tableArgument,

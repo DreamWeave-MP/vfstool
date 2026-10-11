@@ -261,7 +261,7 @@ function ReaderMethods.readInto(
 ): number
   local state = readerState(self, 'readInto')
   local what = check.method('Reader', 'readInto')
-  local into = check.buf(what, target, 1, 2)
+  local into = check.buffer(what, target, 1, 2)
   local at, count = window(
     'Reader.readInto',
     'bufferOffset',
@@ -387,7 +387,7 @@ end
 function Methods.readInto(self: VfsFile, target: buffer, offset: number?): number
   local state = fileState(self, 'readInto')
   local what = check.method('VfsFile', 'readInto')
-  local into = check.buf(what, target, 1, 2)
+  local into = check.buffer(what, target, 1, 2)
   local at = check.optionalExact(what, offset, 2, 3) or 0
   if at < 0 then check.vfs 'negative buffer offset' end
 
@@ -417,7 +417,7 @@ function Methods.readAt(
 ): number
   local state = fileState(self, 'readAt')
   local what = check.method('VfsFile', 'readAt')
-  local into = check.buf(what, target, 1, 2)
+  local into = check.buffer(what, target, 1, 2)
   local offset = check.exact(what, fileOffset, 2, 3)
   local wanted = check.optionalExact(what, length, 3, 4)
   local at, count = window(

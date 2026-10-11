@@ -490,7 +490,7 @@ end
 
 function Methods.sourceIdForPath(self: LayerIndex, path: string): number?
   local layer = layerOf(self, 'sourceIdForPath')
-  local wanted = check.str(what 'sourceIdForPath', path, 1, 2)
+  local wanted = check.string(what 'sourceIdForPath', path, 1, 2)
   for index, source in layer.sources do
     if paths.samePath(source.path, wanted) then return index end
   end
@@ -507,7 +507,7 @@ end
 
 function Methods.sourcesContaining(self: LayerIndex, path: string): { number }
   local layer = layerOf(self, 'sourcesContaining')
-  local key = paths.normalize(check.str(what 'sourcesContaining', path, 1, 2))
+  local key = paths.normalize(check.string(what 'sourcesContaining', path, 1, 2))
   local sources = layer.toSources[key]
   return if sources then table.clone(sources) else {}
 end
@@ -515,7 +515,7 @@ end
 function Methods.providerOriginalPath(self: LayerIndex, sourceIndex: number, path: string): string?
   local layer = layerOf(self, 'providerOriginalPath')
   local index = check.exact(what 'providerOriginalPath', sourceIndex, 1, 2)
-  local key = paths.normalize(check.str(what 'providerOriginalPath', path, 2, 3))
+  local key = paths.normalize(check.string(what 'providerOriginalPath', path, 2, 3))
   oneBased('source index', index)
   local bySource = layer.originals[key]
   local spellings = if bySource then bySource[index] else nil
@@ -524,7 +524,7 @@ end
 
 function Methods.providerChain(self: LayerIndex, path: string): { LayerProvider }
   local layer = layerOf(self, 'providerChain')
-  return chain(layer, check.str(what 'providerChain', path, 1, 2))
+  return chain(layer, check.string(what 'providerChain', path, 1, 2))
 end
 
 function Methods.duplicateKeys(self: LayerIndex): views.View<string>
@@ -609,7 +609,7 @@ function Methods.provenance(
   local layer = layerOf(self, 'provenance')
   local name = what 'provenance'
   local state = registry.argument(vfs, name, 1, 2)
-  local wanted = check.str(name, path, 2, 3)
+  local wanted = check.string(name, path, 2, 3)
   local hashes = check.boolean(name, withHashes, 3, 4)
   local providers = chain(layer, wanted)
   local winner = providers[#providers]

@@ -460,7 +460,7 @@ local function receiver(self: unknown, name: string): State return registry.rece
 
 local function keyArgument(name: string, value: unknown, position: number?): string
   local at = position or 1
-  return check.str(method(name), value, at, at + 1)
+  return check.string(method(name), value, at, at + 1)
 end
 
 function Methods.len(self: VFS): number return receiver(self, 'len').count end
@@ -553,7 +553,7 @@ function Methods.remaining(
 ): Tree
   local vfs = receiver(self, 'remaining')
   local name = method 'remaining'
-  local filter = check.str(name, filterPath, 1, 2)
+  local filter = check.string(name, filterPath, 1, 2)
   local replacements = check.boolean(name, replacementsOnly, 2, 3)
   if type(allDirs) ~= 'table' then check.tableArgument('allDirs', allDirs, 4) end
 
@@ -727,15 +727,15 @@ end
 function Methods.setWinnerLooseFile(self: VFS, key: string, physicalPath: string): VfsFile?
   local vfs = receiver(self, 'setWinnerLooseFile')
   local name = method 'setWinnerLooseFile'
-  local target = check.str(name, key, 1, 2)
-  local path = check.str(name, physicalPath, 2, 3)
+  local target = check.string(name, key, 1, 2)
+  local path = check.string(name, physicalPath, 2, 3)
   return setWinner(vfs, target, { path = path, source = 0 })
 end
 
 function Methods.setWinnerFile(self: VFS, key: string, value: VfsFile): VfsFile?
   local vfs = receiver(self, 'setWinnerFile')
   local name = method 'setWinnerFile'
-  local target = check.str(name, key, 1, 2)
+  local target = check.string(name, key, 1, 2)
   local data = file.entryOf(value)
   if not data then check.userdata(name, 2, 3, 'dream.vfs.VfsFile', value) end
 
@@ -769,7 +769,7 @@ end
 function Methods.pushProvider(self: VFS, key: string, provider: VfsProvider): boolean
   local vfs = receiver(self, 'pushProvider')
   local name = method 'pushProvider'
-  local target = check.str(name, key, 1, 2)
+  local target = check.string(name, key, 1, 2)
   local data = providers[provider]
   if not data then check.userdata(name, 2, 3, 'dream.vfs.VfsProvider', provider) end
 
@@ -895,8 +895,8 @@ end
 function Methods.removeProvider(self: VFS, key: string, sourcePath: string): { ProviderRow }
   local vfs = receiver(self, 'removeProvider')
   local name = method 'removeProvider'
-  local normalized = paths.normalize(check.str(name, key, 1, 2))
-  local source = check.str(name, sourcePath, 2, 3)
+  local normalized = paths.normalize(check.string(name, key, 1, 2))
+  local source = check.string(name, sourcePath, 2, 3)
   local stack = vfs.providers[normalized]
   if not stack then return {} end
 
@@ -977,7 +977,7 @@ function Methods.dumpToDirectory(
 ): (number, { materialize.Skip })
   local vfs = receiver(self, 'dumpToDirectory')
   local name = method 'dumpToDirectory'
-  local target = check.str(name, dir, 1, 2)
+  local target = check.string(name, dir, 1, 2)
   local links = check.boolean(name, useHardlinks, 2, 3)
   local written, skipped = materialize.dump(vfs, target, links, false)
   return written, skipRows(skipped)
@@ -1004,8 +1004,8 @@ end
 function Methods.extractFile(self: VFS, vfsPath: string, destDir: string): string?
   local vfs = receiver(self, 'extractFile')
   local name = method 'extractFile'
-  local key = check.str(name, vfsPath, 1, 2)
-  local target = check.str(name, destDir, 2, 3)
+  local key = check.string(name, vfsPath, 1, 2)
+  local target = check.string(name, destDir, 2, 3)
   return materialize.extractFile(vfs, key, target)
 end
 
@@ -1366,7 +1366,7 @@ function Methods.writeFile(
 ): VfsFile
   local vfs = receiver(self, 'writeFile')
   local name = method 'writeFile'
-  local wanted = check.str(name, key, 1, 2)
+  local wanted = check.string(name, key, 1, 2)
   if type(data) ~= 'string' and type(data) ~= 'buffer' then
     check.argument(name, 2, 3, 'string or buffer', `expected buffer, got {typeof(data)}`)
   end
@@ -1465,8 +1465,8 @@ end
 function Methods.rename(self: VFS, from: string, to: string)
   local vfs = receiver(self, 'rename')
   local name = method 'rename'
-  local source = check.str(name, from, 1, 2)
-  local destination = check.str(name, to, 2, 3)
+  local source = check.string(name, from, 1, 2)
+  local destination = check.string(name, to, 2, 3)
   local sourcePath = target(vfs, 'rename', source)
   local destinationPath = target(vfs, 'rename', destination)
   local stat = fs.lstat(sourcePath)
@@ -1556,7 +1556,7 @@ local Class = table.freeze({
 }) :: VFSClass
 
 local function fileFrom(path: string): VfsFile
-  return file.new { path = check.str('dream.vfs.VfsFile.from', path, 1, 1), source = 0 }
+  return file.new { path = check.string('dream.vfs.VfsFile.from', path, 1, 1), source = 0 }
 end
 
 local function providerNew(source: unknown, value: VfsFile): VfsProvider

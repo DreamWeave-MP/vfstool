@@ -148,7 +148,7 @@ end
 
 function Methods.sourcesContaining(self: ConflictIndex, path: string): { number }
   local index = indexOf(self, 'sourcesContaining')
-  local key = paths.normalize(check.str('dream.vfs.ConflictIndex.sourcesContaining', path, 1, 2))
+  local key = paths.normalize(check.string('dream.vfs.ConflictIndex.sourcesContaining', path, 1, 2))
   local sources = index.toSources[key]
   if not sources or #sources < 2 then return {} end
 
@@ -284,7 +284,7 @@ end
 function Methods.diffReport(self: ConflictIndex, sourceA: string, sourceB: string)
   local index = indexOf(self, 'diffReport')
   local what = 'dream.vfs.ConflictIndex.diffReport'
-  local a, b = check.str(what, sourceA, 1, 2), check.str(what, sourceB, 2, 3)
+  local a, b = check.string(what, sourceA, 1, 2), check.string(what, sourceB, 2, 3)
   local foundA, foundB = positions(index, a), positions(index, b)
   local keysA, keysB = keysOf(index, foundA, a), keysOf(index, foundB, b)
   local shared, onlyA, onlyB = {}, {}, {}

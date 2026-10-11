@@ -208,7 +208,7 @@ end
 
 -- The host table ------------------------------------------------------------------------------------
 
-local function name(function_: string): string return `dream.vfs.host.{function_}` end
+local function name(functionName: string): string return `dream.vfs.host.{functionName}` end
 
 local function recursive(context: string, value: unknown): boolean
   local given = check.options(context, value)
@@ -218,18 +218,18 @@ local function recursive(context: string, value: unknown): boolean
 end
 
 local function readFile(path: string): buffer
-  local target = check.str(name 'readFile', path, 1, 1)
+  local target = check.string(name 'readFile', path, 1, 1)
   return check.answer(fs.readFile(target))
 end
 
 local function readFileString(path: string): string
-  local target = check.str(name 'readFileString', path, 1, 1)
+  local target = check.string(name 'readFileString', path, 1, 1)
   return check.answer(fs.readFileString(target))
 end
 
 local function readAt(path: string, offset: number, length: number): buffer
   local what = name 'readAt'
-  local target = check.str(what, path, 1, 1)
+  local target = check.string(what, path, 1, 1)
   local at, count = check.exact(what, offset, 2, 2), check.exact(what, length, 3, 3)
   if at < 0 then check.vfs(`host.readAt: offset {at} is negative`) end
 
@@ -246,7 +246,7 @@ end
 
 local function writeFile(path: string, data: buffer | string, options: unknown?): number
   local what = name 'writeFile'
-  local target = check.str(what, path, 1, 1)
+  local target = check.string(what, path, 1, 1)
   local bytes = bytesArgument(what, data, 2, 2)
   local given = check.options('host.writeFile', options)
   local append = check.option('host.writeFile', given, 'append', 'boolean') == true
@@ -255,11 +255,11 @@ local function writeFile(path: string, data: buffer | string, options: unknown?)
 end
 
 local function open(path: string): file.Reader
-  return file.openHost(check.str(name 'open', path, 1, 1))
+  return file.openHost(check.string(name 'open', path, 1, 1))
 end
 
 local function openWrite(path: string, options: unknown?): Writer
-  local target = check.str(name 'openWrite', path, 1, 1)
+  local target = check.string(name 'openWrite', path, 1, 1)
   return newWriter(target, openOptions('host.openWrite', options), nil)
 end
 
@@ -270,7 +270,7 @@ local function stat(path: string): {
   modified: number?,
   readonly: boolean,
 }?
-  local target = check.str(name 'stat', path, 1, 1)
+  local target = check.string(name 'stat', path, 1, 1)
   local found, message = fs.stat(target)
   if message then check.io(message) end
 
@@ -286,14 +286,14 @@ local function stat(path: string): {
 end
 
 local function exists(path: string): boolean
-  local target = check.str(name 'exists', path, 1, 1)
+  local target = check.string(name 'exists', path, 1, 1)
   return check.answer(fs.exists(target))
 end
 
 export type HostEntry = { path: string, isDir: boolean, size: number }
 
 local function list(path: string, options: unknown?): views.View<HostEntry>
-  local root = check.str(name 'list', path, 1, 1)
+  local root = check.string(name 'list', path, 1, 1)
   local deep = recursive('host.list', options)
   if not deep then check.answer(fs.list(root)) end
 
@@ -322,29 +322,29 @@ local function list(path: string, options: unknown?): views.View<HostEntry>
 end
 
 local function mkdir(path: string, options: unknown?)
-  local target = check.str(name 'mkdir', path, 1, 1)
+  local target = check.string(name 'mkdir', path, 1, 1)
   check.answer(fs.mkdir(target, { recursive = recursive('host.mkdir', options) }))
 end
 
 local function remove(path: string, options: unknown?)
-  local target = check.str(name 'remove', path, 1, 1)
+  local target = check.string(name 'remove', path, 1, 1)
   check.answer(fs.remove(target, { recursive = recursive('host.remove', options) }))
 end
 
 local function rename(from: string, to: string)
   local what = name 'rename'
-  local source, destination = check.str(what, from, 1, 1), check.str(what, to, 2, 2)
+  local source, destination = check.string(what, from, 1, 1), check.string(what, to, 2, 2)
   check.answer(fs.rename(source, destination))
 end
 
 local function copy(from: string, to: string): number
   local what = name 'copy'
-  local source, destination = check.str(what, from, 1, 1), check.str(what, to, 2, 2)
+  local source, destination = check.string(what, from, 1, 1), check.string(what, to, 2, 2)
   return check.answer(fs.copy(source, destination))
 end
 
 local function canonicalize(path: string): string
-  local target = check.str(name 'canonicalize', path, 1, 1)
+  local target = check.string(name 'canonicalize', path, 1, 1)
   return check.answer(fs.canonicalize(target))
 end
 

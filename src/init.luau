@@ -34,7 +34,7 @@ export type ConflictIndex = conflict.ConflictIndex
 --- The vfstool_lib release this port follows.
 local Version = '1.0.1'
 
-local function name(function_: string): string return `dream.vfs.{function_}` end
+local function name(functionName: string): string return `dream.vfs.{functionName}` end
 
 --- `normalize_host_path`, and its in-place form, which Luau's immutable strings make the same:
 --- one `bytes.translate` call.
@@ -42,18 +42,18 @@ local normalizeHostPath, normalizeHostPathInPlace = paths.normalizeHost, paths.n
 
 local function pathGlobMatches(pattern: string, path: string): boolean
   local what = name 'pathGlobMatches'
-  return glob.matches(check.text(what, pattern, 1, 1), check.str(what, path, 2, 2))
+  return glob.matches(check.text(what, pattern, 1, 1), check.string(what, path, 2, 2))
 end
 
 local function sourceGlobMatches(pattern: string, sourcePath: string): boolean
   local what = name 'sourceGlobMatches'
-  return glob.matches(check.text(what, pattern, 1, 1), check.str(what, sourcePath, 2, 2))
+  return glob.matches(check.text(what, pattern, 1, 1), check.string(what, sourcePath, 2, 2))
 end
 
 local function analyzePair(path: string, leftBytes: string, rightBytes: string)
   local what = name 'analyzePair'
-  local key = check.str(what, path, 1, 1)
-  local left, right = check.str(what, leftBytes, 2, 2), check.str(what, rightBytes, 3, 3)
+  local key = check.string(what, path, 1, 1)
+  local left, right = check.string(what, leftBytes, 2, 2), check.string(what, rightBytes, 3, 3)
   local class, delta = semantic.analyze(key, left, right)
   return { assetClass = class, delta = delta }
 end
@@ -68,35 +68,35 @@ local function snapshotArgument(
   return run.snapshotData(value, tracked) or check.userdata(what, position, position, class, value)
 end
 
-local function setup(tracked: boolean, function_: string)
+local function setup(tracked: boolean, functionName: string)
   return function(target: VFS, mergedDir: string, useHardlinks: boolean)
-    local what = name(function_)
+    local what = name(functionName)
     local state = registry.argument(target, what, 1, 1)
-    local merged = check.str(what, mergedDir, 2, 2)
+    local merged = check.string(what, mergedDir, 2, 2)
     local links = check.boolean(what, useHardlinks, 3, 3)
     return run.setup(state, merged, links, tracked)
   end
 end
 
-local function finalize(tracked: boolean, function_: string)
+local function finalize(tracked: boolean, functionName: string)
   return function(mergedDir: string, outputDir: string, snapshot: run.Snapshot)
-    local what = name(function_)
-    local merged = check.str(what, mergedDir, 1, 1)
-    local output = check.str(what, outputDir, 2, 2)
+    local what = name(functionName)
+    local merged = check.string(what, mergedDir, 1, 1)
+    local output = check.string(what, outputDir, 2, 2)
     return run.finalize(merged, output, snapshotArgument(what, snapshot, tracked, 3))
   end
 end
 
-local function snapshotDirectory(tracked: boolean, function_: string)
+local function snapshotDirectory(tracked: boolean, functionName: string)
   return function(dir: string): run.Snapshot
-    return run.snapshotDirectory(check.str(name(function_), dir, 1, 1), tracked)
+    return run.snapshotDirectory(check.string(name(functionName), dir, 1, 1), tracked)
   end
 end
 
-local function changedFiles(tracked: boolean, function_: string)
+local function changedFiles(tracked: boolean, functionName: string)
   return function(dir: string, snapshot: run.Snapshot): { string }
-    local what = name(function_)
-    local root = check.str(what, dir, 1, 1)
+    local what = name(functionName)
+    local root = check.string(what, dir, 1, 1)
     return run.changedFiles(root, snapshotArgument(what, snapshot, tracked, 2))
   end
 end
