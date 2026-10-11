@@ -13,9 +13,9 @@ local function fresh(path: string): string
 end
 
 --- What a runner sets before it requires a suite, for the cases the harness's globals set.
-local settings: { [string]: unknown } = {}
+local Settings: { [string]: unknown } = {}
 
 return table.freeze {
-  settings = settings,
+  settings = Settings,
   fresh = fresh,
 }
