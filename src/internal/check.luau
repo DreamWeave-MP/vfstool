@@ -52,6 +52,14 @@ local function text(what: string, value: unknown, position: number, stack: numbe
   return found
 end
 
+--- An `Option<&str>` argument: only nil is absent, so `false` is refused as any other value that
+--- isn't a string is.
+local function optionalText(what: string, value: unknown, position: number, stack: number): string?
+  if value == nil then return nil end
+
+  return text(what, value, position, stack)
+end
+
 --- The binder's message for a userdata argument of the wrong class.
 local function userdata(
   what: string,
@@ -187,11 +195,11 @@ local function finish(context: string, given: { [string]: unknown }?, known: { s
   if not given then return end
 
   for key in given do
-    if not table.find(known, key) then
-      local sorted = table.clone(known)
-      table.sort(sorted)
-      fail(`{context}: unknown option '{key}'; known options are {table.concat(sorted, ', ')}`)
-    end
+    if table.find(known, key) then continue end
+
+    local sorted = table.clone(known)
+    table.sort(sorted)
+    fail(`{context}: unknown option '{key}'; known options are {table.concat(sorted, ', ')}`)
   end
 end
 
@@ -270,6 +278,7 @@ return table.freeze {
   method = method,
   string = stringArgument,
   text = text,
+  optionalText = optionalText,
   userdata = userdata,
   boolean = boolean,
   optionalBoolean = optionalBoolean,

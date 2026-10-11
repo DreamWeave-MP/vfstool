@@ -474,7 +474,8 @@ function Methods.isEmpty(self: VFS): boolean return receiver(self, 'isEmpty').co
 function Methods.keys(self: VFS, limit: number?, descending: boolean?): views.View<string>
   local vfs = receiver(self, 'keys')
   local keys = sortedKeys(vfs)
-  if limit == nil then return views.array(table.clone(keys)) end
+  if not limit then return views.array(table.clone(keys)) end
+
   local take = math.max(0, math.min(#keys, math.floor(limit)))
   local selected = (table.create(take) :: unknown) :: { string }
   if descending == true then
@@ -488,7 +489,7 @@ end
 function Methods.entries(self: VFS, limit: number?, descending: boolean?): views.View<EntryRow>
   local vfs = receiver(self, 'entries')
   local keys = sortedKeys(vfs)
-  if limit ~= nil then
+  if limit then
     local take = math.max(0, math.min(#keys, math.floor(limit)))
     local selectedKeys = (table.create(take) :: unknown) :: { string }
     local entries = (table.create(take) :: unknown) :: { Entry }
@@ -619,27 +620,27 @@ function Methods.pathsStartingWith(
   local first = lowerBound(sorted, normalized)
   local successor = prefixSuccessor(normalized)
   local last = if successor then lowerBound(sorted, successor) - 1 else #sorted
-  local take = if limit ~= nil then math.max(0, math.floor(limit)) else nil
-  local keys = ((if take ~= nil then table.create(take) else {}) :: unknown) :: { string }
-  local entries = ((if take ~= nil then table.create(take) else {}) :: unknown) :: { Entry }
+  local take = if limit then math.max(0, math.floor(limit)) else nil
+  local keys = ((if take then table.create(take) else {}) :: unknown) :: { string }
+  local entries = ((if take then table.create(take) else {}) :: unknown) :: { Entry }
 
   if descending == true then
     for index = last, first, -1 do
       local key = sorted[index]
-      if key and string.sub(key, 1, #normalized) == normalized then
-        keys[#keys + 1] = key
-        entries[#entries + 1] = vfs.files[key]
-        if take ~= nil and #keys >= take then break end
-      end
+      if not key or string.sub(key, 1, #normalized) ~= normalized then continue end
+
+      keys[#keys + 1] = key
+      entries[#entries + 1] = vfs.files[key]
+      if take and #keys >= take then break end
     end
   else
     for index = first, last do
       local key = sorted[index]
-      if key and string.sub(key, 1, #normalized) == normalized then
-        keys[#keys + 1] = key
-        entries[#entries + 1] = vfs.files[key]
-        if take ~= nil and #keys >= take then break end
-      end
+      if not key or string.sub(key, 1, #normalized) ~= normalized then continue end
+
+      keys[#keys + 1] = key
+      entries[#entries + 1] = vfs.files[key]
+      if take and #keys >= take then break end
     end
   end
 
@@ -659,10 +660,12 @@ function Methods.keysStartingWith(
   local successor = prefixSuccessor(normalized)
   local last = if successor then lowerBound(sorted, successor) - 1 else #sorted
   local count = math.max(0, last - first + 1)
-  if limit ~= nil then count = math.min(count, math.max(0, math.floor(limit))) end
+  if limit then count = math.min(count, math.max(0, math.floor(limit))) end
+
   if descending == true then
     return views.lazy(count, function(index: number): string return sorted[last - index + 1] end)
   end
+
   return views.lazy(count, function(index: number): string return sorted[first + index - 1] end)
 end
 
@@ -675,28 +678,30 @@ function Methods.pathsWith(self: VFS, prefix: string, limit: number?, descending
   local sorted = sortedKeys(vfs)
   local first = lowerBound(sorted, normalized)
   local last = lowerBound(sorted, normalized .. '0') - 1
-  local keys = ((if limit ~= nil then table.create(math.max(0, math.floor(limit))) else {}) :: unknown) :: { string }
-  local entries = ((if limit ~= nil then table.create(math.max(0, math.floor(limit))) else {}) :: unknown) :: { Entry }
-  local take = if limit ~= nil then math.max(0, math.floor(limit)) else nil
+  local take = if limit then math.max(0, math.floor(limit)) else nil
+  local keys = ((if take then table.create(take) else {}) :: unknown) :: { string }
+  local entries = ((if take then table.create(take) else {}) :: unknown) :: { Entry }
+
   if descending == true then
     for index = last, first, -1 do
       local key = sorted[index]
-      if key and paths.atOrUnder(key, normalized) then
-        keys[#keys + 1] = key
-        entries[#entries + 1] = vfs.files[key]
-        if take ~= nil and #keys >= take then break end
-      end
+      if not key or not paths.atOrUnder(key, normalized) then continue end
+
+      keys[#keys + 1] = key
+      entries[#entries + 1] = vfs.files[key]
+      if take and #keys >= take then break end
     end
   else
     for index = first, last do
       local key = sorted[index]
-      if key and paths.atOrUnder(key, normalized) then
-        keys[#keys + 1] = key
-        entries[#entries + 1] = vfs.files[key]
-        if take ~= nil and #keys >= take then break end
-      end
+      if not key or not paths.atOrUnder(key, normalized) then continue end
+
+      keys[#keys + 1] = key
+      entries[#entries + 1] = vfs.files[key]
+      if take and #keys >= take then break end
     end
   end
+
   return entriesView(keys, entries)
 end
 
@@ -1095,7 +1100,7 @@ end
 
 function Methods.duplicates(self: VFS, pattern: string?): DuplicateReport
   local vfs = receiver(self, 'duplicates')
-  local wanted = if pattern == nil then nil else check.text(method 'duplicates', pattern, 1, 2)
+  local wanted = check.optionalText(method 'duplicates', pattern, 1, 2)
   local compiled = if wanted then regex(wanted) else nil
   local keys = {}
   for key, stack in vfs.providers do
