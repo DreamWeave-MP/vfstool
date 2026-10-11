@@ -84,8 +84,7 @@ end
 local function isView(value: any): boolean
   if type(value) ~= 'table' and type(value) ~= 'userdata' then return false end
 
-  local ok, toTable = pcall(function() return value.toTable end)
-  return ok and type(toTable) == 'function'
+  return type(value.toTable) == 'function'
 end
 
 local function isFile(value: any): boolean
@@ -98,10 +97,7 @@ local describe: (value: any, root: string?, depth: number?) -> string
 --- A VfsFile through every accessor.
 local function describeFile(file: any, root: string?): string
   local function field(name: string): string
-    local ok, value = pcall(function() return file[name](file) end)
-    if not ok then return `{name}=!{scrub(tostring(value), root)}` end
-
-    return `{name}={describe(value, root, 9)}`
+    return `{name}={describe(file[name](file), root, 9)}`
   end
 
   return `file\{{table.concat({
@@ -141,9 +137,9 @@ function describe(value: any, root: string?, depth: number?): string
   if isFile(value) then return describeFile(value, root) end
 
   if isView(value) then
-    local ok, rows = pcall(function() return value:toTable() end)
-    if not ok then return `view!{scrub(tostring(rows), root)}` end
-
+    local rows = value:toTable()
+    -- A tree is a view with no length: `#tree` raises, where the native stream had none either,
+    -- and the line says `?` for it.
     local counted, count = pcall(function() return #value end)
     return `view#{if counted then tostring(count) else '?'}{describe(rows, root, level + 1)}`
   end
@@ -155,10 +151,12 @@ function describe(value: any, root: string?, depth: number?): string
     table.insert(keys, key)
   end
 
-  table.sort(keys, function(a, b)
-    if type(a) == type(b) and (type(a) == 'number' or type(a) == 'string') then return a < b end
+  table.sort(keys, function(left, right)
+    if type(left) == type(right) and (type(left) == 'number' or type(left) == 'string') then
+      return left < right
+    end
 
-    return tostring(a) < tostring(b)
+    return tostring(left) < tostring(right)
   end)
   local parts = {}
   for _, key in keys do
@@ -170,6 +168,8 @@ end
 
 --- A call's results, or its error, as one line.
 local function attempt(root: string?, call: (...any) -> ...any, ...: any): string
+  -- `call` is any call into the VFS, and what it raises (a refused argument, an OS error, a
+  -- closed handle) is as much the observation as what it returns.
   local results = table.pack(pcall(call, ...))
   if not results[1] then return `error {scrub(tostring(results[2]), root)}` end
 
@@ -203,10 +203,10 @@ local function listing(root: string): string
 end
 
 --- What a runner sets before it requires a suite, for the cases the harness's globals set.
-local settings: { [string]: unknown } = {}
+local Settings: { [string]: unknown } = {}
 
 return table.freeze {
-  settings = settings,
+  settings = Settings,
   generator = generator,
   digest = digest,
   here = here,
