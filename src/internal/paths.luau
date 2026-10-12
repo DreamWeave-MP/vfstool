@@ -38,7 +38,8 @@ local function isSafeNormalized(key: string): boolean
 
   if string.find(key, '\0', 1, true) then return false end
 
-  if not string.find(key, '.', 1, true) then return true end
+  -- Only a `.` that starts a component can make a `.` or `..` one.
+  if string.byte(key, 1) ~= 46 and not string.find(key, '/.', 1, true) then return true end
 
   for component in string.gmatch(key, '[^/]+') do
     if component == '.' or component == '..' then return false end
@@ -48,28 +49,27 @@ local function isSafeNormalized(key: string): boolean
 end
 
 --- `normalized_safe_key_bytes`: a key spelled any way, or nil when it could leave the place it is
---- materialized into.
+--- materialized into. Folding moves none of the bytes these checks read (the first two, a NUL, the
+--- components), so the key they pass is one `isSafeNormalized` passes too.
 local function safeKeyBytes(raw: string): string?
   local first = string.byte(raw, 1)
   if not first or first == 47 or first == 92 or string.byte(raw, 2) == 58 then return nil end
 
   if string.find(raw, '\0', 1, true) then return nil end
 
-  if string.find(raw, '.', 1, true) then
+  if first == 46 or string.find(raw, '/.', 1, true) or string.find(raw, '\\.', 1, true) then
     for component in string.gmatch(raw, '[^/\\]+') do
       if component == '.' or component == '..' then return nil end
     end
   end
 
-  local key = normalize(raw)
-  if not isSafeNormalized(key) then return nil end
-
-  return key
+  return normalize(raw)
 end
 
 --- `normalized_safe_key`: a host path relative to its data directory as a key, by its components:
 --- `.` components go, and a root, a drive letter or a `..` refuses it. The common case, a relative
---- path with neither, is one lowercase.
+--- path with neither, is one lowercase. Either way what is left is a key as `normalize` spells
+--- one: folded, with no leading separator and no run of them.
 local function safeKeyFromHost(path: string): string?
   local folded = normalizeHost(path)
   if string.byte(folded, 2) == 58 or string.byte(folded, 1) == 47 then return nil end
@@ -93,7 +93,7 @@ local function safeKeyFromHost(path: string): string?
 
   if folded == '' then return nil end
 
-  return normalize(folded)
+  return folded
 end
 
 --- A search needle folded like a host path, with no separator collapsing.
