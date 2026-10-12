@@ -195,6 +195,29 @@ end
 
 -- Argument windows, each naming the argument it refuses -------------------------------------------
 
+--- `check.exact`, `check.optionalExact` and `check.buffer`, which a read calls several of: a
+--- whole number of ordinary size, or a buffer, is passed here without the call into `check`, and
+--- anything else is `check`'s to convert or refuse.
+local function exact(what: string, value: unknown, position: number, stack: number): number
+  if type(value) == 'number' and value == math.floor(value) and math.abs(value) < 2 ^ 53 then
+    return value
+  end
+
+  return check.exact(what, value, position, stack)
+end
+
+local function optionalExact(what: string, value: unknown, position: number, stack: number): number?
+  if value == nil then return nil end
+
+  return exact(what, value, position, stack)
+end
+
+local function bufferArgument(what: string, value: unknown, position: number, stack: number): buffer
+  if type(value) == 'buffer' then return value end
+
+  return check.buffer(what, value, position, stack)
+end
+
 local function nonNegative(what: string, name: string, value: number): number
   if value < 0 then check.vfs(`{what}: {name} {value} is negative`) end
 
@@ -257,7 +280,7 @@ end
 
 function ReaderMethods.read(self: Reader, length: number): buffer
   local state = readerState(self, 'read')
-  local count = check.exact(Named.read, length, 1, 2)
+  local count = exact(Named.read, length, 1, 2)
   nonNegative('Reader.read', 'length', count)
   local backing = openedBacking(state, 'read')
   local out = buffer.create(math.min(count, state.size - state.position))
@@ -273,14 +296,14 @@ function ReaderMethods.readInto(
 ): number
   local state = readerState(self, 'readInto')
   local what = Named.readerReadInto
-  local into = check.buffer(what, target, 1, 2)
+  local into = bufferArgument(what, target, 1, 2)
   local at, count = window(
     'Reader.readInto',
     'bufferOffset',
     'buffer',
     buffer.len(into),
-    check.optionalExact(what, bufferOffset, 2, 3),
-    check.optionalExact(what, length, 3, 4)
+    optionalExact(what, bufferOffset, 2, 3),
+    optionalExact(what, length, 3, 4)
   )
   local backing = openedBacking(state, 'readInto')
   local copied = copyFrom(backing, into, at, state.position, count)
@@ -290,7 +313,7 @@ end
 
 function ReaderMethods.seek(self: Reader, position: number)
   local state = readerState(self, 'seek')
-  local to = check.exact(Named.seek, position, 1, 2)
+  local to = exact(Named.seek, position, 1, 2)
   nonNegative('Reader.seek', 'position', to)
   withinFile('Reader.seek', 'position', to, state.size)
   openedBacking(state, 'seek')
@@ -299,7 +322,7 @@ end
 
 function ReaderMethods.skip(self: Reader, count: number)
   local state = readerState(self, 'skip')
-  local by = check.exact(Named.skip, count, 1, 2)
+  local by = exact(Named.skip, count, 1, 2)
   nonNegative('Reader.skip', 'count', by)
   openedBacking(state, 'skip')
   if by > state.size - state.position then
@@ -399,8 +422,8 @@ end
 function Methods.readInto(self: VfsFile, target: buffer, offset: number?): number
   local state = fileState(self, 'readInto')
   local what = Named.readInto
-  local into = check.buffer(what, target, 1, 2)
-  local at = check.optionalExact(what, offset, 2, 3) or 0
+  local into = bufferArgument(what, target, 1, 2)
+  local at = optionalExact(what, offset, 2, 3) or 0
   if at < 0 then check.vfs 'negative buffer offset' end
 
   local length = buffer.len(into)
@@ -429,15 +452,15 @@ function Methods.readAt(
 ): number
   local state = fileState(self, 'readAt')
   local what = Named.readAt
-  local into = check.buffer(what, target, 1, 2)
-  local offset = check.exact(what, fileOffset, 2, 3)
-  local wanted = check.optionalExact(what, length, 3, 4)
+  local into = bufferArgument(what, target, 1, 2)
+  local offset = exact(what, fileOffset, 2, 3)
+  local wanted = optionalExact(what, length, 3, 4)
   local at, count = window(
     'readAt',
     'bufferOffset',
     'buffer',
     buffer.len(into),
-    check.optionalExact(what, bufferOffset, 4, 5),
+    optionalExact(what, bufferOffset, 4, 5),
     wanted
   )
   nonNegative('readAt', 'fileOffset', offset)
@@ -449,7 +472,7 @@ end
 function Methods.readRange(self: VfsFile, fileOffset: number, length: number): buffer
   local state = fileState(self, 'readRange')
   local what = Named.readRange
-  local given, wanted = check.exact(what, fileOffset, 1, 2), check.exact(what, length, 2, 3)
+  local given, wanted = exact(what, fileOffset, 1, 2), exact(what, length, 2, 3)
   local offset = nonNegative('readRange', 'fileOffset', given)
   local count = nonNegative('readRange', 'length', wanted)
   local size = sizeOf(state)
