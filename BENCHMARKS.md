@@ -28,73 +28,79 @@ keys.
 - Binary: the verified release build of Jess 0.1.0 on l3i 2.0.1 (Luau 0.742), the same one for
   both sides.
 - Base: `933af6a`, the package before the move, with this bench and with its key lists no longer
-  leaked (below). Head: `d629120`, the last change to the code.
+  leaked (below). Head: `3fe1be6`, the last change to the code: the move as it was made
+  (`d629120`) and the three fixes its review made to it (below).
 - Protocol: the whole bench (head's file, which base runs unchanged) against base, then head,
   three times over, back to back under one lock; each cell is the median of its three runs. A
-  difference of about 5 percent or less is called no change.
+  difference of about 5 percent or less is called no change. The table is the review's run. The
+  run made when the move was finished, against `d629120`, agrees with it row for row within the
+  spread of three rounds on a shared machine (7 to 20 percent between a row's fastest and slowest
+  run), which is also all that the rows between 0.94x and 1.12x on code nobody changed are:
+  `diffReport`, `keys`, `pathsWith`, `keysStartingWith`, `pathsMatching`,
+  `removeResolvedMatchingGlob`.
 
 | Workload | Base | Head | Base / head |
 |---|---:|---:|---:|
-| paths.normalize | 4.86 ms | 4.78 ms | no change |
-| paths.safeKeyFromHost | 8.99 ms | 5.76 ms | 1.56x |
-| paths.sortPaths keys | 27.82 ms | 7.20 ms | 3.86x |
-| paths.sortPaths absolute | 33.53 ms | 8.71 ms | 3.85x |
-| paths.comparePaths | 19.33 ms | 6.31 ms | 3.07x |
-| layer.fromFileLists | 20.78 ms | 17.56 ms | 1.18x |
-| layer.duplicateKeys | 612.1 µs | 591.1 µs | no change |
-| layer.sourceContributions | 1.04 ms | 1.02 ms | no change |
-| layer.providerChain | 3.68 ms | 3.16 ms | 1.17x |
-| layer.sourcesContaining | 11.51 ms | 8.20 ms | 1.40x |
-| conflict.fromFileLists | 38.27 ms | 27.72 ms | 1.38x |
-| conflict.conflictsReport relative | 51.48 ms | 13.43 ms | 3.83x |
-| conflict.conflictsReport absolute | 71.04 ms | 24.52 ms | 2.90x |
-| conflict.shadowedReport | 1.02 ms | 326.4 µs | 3.12x |
-| conflict.diffReport | 3.20 ms | 3.10 ms | no change |
-| semantic.text | 1.85 ms | 1.82 ms | no change |
-| semantic.ini | 4.98 ms | 4.84 ms | no change |
-| semantic.json | 7.12 ms | 6.92 ms | no change |
-| vfs.fromDirectories loose | 24.85 ms | 21.88 ms | 1.14x |
-| vfs.fromDirectories with archive | 39.54 ms | 32.19 ms | 1.23x |
-| vfs.pushDirectory | 8.01 ms | 6.51 ms | 1.23x |
-| vfs.pushArchive | 17.55 ms | 8.61 ms | 2.04x |
-| vfs.getFile | 12.21 ms | 9.96 ms | 1.23x |
-| vfs.contains | 8.08 ms | 5.45 ms | 1.48x |
-| vfs.providersFor | 2.25 ms | 1.88 ms | 1.19x |
-| vfs.explain | 3.98 ms | 3.48 ms | 1.14x |
-| file.readAt loose | 2.22 ms | 1.29 ms | 1.72x |
-| file.readRange loose | 2.16 ms | 1.40 ms | 1.55x |
-| reader.readInto loose | 2.07 ms | 1.31 ms | 1.58x |
-| reader.read loose | 2.00 ms | 1.42 ms | 1.41x |
-| file.readAt packed | 1.36 ms | 510.1 µs | 2.67x |
-| file.readRange packed | 1.33 ms | 597.1 µs | 2.22x |
-| reader.readInto packed | 1.20 ms | 549.1 µs | 2.19x |
-| reader.read packed | 1.22 ms | 624.7 µs | 1.95x |
-| vfs.keys | 28.8 µs | 26.4 µs | 1.09x |
-| vfs.entries | 3.26 ms | 3.27 ms | no change |
-| vfs.pathsWith | 132.9 µs | 126.6 µs | no change |
-| vfs.pathsStartingWith | 74.2 µs | 73.6 µs | no change |
-| vfs.keysStartingWith | 19.6 µs | 19.0 µs | no change |
-| vfs.pathsMatching | 673.5 µs | 649.4 µs | no change |
-| vfs.findByRegex | 16.53 ms | 4.17 ms | 3.96x |
-| vfs.tree | 56.96 ms | 8.00 ms | 7.12x |
-| vfs.display | 75.86 ms | 13.19 ms | 5.75x |
-| vfs.serializeTree json | 79.65 ms | 15.77 ms | 5.05x |
-| vfs.duplicates | 10.73 ms | 6.17 ms | 1.74x |
-| vfs.serialize duplicates | 73.32 ms | 69.73 ms | no change |
-| vfs.archives | 649.8 µs | 645.9 µs | no change |
-| vfs.archiveEntries | 87.35 ms | 3.57 ms | 24.49x |
-| vfs.filesFromArchive | 87.22 ms | 3.62 ms | 24.07x |
-| vfs.diffDirectory | 4.73 ms | 4.37 ms | 1.08x |
-| vfs.removeResolvedMatchingGlob none | 2.63 ms | 2.54 ms | no change |
-| vfs.removeSource none | 35.04 ms | 4.0 µs | 8802x |
-| vfs.removeSource and pushDirectory | 52.27 ms | 8.30 ms | 6.30x |
-| vfs.layerIndex rebuilt | 45.26 ms | 7.76 ms | 5.83x |
-| vfs.lockManifest | 122.63 ms | 74.77 ms | 1.64x |
-| run.snapshotDirectory | 19.81 ms | 16.41 ms | 1.21x |
-| run.snapshotDirectoryMetadata | 26.47 ms | 16.28 ms | 1.63x |
-| run.changedFiles | 19.20 ms | 15.95 ms | 1.20x |
-| vfs.diffAgainstLock | 317.53 ms | 87.90 ms | 3.61x |
-| glob.pathGlobMatches | 108.73 ms | 802.6 µs | 135x |
+| paths.normalize | 4.74 ms | 4.81 ms | no change |
+| paths.safeKeyFromHost | 8.95 ms | 5.85 ms | 1.53x |
+| paths.sortPaths keys | 27.73 ms | 7.32 ms | 3.79x |
+| paths.sortPaths absolute | 32.44 ms | 8.84 ms | 3.67x |
+| paths.comparePaths | 18.92 ms | 6.31 ms | 3.00x |
+| layer.fromFileLists | 20.19 ms | 18.08 ms | 1.12x |
+| layer.duplicateKeys | 599.7 µs | 597.6 µs | no change |
+| layer.sourceContributions | 1.02 ms | 1.06 ms | no change |
+| layer.providerChain | 3.56 ms | 3.13 ms | 1.14x |
+| layer.sourcesContaining | 11.10 ms | 8.43 ms | 1.32x |
+| conflict.fromFileLists | 37.80 ms | 28.43 ms | 1.33x |
+| conflict.conflictsReport relative | 48.58 ms | 14.36 ms | 3.38x |
+| conflict.conflictsReport absolute | 68.20 ms | 27.09 ms | 2.52x |
+| conflict.shadowedReport | 982.0 µs | 354.9 µs | 2.77x |
+| conflict.diffReport | 3.10 ms | 3.31 ms | 0.94x |
+| semantic.text | 1.84 ms | 1.86 ms | no change |
+| semantic.ini | 4.80 ms | 4.86 ms | no change |
+| semantic.json | 6.88 ms | 7.17 ms | no change |
+| vfs.fromDirectories loose | 24.73 ms | 22.32 ms | 1.11x |
+| vfs.fromDirectories with archive | 40.06 ms | 31.26 ms | 1.28x |
+| vfs.pushDirectory | 8.11 ms | 6.49 ms | 1.25x |
+| vfs.pushArchive | 17.86 ms | 8.58 ms | 2.08x |
+| vfs.getFile | 12.43 ms | 10.22 ms | 1.22x |
+| vfs.contains | 8.36 ms | 5.38 ms | 1.55x |
+| vfs.providersFor | 2.32 ms | 1.88 ms | 1.23x |
+| vfs.explain | 4.08 ms | 3.35 ms | 1.22x |
+| file.readAt loose | 2.21 ms | 1.23 ms | 1.80x |
+| file.readRange loose | 2.17 ms | 1.36 ms | 1.60x |
+| reader.readInto loose | 2.05 ms | 1.25 ms | 1.64x |
+| reader.read loose | 2.01 ms | 1.35 ms | 1.49x |
+| file.readAt packed | 1.36 ms | 508.5 µs | 2.67x |
+| file.readRange packed | 1.32 ms | 605.9 µs | 2.17x |
+| reader.readInto packed | 1.15 ms | 528.4 µs | 2.17x |
+| reader.read packed | 1.12 ms | 605.0 µs | 1.85x |
+| vfs.keys | 29.0 µs | 27.5 µs | 1.05x |
+| vfs.entries | 3.26 ms | 3.36 ms | no change |
+| vfs.pathsWith | 137.4 µs | 126.6 µs | 1.09x |
+| vfs.pathsStartingWith | 75.7 µs | 74.6 µs | no change |
+| vfs.keysStartingWith | 21.3 µs | 19.0 µs | 1.12x |
+| vfs.pathsMatching | 704.4 µs | 664.4 µs | 1.06x |
+| vfs.findByRegex | 17.26 ms | 4.32 ms | 4.00x |
+| vfs.tree | 60.47 ms | 8.69 ms | 6.96x |
+| vfs.display | 73.28 ms | 15.08 ms | 4.86x |
+| vfs.serializeTree json | 77.16 ms | 16.17 ms | 4.77x |
+| vfs.duplicates | 10.18 ms | 6.22 ms | 1.64x |
+| vfs.serialize duplicates | 70.58 ms | 69.53 ms | no change |
+| vfs.archives | 657.2 µs | 638.2 µs | no change |
+| vfs.archiveEntries | 87.24 ms | 3.59 ms | 24.28x |
+| vfs.filesFromArchive | 87.88 ms | 3.60 ms | 24.40x |
+| vfs.diffDirectory | 4.72 ms | 4.38 ms | 1.08x |
+| vfs.removeResolvedMatchingGlob none | 2.65 ms | 2.51 ms | 1.05x |
+| vfs.removeSource none | 33.36 ms | 3.9 µs | 8514x |
+| vfs.removeSource and pushDirectory | 50.25 ms | 8.15 ms | 6.16x |
+| vfs.layerIndex rebuilt | 43.39 ms | 7.83 ms | 5.54x |
+| vfs.lockManifest | 119.86 ms | 72.13 ms | 1.66x |
+| run.snapshotDirectory | 19.77 ms | 15.61 ms | 1.27x |
+| run.snapshotDirectoryMetadata | 26.32 ms | 15.54 ms | 1.69x |
+| run.changedFiles | 18.91 ms | 15.15 ms | 1.25x |
+| vfs.diffAgainstLock | 299.12 ms | 83.92 ms | 3.56x |
+| glob.pathGlobMatches | 107.06 ms | 841.4 µs | 127x |
 
 ## What moved, and why
 
@@ -137,7 +143,28 @@ slices and patterns run as the loops they replaced. What moved is work that stop
 `paths.normalize` is one `bytes.translate` call and stays one. The semantic comparisons, the
 prefix and substring listings, `entries` (a file handle per row), `archives` and `diffReport`
 were not changed in substance and do not move. `serialize duplicates` is mostly the built-in
-encoder's time. `vfs.keys` shows 9 percent on a 27 µs copy that was not touched: read it as noise.
+encoder's time. `vfs.archives` cannot show its sort, with one archive to list.
+
+Each change made for speed was also timed against the commit before it, three rounds, on the
+rows it touches. Two of them do not measure as their subjects read. Finding a lock entry's winner
+without its whole chain (`86d685d`) is 1.07x on `lockManifest` and 1.06x on `diffAgainstLock`,
+at the edge of what three rounds can tell from nothing. Spelling a provider chain's key once per
+chain (`d629120`) is 1.04x on `layer.providerChain` over seven rounds, which is no change; the
+1.14x that row shows is no one commit's. Both do strictly less work and answer the same, so they
+stay. The three commits that only rewrote loops in the dialect measure as no change on every row
+they touch, as they should.
+
+## What the review put back
+
+Nine of the loops the move rewrote as comprehensions walk a table the caller made: the folder
+list of `VFS.fromDirectories`, `vfs:remaining` and `ConflictIndex.fromDirectories`, and a layer's
+or a conflict index's sources, which sit where `fromFileLists`'s rows did. A comprehension indexes
+`1..#list`; the loops it replaced walked whatever was there. So `VFS.fromDirectories { base, nil,
+override }`, which had always built a VFS of the two folders, raised from `fs.walk`, and a layer
+built from rows with a gap in them stopped listing and counting the source after the gap. Those
+nine are loops again (`64d4e0b`, `4993ab0`, `3fe1be6`), each with a case in the suite. Each walks
+a handful of sources, so no row's gain was theirs: the builds and the conflict and layer reports,
+timed before and after the three fixes over five rounds, show no change.
 
 ## A leak the bench found first
 
