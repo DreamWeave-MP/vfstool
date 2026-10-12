@@ -320,7 +320,13 @@ end
 --- earlier ones.
 local function fromDirectories(dirs: { string }, archives: { string }?): State
   local vfs = state.new()
-  local loose = [for dir in dirs => looseSource(dir)]
+
+  -- `dirs` is the caller's table as `check.stringArray` copied it, a gap or a named entry
+  -- included: every string in it is a folder, so it is walked and not indexed.
+  local loose = (table.create(#dirs) :: unknown) :: { LooseSource }
+  for index, dir in dirs do
+    loose[index] = looseSource(dir)
+  end
 
   if archives then
     local found: { [string]: string } = {}
@@ -588,7 +594,12 @@ function Methods.remaining(
   local dirs = check.stringArray('allDirs', allDirs :: { unknown })
   local rel = check.optionalBoolean(name, relative, 4, 5)
   local normalized = paths.normalizeHost(filter)
-  local chosen = [for dir in dirs if paths.samePath(paths.normalizeHost(dir), normalized) => dir]
+  local chosen = {}
+
+  -- As in `fromDirectories`: the caller's table may have a gap, and every string in it counts.
+  for _, dir in dirs do
+    if paths.samePath(paths.normalizeHost(dir), normalized) then table.insert(chosen, dir) end
+  end
 
   local filtered = fromDirectories(chosen, nil)
   return treeStream(tree.build(vfs, rel ~= false, function(key: string, entry: Entry): boolean

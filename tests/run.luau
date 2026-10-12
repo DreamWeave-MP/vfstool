@@ -256,6 +256,23 @@ suite.describe('lookup and priority', function()
     expect(reversed:getFile('a.txt'):readAll()).toBe '1'
   end)
 
+  suite.it('takes every folder of a list with a gap in it, in order', function()
+    local one = tree('gap-1', { ['a.txt'] = '1', ['only1.txt'] = '1' })
+    local three = tree('gap-3', { ['A.TXT'] = '3', ['only3.txt'] = '3' })
+    local vfs = vfstool.VFS.fromDirectories { one, nil, three }
+    expect(table.concat(keysOf(vfs), ',')).toBe 'a.txt,only1.txt,only3.txt'
+    expect(vfs:getFile('a.txt'):readAll()).toBe '3'
+    expect(#vfs:sourceContributions().sources).toBe(2)
+
+    local replaced = {}
+
+    for _, row in vfs:remaining(one, true, { three, nil, one }) do
+      table.insert(replaced, `{row.dir}>{row.file:fileName()}`)
+    end
+
+    expect(table.concat(replaced, ',')).toBe 'Data Files>A.TXT'
+  end)
+
   suite.it('reports each provider of one source by the path it has', function()
     local dir = tree('same-source', { ['Dup.txt'] = 'upper', ['sub/x.txt'] = 'x' })
     support.writeTree(dir, { ['dup.txt'] = 'lower' })
