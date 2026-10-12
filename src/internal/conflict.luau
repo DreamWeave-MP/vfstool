@@ -74,20 +74,40 @@ local function fromLayerData(data: layer.Layer): Index
     originals = {},
   }
 
-  for position = 1, #sources do
+  --- The first source spelled as each one is, by kind and folded path: a key's sources are told
+  --- apart by that position, worked out once per source and not once per file.
+  local spelledAs: { number } = table.create(#sources, 0)
+  local firstSpelled: { [string]: number } = {}
+
+  for position, source in sources do
     index.overrides[position] = {}
     index.overriddenBy[position] = {}
     index.originals[position] = {}
+
+    local identity = `{source.kind}\0{paths.normalizeHost(source.path)}`
+    local first = firstSpelled[identity]
+    if not first then
+      first = position
+      firstSpelled[identity] = position
+    end
+
+    spelledAs[position] = first
   end
 
   for _, key in layer.sortedKeys(data) do
-    local unique, seen = {}, {}
-    for _, sourceIndex in data.toSources[key] do
-      local source = sources[sourceIndex]
-      local identity = `{source.kind}\0{paths.normalizeHost(source.path)}`
-      if not seen[identity] then
-        seen[identity] = true
-        table.insert(unique, sourceIndex)
+    local provided = data.toSources[key]
+    local unique = { provided[1] }
+
+    if #provided > 1 then
+      local seen = { [spelledAs[provided[1]]] = true }
+
+      for position = 2, #provided do
+        local sourceIndex = provided[position]
+        local identity = spelledAs[sourceIndex]
+        if not seen[identity] then
+          seen[identity] = true
+          table.insert(unique, sourceIndex)
+        end
       end
     end
 
@@ -96,11 +116,12 @@ local function fromLayerData(data: layer.Layer): Index
     end
 
     if #unique > 1 then
-      for _, sourceIndex in unique do
       local bySource = data.originals[key]
-      local spellings = if bySource then bySource[sourceIndex] else nil
-      local original = if spellings then spellings[1] else nil
-      if original and original ~= key then index.originals[sourceIndex][key] = original end
+
+      for _, sourceIndex in unique do
+        local spellings = if bySource then bySource[sourceIndex] else nil
+        local original = if spellings then spellings[1] else nil
+        if original and original ~= key then index.originals[sourceIndex][key] = original end
       end
     end
 
