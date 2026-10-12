@@ -503,6 +503,8 @@ end
 local function receiver(self: unknown, name: string): State return registry.receiver(self, name) end
 
 local function keyArgument(name: string, value: unknown, position: number?): string
+  if type(value) == 'string' then return value end
+
   local at = position or 1
   return check.string(method(name), value, at, at + 1)
 end

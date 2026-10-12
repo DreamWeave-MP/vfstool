@@ -29,7 +29,25 @@ local function receiver(what: string, expected: string, value: unknown): never
   return fail(`invalid argument #1 to '{what}' ({expected} expected, got {typeof(value)})`)
 end
 
-local function method(class: string, name: string): string return `dream.vfs.{class}.{name}` end
+--- `dream.vfs.<class>.<name>`, the binder's name for a method. A method asks for its own on every
+--- call and needs it only to refuse an argument, so each is spelled once and kept.
+local methodNames: { [string]: { [string]: string } } = {}
+
+local function method(class: string, name: string): string
+  local names = methodNames[class]
+  if not names then
+    names = {}
+    methodNames[class] = names
+  end
+
+  local spelled = names[name]
+  if not spelled then
+    spelled = `dream.vfs.{class}.{name}`
+    names[name] = spelled
+  end
+
+  return spelled
+end
 
 local function stringArgument(
   what: string,

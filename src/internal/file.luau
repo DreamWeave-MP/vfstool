@@ -55,6 +55,18 @@ export type Reader = {
 type FileState = { entry: Entry, backing: Backing? }
 type ReaderState = { backing: Backing?, size: number, position: number, name: string }
 
+--- What the binder calls each method that checks an argument, spelled once: a parser makes these
+--- calls by the hundred thousand.
+local Named = table.freeze {
+  read = check.method('Reader', 'read'),
+  readerReadInto = check.method('Reader', 'readInto'),
+  seek = check.method('Reader', 'seek'),
+  skip = check.method('Reader', 'skip'),
+  readInto = check.method('VfsFile', 'readInto'),
+  readAt = check.method('VfsFile', 'readAt'),
+  readRange = check.method('VfsFile', 'readRange'),
+}
+
 local files = (setmetatable({}, { __mode = 'k' }) :: unknown) :: { [VfsFile]: FileState }
 local readers = (setmetatable({}, { __mode = 'k' }) :: unknown) :: { [Reader]: ReaderState }
 
@@ -245,7 +257,7 @@ end
 
 function ReaderMethods.read(self: Reader, length: number): buffer
   local state = readerState(self, 'read')
-  local count = check.exact(check.method('Reader', 'read'), length, 1, 2)
+  local count = check.exact(Named.read, length, 1, 2)
   nonNegative('Reader.read', 'length', count)
   local backing = openedBacking(state, 'read')
   local out = buffer.create(math.min(count, state.size - state.position))
@@ -260,7 +272,7 @@ function ReaderMethods.readInto(
   length: number?
 ): number
   local state = readerState(self, 'readInto')
-  local what = check.method('Reader', 'readInto')
+  local what = Named.readerReadInto
   local into = check.buffer(what, target, 1, 2)
   local at, count = window(
     'Reader.readInto',
@@ -278,7 +290,7 @@ end
 
 function ReaderMethods.seek(self: Reader, position: number)
   local state = readerState(self, 'seek')
-  local to = check.exact(check.method('Reader', 'seek'), position, 1, 2)
+  local to = check.exact(Named.seek, position, 1, 2)
   nonNegative('Reader.seek', 'position', to)
   withinFile('Reader.seek', 'position', to, state.size)
   openedBacking(state, 'seek')
@@ -287,7 +299,7 @@ end
 
 function ReaderMethods.skip(self: Reader, count: number)
   local state = readerState(self, 'skip')
-  local by = check.exact(check.method('Reader', 'skip'), count, 1, 2)
+  local by = check.exact(Named.skip, count, 1, 2)
   nonNegative('Reader.skip', 'count', by)
   openedBacking(state, 'skip')
   if by > state.size - state.position then
@@ -386,7 +398,7 @@ end
 
 function Methods.readInto(self: VfsFile, target: buffer, offset: number?): number
   local state = fileState(self, 'readInto')
-  local what = check.method('VfsFile', 'readInto')
+  local what = Named.readInto
   local into = check.buffer(what, target, 1, 2)
   local at = check.optionalExact(what, offset, 2, 3) or 0
   if at < 0 then check.vfs 'negative buffer offset' end
@@ -416,7 +428,7 @@ function Methods.readAt(
   bufferOffset: number?
 ): number
   local state = fileState(self, 'readAt')
-  local what = check.method('VfsFile', 'readAt')
+  local what = Named.readAt
   local into = check.buffer(what, target, 1, 2)
   local offset = check.exact(what, fileOffset, 2, 3)
   local wanted = check.optionalExact(what, length, 3, 4)
@@ -436,7 +448,7 @@ end
 
 function Methods.readRange(self: VfsFile, fileOffset: number, length: number): buffer
   local state = fileState(self, 'readRange')
-  local what = check.method('VfsFile', 'readRange')
+  local what = Named.readRange
   local given, wanted = check.exact(what, fileOffset, 1, 2), check.exact(what, length, 2, 3)
   local offset = nonNegative('readRange', 'fileOffset', given)
   local count = nonNegative('readRange', 'length', wanted)

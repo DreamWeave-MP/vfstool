@@ -135,6 +135,13 @@ end
 
 local function what(method: string): string return check.method('LayerIndex', method) end
 
+--- A string argument of `method`, at `position` after the receiver.
+local function stringArgument(method: string, value: unknown, position: number): string
+  if type(value) == 'string' then return value end
+
+  return check.string(what(method), value, position, position + 1)
+end
+
 local function copySource(source: Source): Source return { path = source.path, kind = source.kind } end
 
 --- `LayerIndex::from_file_lists`: each source's files by the key their path normalizes to.
@@ -488,7 +495,7 @@ end
 
 function Methods.sourceIdForPath(self: LayerIndex, path: string): number?
   local layer = layerOf(self, 'sourceIdForPath')
-  local wanted = check.string(what 'sourceIdForPath', path, 1, 2)
+  local wanted = stringArgument('sourceIdForPath', path, 1)
   for index, source in layer.sources do
     if paths.samePath(source.path, wanted) then return index end
   end
@@ -505,7 +512,7 @@ end
 
 function Methods.sourcesContaining(self: LayerIndex, path: string): { number }
   local layer = layerOf(self, 'sourcesContaining')
-  local key = paths.normalize(check.string(what 'sourcesContaining', path, 1, 2))
+  local key = paths.normalize(stringArgument('sourcesContaining', path, 1))
   local sources = layer.toSources[key]
   return if sources then table.clone(sources) else {}
 end
@@ -513,7 +520,7 @@ end
 function Methods.providerOriginalPath(self: LayerIndex, sourceIndex: number, path: string): string?
   local layer = layerOf(self, 'providerOriginalPath')
   local index = check.exact(what 'providerOriginalPath', sourceIndex, 1, 2)
-  local key = paths.normalize(check.string(what 'providerOriginalPath', path, 2, 3))
+  local key = paths.normalize(stringArgument('providerOriginalPath', path, 2))
   oneBased('source index', index)
   local bySource = layer.originals[key]
   local spellings = if bySource then bySource[index] else nil
@@ -522,7 +529,7 @@ end
 
 function Methods.providerChain(self: LayerIndex, path: string): { LayerProvider }
   local layer = layerOf(self, 'providerChain')
-  return chain(layer, check.string(what 'providerChain', path, 1, 2))
+  return chain(layer, stringArgument('providerChain', path, 1))
 end
 
 function Methods.duplicateKeys(self: LayerIndex): views.View<string>
