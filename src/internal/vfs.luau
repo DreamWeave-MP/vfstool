@@ -1201,12 +1201,12 @@ function Methods.archives(self: VFS): { ArchiveInfo }
     position[row] = index
   end
 
-  table.sort(rows, function(left: ArchiveInfo, right: ArchiveInfo): boolean
-    local order = paths.comparePaths(left.path, right.path)
-    if order ~= 0 then return order < 0 end
+  paths.sortByPath(
+    rows,
+    function(row: ArchiveInfo): string return row.path end,
+    function(left: ArchiveInfo, right: ArchiveInfo): boolean return position[left] < position[right] end
+  )
 
-    return position[left] < position[right]
-  end)
   return rows
 end
 
@@ -1235,18 +1235,20 @@ local function archiveRows(vfs: State, path: string): { ArchiveEntry }
     end
   end
 
-  table.sort(rows, function(left: ArchiveEntry, right: ArchiveEntry): boolean
-    local order = paths.comparePaths(left.key, right.key)
-    if order ~= 0 then return order < 0 end
+  paths.sortByPath(
+    rows,
+    function(row: ArchiveEntry): string return row.key end,
+    function(left: ArchiveEntry, right: ArchiveEntry): boolean
+      local order = paths.comparePaths(left.archivePath, right.archivePath)
+      if order ~= 0 then return order < 0 end
 
-    order = paths.comparePaths(left.archivePath, right.archivePath)
-    if order ~= 0 then return order < 0 end
+      order = paths.comparePaths(left.originalPath, right.originalPath)
+      if order ~= 0 then return order < 0 end
 
-    order = paths.comparePaths(left.originalPath, right.originalPath)
-    if order ~= 0 then return order < 0 end
+      return not left.wins and right.wins
+    end
+  )
 
-    return not left.wins and right.wins
-  end)
   return rows
 end
 

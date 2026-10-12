@@ -272,6 +272,67 @@ local function sortPaths(paths: { string })
   table.sort(paths, function(left, right) return keyOf[left] < keyOf[right] end)
 end
 
+--- Sorts `rows` by the path `pathOf` reads from each, in `Path` order, `before` saying whether
+--- one row goes ahead of another whose path is the same. Row for row it is the sort a comparator
+--- over `comparePaths` makes: paths of names are flattened once and compared as strings (alone,
+--- when every row's path is its own), and a list holding any other path goes to that comparator.
+local function sortByPath<T>(
+  rows: { T },
+  pathOf: (row: T) -> string,
+  before: ((left: T, right: T) -> boolean)?
+)
+  local count = #rows
+  if count < 2 then return end
+
+  local byFlat: { [string]: T } = {}
+  local flats = table.create(count)
+  local named, distinct = true, true
+
+  for index, row in rows do
+    local flat = flatten(pathOf(row))
+    if not flat then
+      named = false
+      break
+    end
+
+    if byFlat[flat] then distinct = false end
+
+    byFlat[flat] = row
+    flats[index] = flat
+  end
+
+  if not named then
+    table.sort(rows, function(left: T, right: T): boolean
+      local order = comparePaths(pathOf(left), pathOf(right))
+      if order ~= 0 then return order < 0 end
+
+      if not before then return false end
+
+      return before(left, right)
+    end)
+
+    return
+  end
+
+  if distinct then
+    table.sort(flats)
+    into(rows)[for flat in flats => byFlat[flat]]
+    return
+  end
+
+  local ranked = [for index, row in enumerate(rows) => { row = row, flat = flats[index] }]
+
+  table.sort(ranked, function(left, right): boolean
+    if left.flat ~= right.flat then return left.flat < right.flat end
+
+    if not before then return false end
+
+    return before(left.row, right.row)
+  end)
+
+  into(rows)[for held in ranked => held.row]
+end
+
 --- `PathBuf::push`: an absolute path replaces the base; otherwise one separator joins them.
 local function join(base: string, path: string): string
   if string.byte(path, 1) == 47 or base == '' then return path end
@@ -388,6 +449,7 @@ return table.freeze {
   pathLess = pathLess,
   samePath = samePath,
   sortPaths = sortPaths,
+  sortByPath = sortByPath,
   join = join,
   fileName = fileName,
   stemOf = stemOf,
