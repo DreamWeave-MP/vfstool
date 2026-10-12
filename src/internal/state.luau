@@ -4,6 +4,7 @@
 -- A VFS's state and the rules every mutation follows: provider stacks low to high priority, the
 -- winner of each key cached in `files`, and the directories the winners sit in counted, so a key
 -- that would need a file and a directory of one name is refused before it is inserted.
+local bytes = require '@dream/bytes'
 local keys = require './keys'
 local paths = require './paths'
 local types = require './types'
@@ -48,17 +49,21 @@ local function popSource(state: State)
   table.remove(state.provided)
 end
 
---- Puts `entry` on top of `key`'s stack; the winner is not refreshed.
-local function pushEntry(state: State, key: string, entry: Entry)
+--- Puts `entry` on top of `key`'s stack; the winner is not refreshed. A stack made for it is
+--- filed under the key's token, which is then answered for whoever needs it next.
+local function pushEntry(state: State, key: string, entry: Entry): number?
   state.provided[entry.source] = true
   local stack = state.providers[key]
   if stack then
     table.insert(stack, entry)
-  else
-    local created = { entry }
-    state.providers[key] = created
-    state.stacks[keys.token(key)] = created
+    return nil
   end
+
+  local created = { entry }
+  local token = keys.token(key)
+  state.providers[key] = created
+  state.stacks[token] = created
+  return token
 end
 
 --- Drops `key`'s whole stack; its winner goes with the next `refresh`.
@@ -67,30 +72,50 @@ local function dropStack(state: State, key: string)
   state.stacks[keys.token(key)] = nil
 end
 
+--- The directory a key, or a directory, sits in; nil at the top.
+local function parentOf(path: string): string?
+  local slash = bytes.rfind(path, '/')
+  return if slash then string.sub(path, 1, slash) else nil
+end
+
+-- `directories` counts what sits directly in each directory that holds a winner somewhere below
+-- it: its winners, and its directories that hold one. A winner in a directory already counted
+-- touches that directory alone, and one that opens a directory counts it in the directory above.
+
 local function addDirectories(state: State, key: string)
   local directories = state.directories
-  local at = string.find(key, '/', 1, true)
-  while at do
-    local prefix = string.sub(key, 1, at - 1)
-    directories[prefix] = (directories[prefix] or 0) + 1
-    at = string.find(key, '/', at + 1, true)
+  local parent = parentOf(key)
+  while parent do
+    local count = directories[parent]
+    if count then
+      directories[parent] = count + 1
+      return
+    end
+
+    directories[parent] = 1
+    parent = parentOf(parent)
   end
 end
 
 local function removeDirectories(state: State, key: string)
   local directories = state.directories
-  local at = string.find(key, '/', 1, true)
-  while at do
-    local prefix = string.sub(key, 1, at - 1)
-    local count = directories[prefix]
-    if count then directories[prefix] = if count == 1 then nil else count - 1 end
+  local parent = parentOf(key)
+  while parent do
+    local count = directories[parent]
+    if not count then return end
 
-    at = string.find(key, '/', at + 1, true)
+    if count > 1 then
+      directories[parent] = count - 1
+      return
+    end
+
+    directories[parent] = nil
+    parent = parentOf(parent)
   end
 end
 
---- Makes the top of `key`'s stack its winner, or removes the key when the stack is empty.
-local function refresh(state: State, key: string)
+--- `refresh`, by a caller that may already hold the key's token.
+local function settle(state: State, key: string, token: number?)
   local stack = state.providers[key]
   local top = stack and stack[#stack]
   if top then
@@ -100,13 +125,13 @@ local function refresh(state: State, key: string)
     end
 
     state.files[key] = top
-    state.winners[keys.token(key)] = top
+    state.winners[token or keys.token(key)] = top
     return
   end
 
   if state.files[key] then
     state.files[key] = nil
-    state.winners[keys.token(key)] = nil
+    state.winners[token or keys.token(key)] = nil
     state.count -= 1
     removeDirectories(state, key)
   end
@@ -114,17 +139,22 @@ local function refresh(state: State, key: string)
   dropStack(state, key)
 end
 
+--- Makes the top of `key`'s stack its winner, or removes the key when the stack is empty.
+local function refresh(state: State, key: string) settle(state, key, nil) end
+
 --- Whether `key` needs a directory where a winner is a file, or a file where winners sit in a
---- directory of its name.
+--- directory of its name. No path is both a winner and a directory, and what a directory sits in
+--- are directories, so the search for a winner above the key ends at the first directory.
 local function conflicts(state: State, key: string): boolean
-  if state.directories[key] then return true end
+  local directories = state.directories
+  if directories[key] then return true end
 
   local files = state.files
-  local at = string.find(key, '/', 1, true)
-  while at do
-    if files[string.sub(key, 1, at - 1)] then return true end
+  local parent = parentOf(key)
+  while parent and not directories[parent] do
+    if files[parent] then return true end
 
-    at = string.find(key, '/', at + 1, true)
+    parent = parentOf(parent)
   end
 
   return false
@@ -135,8 +165,7 @@ end
 local function insert(state: State, key: string, entry: Entry): boolean
   if not state.files[key] and conflicts(state, key) then return false end
 
-  pushEntry(state, key, entry)
-  refresh(state, key)
+  settle(state, key, pushEntry(state, key, entry))
   return true
 end
 
