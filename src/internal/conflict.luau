@@ -159,12 +159,7 @@ end
 local function fromLayer(data: layer.Layer): ConflictIndex return new(fromLayerData(data)) end
 
 function Methods.sources(self: ConflictIndex): { string }
-  local out = {}
-  for position, source in indexOf(self, 'sources').meta do
-    out[position] = source.path
-  end
-
-  return out
+  return [for source in indexOf(self, 'sources').meta => source.path]
 end
 
 function Methods.sourcesContaining(self: ConflictIndex, path: string): { number }
@@ -206,14 +201,11 @@ function Methods.conflictsReport(self: ConflictIndex, relative: boolean?)
   local index = indexOf(self, 'conflictsReport')
   local rel = check.optionalBoolean('dream.vfs.ConflictIndex.conflictsReport', relative, 1, 2)
     ~= false
-  local sources = {}
-  for position, source in index.meta do
-    sources[position] = {
-      path = source.path,
-      overrides = reportList(index, position, index.overrides[position], rel),
-      overriddenBy = reportList(index, position, index.overriddenBy[position], rel),
-    }
-  end
+  local sources = [for position, source in enumerate(index.meta) => {
+    path = source.path,
+    overrides = reportList(index, position, index.overrides[position], rel),
+    overriddenBy = reportList(index, position, index.overriddenBy[position], rel),
+  }]
 
   return { sources = sources }
 end
@@ -245,22 +237,14 @@ function Methods.shadowedReport(self: ConflictIndex, relative: boolean?, listFil
 end
 
 local function positions(index: Index, path: string): { number }
-  local exact = {}
-  for position, source in index.meta do
-    if paths.samePath(source.path, path) then table.insert(exact, position) end
-  end
-
+  local exact =
+    [for position, source in enumerate(index.meta) if paths.samePath(source.path, path) => position]
   if #exact > 0 then return exact end
 
   local folded = paths.normalizeHost(path)
-  local found = {}
-  for position, source in index.meta do
-    if paths.samePath(paths.normalizeHost(source.path), folded) then
-      table.insert(found, position)
-    end
-  end
 
-  return found
+  return [for position, source in enumerate(index.meta)
+    if paths.samePath(paths.normalizeHost(source.path), folded) => position]
 end
 
 local function keysOf(index: Index, found: { number }, path: string): { [string]: boolean }
@@ -294,12 +278,9 @@ local function keysOf(index: Index, found: { number }, path: string): { [string]
 end
 
 local function highest(found: { number }): number?
-  local best
-  for _, position in found do
-    if not best or position > best then best = position end
-  end
+  if #found == 0 then return nil end
 
-  return best
+  return max[for position in found => position]
 end
 
 function Methods.diffReport(self: ConflictIndex, sourceA: string, sourceB: string)
@@ -352,11 +333,8 @@ end
 local function fromDirectories(dirs: unknown): ConflictIndex
   if type(dirs) ~= 'table' then check.tableArgument('dirs', dirs, 1) end
 
-  local rows = {}
-  for position, dir in check.stringArray('dirs', dirs :: { unknown }, check.vfs) do
-    rows[position] =
-      { source = { path = dir, kind = 'looseDir' :: types.Kind }, files = walkDir(dir) }
-  end
+  local rows = [for dir in check.stringArray('dirs', dirs :: { unknown }, check.vfs) =>
+    { source = { path = dir, kind = 'looseDir' :: types.Kind }, files = walkDir(dir) }]
 
   return fromLayer(layer.build(rows))
 end

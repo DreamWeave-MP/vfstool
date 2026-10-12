@@ -305,22 +305,19 @@ local function list(path: string, options: unknown?): views.View<HostEntry>
 
   if not found then return check.vfs(check.walkError(message)) end
 
-  local rows = (table.create(#found.paths) :: unknown) :: { HostEntry }
-  for index, rel in found.paths do
-    rows[index] = {
-      path = paths.join(root, rel),
-      isDir = found.kinds[index] == 'dir',
-      size = if found.kinds[index] == 'dir' then 0 else (found.sizes :: { number })[index],
-    }
-  end
+  local rows: { HostEntry } = [for index, rel in enumerate(found.paths) => {
+    path = paths.join(root, rel),
+    isDir = found.kinds[index] == 'dir',
+    size = if found.kinds[index] == 'dir' then 0 else (found.sizes :: { number })[index],
+  }]
 
   table.sort(
     rows,
     function(left: HostEntry, right: HostEntry): boolean return left.path < right.path end
   )
   return views.lazy(#rows, function(index: number): HostEntry
-    local row = rows[index]
-    return { path = row.path, isDir = row.isDir, size = row.size }
+    local {path, isDir, size} = rows[index]
+    return { path = path, isDir = isDir, size = size }
   end)
 end
 

@@ -255,11 +255,7 @@ local function equal(left: Value, right: Value): boolean
   if left.kind == 'array' and right.kind == 'array' then
     if #left.items ~= #right.items then return false end
 
-    for index, item in left.items do
-      if not equal(item, right.items[index]) then return false end
-    end
-
-    return true
+    return all[for index, item in enumerate(left.items) => equal(item, right.items[index])]
   end
 
   if left.kind == 'object' and right.kind == 'object' then

@@ -185,10 +185,7 @@ end
 --- The rows a layer index is built from: every source that provides a key, or never provided
 --- one, with the original path of each file it provides, in source order.
 local function layerRows(state: State): ({ Source }, { { string } })
-  local used: { boolean } = table.create(#state.sources, false)
-  for index, provided in state.provided do
-    used[index] = not provided
-  end
+  local used = [for provided in state.provided => not provided]
 
   for _, stack in state.providers do
     for _, entry in stack do

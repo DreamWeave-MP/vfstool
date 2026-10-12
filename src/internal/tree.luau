@@ -223,12 +223,9 @@ end
 --- The nested `{ [root] = { files, subdirs } }` shape.
 local function toTable(built: Tree): { [string]: unknown }
   local function nodeTable(current: Node): { [string]: unknown }
-    local files = table.create(#current.files)
-    for index, entry in current.files do
-      files[index] = fileRow(entry)
-    end
-
+    local files = [for entry in current.files => fileRow(entry)]
     local subdirs = {}
+
     for name, child in current.subdirs do
       subdirs[paths.lossy(name)] = nodeTable(child)
     end

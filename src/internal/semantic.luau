@@ -223,24 +223,19 @@ local function tomlCanonical(
   local floats = described.floats
   local datetimes = described.datetimes or {}
   local keys = described.keys
-  local parts = {}
   if keys then
+    local fields = value :: { [string]: unknown }
     local sorted = table.clone(keys)
     table.sort(sorted)
-    for _, key in sorted do
-      local item = (value :: { [string]: unknown })[key]
-      table.insert(
-        parts,
-        `{#key}:{key}={tomlCanonical(item, floats[key] == true, layout, datetimes[key] == true)}`
-      )
-    end
+
+    local parts = [for key in sorted =>
+      `{#key}:{key}={tomlCanonical(fields[key], floats[key] == true, layout, datetimes[key] == true)}`]
 
     return `\{{table.concat(parts, ',')}\}`
   end
 
-  for index, item in value :: { unknown } do
-    parts[index] = tomlCanonical(item, floats[index] == true, layout, datetimes[index] == true)
-  end
+  local parts = [for index, item in enumerate(value :: { unknown }) =>
+    tomlCanonical(item, floats[index] == true, layout, datetimes[index] == true)]
 
   return `[{table.concat(parts, ',')}]`
 end

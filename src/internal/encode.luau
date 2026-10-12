@@ -43,13 +43,12 @@ local function treeObject(nodes: { [string]: tree.Node }, order: { string }): Va
   local object = serialize.map()
   for _, name in order do
     local current = nodes[name]
-    local files = table.create(#current.files)
-    for index, entry in current.files do
-      files[index] = fileObject(entry)
-    end
-
     local node = serialize.map()
-    serialize.set(node, 'files', serialize.array(files))
+    serialize.set(
+      node,
+      'files',
+      serialize.array([for entry in current.files => fileObject(entry)])
+    )
     serialize.set(node, 'subdirs', treeObject(current.subdirs, tree.sortedNames(current.subdirs)))
     serialize.set(object, paths.lossy(name), node)
   end
@@ -92,12 +91,7 @@ local function fromLuau(value: unknown, depth: number, trees: { [unknown]: tree.
 
   local rows = views.rows(value)
   if rows then
-    local items = table.create(#rows)
-    for index, row in rows do
-      items[index] = fromLuau(row, depth + 1, trees)
-    end
-
-    return serialize.array(items)
+    return serialize.array([for row in rows => fromLuau(row, depth + 1, trees)])
   end
 
   if check.isHandle(value) then
@@ -111,12 +105,9 @@ local function fromLuau(value: unknown, depth: number, trees: { [unknown]: tree.
   end
 
   if count == rawlen(source) then
-    local items = table.create(count)
-    for index = 1, count do
-      items[index] = fromLuau(source[index], depth + 1, trees)
-    end
-
-    return serialize.array(items)
+    return serialize.array(
+      [for index in range(1, count) => fromLuau(source[index], depth + 1, trees)]
+    )
   end
 
   local object = serialize.map()
@@ -143,11 +134,7 @@ end
 local function nodeValue(current: tree.Node): Value
   local node = serialize.map()
   if #current.files > 0 then
-    local names = table.create(#current.files)
-    for index, entry in current.files do
-      names[index] = paths.lossy(tree.listedName(entry))
-    end
-
+    local names = [for entry in current.files => paths.lossy(tree.listedName(entry))]
     serialize.set(node, '.', serialize.array(names))
   end
 

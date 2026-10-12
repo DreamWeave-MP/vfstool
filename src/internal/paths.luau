@@ -225,14 +225,7 @@ local function orderKey(path: string): string
     return '\1/\0\4' .. string.gsub(string.sub(path, 2), '/', '\0\4')
   end
 
-  local parts = components(path)
-  local spelled = table.create(#parts)
-
-  for index, part in parts do
-    spelled[index] = string.char(rank(part)) .. part
-  end
-
-  return table.concat(spelled, '\0')
+  return table.concat([for part in components(path) => string.char(rank(part)) .. part], '\0')
 end
 
 --- Sorts paths in Rust's `Path` order, each spelled as its order key once. While every key is
@@ -422,11 +415,11 @@ local function stripPrefix(path: string, base: string): string?
   local whole, head = components(path), components(base)
   if #head > #whole then return nil end
 
-  for index, component in head do
-    if whole[index] ~= component then return nil end
+  if not all[for index, component in enumerate(head) => whole[index] == component] then
+    return nil
   end
 
-  local rest = table.move(whole, #head + 1, #whole, 1, {})
+  local rest = whole[#head + 1:#whole]
   if rest[1] == '/' then return nil end
 
   return table.concat(rest, '/')
