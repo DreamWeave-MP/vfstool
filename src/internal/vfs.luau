@@ -877,7 +877,8 @@ function Methods.removeResolvedFile(self: VFS, key: string): VfsFile?
   return if removed then file.new(removed) else nil
 end
 
---- `remove_matching_provider`: every provider `matches` takes, from every stack.
+--- `remove_matching_provider`: every provider `matches` takes, from every stack. A stack that
+--- loses none keeps the winner it had, so only the others are refreshed.
 local function removeMatching(
   vfs: State,
   matches: (key: string, entry: Entry) -> boolean
@@ -892,6 +893,7 @@ local function removeMatching(
     local stack = vfs.providers[key]
     if not stack then continue end
 
+    local before = #stack
     local index = 1
     while index <= #stack do
       local entry = stack[index]
@@ -903,7 +905,7 @@ local function removeMatching(
       end
     end
 
-    state.refresh(vfs, key)
+    if #stack ~= before then state.refresh(vfs, key) end
   end
 
   state.touched(vfs)
@@ -971,11 +973,15 @@ end
 function Methods.removeSource(self: VFS, sourcePath: string)
   local vfs = receiver(self, 'removeSource')
   local source = keyArgument('removeSource', sourcePath)
+  local named = [for held in vfs.sources => paths.samePath(held.path, source)]
+  if not any[for same in named => same] then
+    state.touched(vfs)
+    return {}
+  end
+
   return removeMatching(
     vfs,
-    function(_: string, entry: Entry): boolean
-      return paths.samePath(vfs.sources[entry.source].path, source)
-    end
+    function(_: string, entry: Entry): boolean return named[entry.source] end
   )
 end
 
