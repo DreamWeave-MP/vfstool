@@ -281,8 +281,13 @@ local function join(base: string, path: string): string
   return base .. '/' .. path
 end
 
---- `Path::file_name`: the last component when it is a name.
+--- `Path::file_name`: the last component when it is a name. What follows the last separator is
+--- that component unless it is empty or a dot one, which only the components can settle.
 local function fileName(path: string): string?
+  local slash = bytes.rfind(path, '/')
+  local tail = if slash then string.sub(path, slash + 2) else path
+  if tail ~= '' and tail ~= '.' and tail ~= '..' then return tail end
+
   local parts = components(path)
   local last = parts[#parts]
   if not last or rank(last) ~= 4 then return nil end
@@ -337,10 +342,10 @@ local function parent(path: string): string?
 
   if trimmed == '' or trimmed == '/' then return nil end
 
-  local slash = string.find(trimmed, '/[^/]*$')
+  local slash = bytes.rfind(trimmed, '/')
   if not slash then return '' end
 
-  local head = string.sub(trimmed, 1, slash - 1)
+  local head = string.sub(trimmed, 1, slash)
   while #head > 1 and string.byte(head, -1) == 47 do
     head = string.sub(head, 1, -2)
   end
