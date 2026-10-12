@@ -202,6 +202,7 @@ local function chain(layer: Layer, path: string): { LayerProvider }
 
   local seen: { [number]: number } = {}
   local rows = (table.create(#sources) :: unknown) :: { LayerProvider }
+  local shown, bySource = paths.keyPath(key), layer.originals[key]
 
   for position, sourceIndex in sources do
     local source = layer.sources[sourceIndex]
@@ -209,14 +210,13 @@ local function chain(layer: Layer, path: string): { LayerProvider }
 
     local occurrence = (seen[sourceIndex] or 0) + 1
     seen[sourceIndex] = occurrence
-    local bySource = layer.originals[key]
     local spellings: { string }? = if bySource then bySource[sourceIndex] else nil
     table.insert(rows, {
       sourceIndex = sourceIndex,
       providerIndex = position,
       source = copySource(source),
-      key = paths.keyPath(key),
-      originalPath = (if spellings then spellings[occurrence] else nil) or paths.keyPath(key),
+      key = shown,
+      originalPath = (if spellings then spellings[occurrence] else nil) or shown,
     })
   end
 
@@ -243,14 +243,14 @@ local function highest(layer: Layer, path: string): (LayerProvider?, number)
 
   local sourceIndex = sources[top]
   local occurrence = #[for earlier in sources[1:top] if earlier == sourceIndex => earlier]
-  local bySource = layer.originals[key]
+  local shown, bySource = paths.keyPath(key), layer.originals[key]
   local spellings: { string }? = if bySource then bySource[sourceIndex] else nil
   local provider: LayerProvider = {
     sourceIndex = sourceIndex,
     providerIndex = top,
     source = copySource(layer.sources[sourceIndex]),
-    key = paths.keyPath(key),
-    originalPath = (if spellings then spellings[occurrence] else nil) or paths.keyPath(key),
+    key = shown,
+    originalPath = (if spellings then spellings[occurrence] else nil) or shown,
   }
 
   return provider, count
