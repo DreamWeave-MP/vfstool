@@ -163,10 +163,36 @@ local function rank(component: string): number
   return 4
 end
 
+--- Whether `path` from `start` on is names joined by single separators: no empty component, none
+--- a dot starts (so none is `.` or `..`), and a name at each end.
+local function isNames(path: string, start: number): boolean
+  local first = string.byte(path, start)
+  return first ~= nil
+    and first ~= 47
+    and first ~= 46
+    and string.byte(path, -1) ~= 47
+    and not string.find(path, '//', start, true)
+    and not string.find(path, '/.', start, true)
+end
+
+--- A path of names (after a root or not) with `/` made the lowest byte, so that comparing two of
+--- these is comparing their paths component by component; nil for any other path, and for one
+--- that holds a NUL of its own.
+local function flatten(path: string): string?
+  local start = if string.byte(path, 1) == 47 then 2 else 1
+  if not isNames(path, start) or string.find(path, '\0', 1, true) then return nil end
+
+  return (string.gsub(path, '/', '\0'))
+end
+
 --- Rust's `Path` ordering: component by component, a root before a `.` before a `..` before a name,
 --- names by their bytes.
 local function comparePaths(left: string, right: string): number
   if left == right then return 0 end
+
+  local flatLeft = flatten(left)
+  local flatRight = flatLeft and flatten(right)
+  if flatLeft and flatRight then return if flatLeft < flatRight then -1 else 1 end
 
   local leftParts, rightParts = components(left), components(right)
   for index = 1, math.min(#leftParts, #rightParts) do
