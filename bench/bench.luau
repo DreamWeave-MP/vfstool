@@ -400,6 +400,16 @@ end
 
 local DirCount, PerDir, PerArchiveSource = 4, 1500, 2000
 
+--- A file to read from in pieces, once loose and once packed: `BlobSize` bytes, each fixed by its
+--- offset.
+local BlobSize = 65536
+
+local function blobByte(offset: number): number return (offset * 7 + 3) % 256 end
+
+local blob = buffer.create(BlobSize)
+
+into(blob, 'u8')[for offset in range(0, BlobSize - 1) => blobByte(offset)]
+
 assert(fs.mkdir(scratch, { recursive = true }))
 
 local treeRoot = `{assert(fs.canonicalize(scratch))}/tree`
@@ -447,8 +457,11 @@ do
     end
   end
 
+  builder:addBytes('bench\\packed.bin', buffer.tostring(blob))
+  archived['bench/packed.bin'] = true
   write(`{dirs[1]}/Bench.bsa`, builder:toBytes())
-  looseCounts['bench.bsa'] = 1
+  write(`{dirs[1]}/Bench/Loose.bin`, buffer.tostring(blob))
+  looseCounts['bench.bsa'], looseCounts['bench/loose.bin'] = 1, 1
 end
 
 local ArchivePath = `{dirs[1]}/Bench.bsa`
@@ -557,6 +570,62 @@ workload('vfs.explain', sum[for key in sample => stackSizes[key] or 0], function
 
   return providers
 end)
+
+--- Reads, the way a parser makes them: many small ones, by position or through a reader.
+local Reads, Width = 4096, 16
+
+for _, name in { 'bench/loose.bin', 'bench/packed.bin' } do
+  local kind = if looseCounts[name] then 'loose' else 'packed'
+  local file = assert(built:getFile(name))
+  local target = buffer.create(Width)
+  local expected = Reads * Width + blobByte(Reads * Width - 1)
+
+  workload(`file.readAt {kind}`, expected, function(): number
+    local read = 0
+
+    for index = 0, Reads - 1 do
+      read += file:readAt(target, index * Width, Width)
+    end
+
+    return read + buffer.readu8(target, Width - 1)
+  end)
+
+  workload(`file.readRange {kind}`, expected, function(): number
+    local read, last = 0, target
+
+    for index = 0, Reads - 1 do
+      last = file:readRange(index * Width, Width)
+      read += buffer.len(last)
+    end
+
+    return read + buffer.readu8(last, Width - 1)
+  end)
+
+  workload(`reader.readInto {kind}`, expected, function(): number
+    local reader = file:open()
+    local read = 0
+
+    for _ = 1, Reads do
+      read += reader:readInto(target)
+    end
+
+    reader:close()
+    return read + buffer.readu8(target, Width - 1)
+  end)
+
+  workload(`reader.read {kind}`, expected, function(): number
+    local reader = file:open()
+    local read, last = 0, target
+
+    for _ = 1, Reads do
+      last = reader:read(Width)
+      read += buffer.len(last)
+    end
+
+    reader:close()
+    return read + buffer.readu8(last, Width - 1)
+  end)
+end
 
 workload('vfs.keys', total, function(): number return #built:keys() end)
 workload('vfs.entries', total, function(): number return #built:entries():toTable() end)
