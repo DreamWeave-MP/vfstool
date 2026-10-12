@@ -245,6 +245,28 @@ suite.describe('views', function()
     local after = vfs:keys()
     assert(#before == 2 and #after == 1 and after[1] == 'b.txt', 'keys follow mutation')
   end)
+
+  suite.it('are let go once nothing holds them', function()
+    local dir = tree('views-held', { ['a.txt'] = '', ['b.txt'] = '' })
+    local vfs = vfstool.VFS.fromDirectories { dir }
+    local layer = vfs:layerIndex()
+    local held: { [any]: string } = setmetatable({}, { __mode = 'k' }) :: any
+    held[vfs:keys()] = 'keys'
+    held[vfs:keys(1)] = 'a page of keys'
+    held[vfs:entries()] = 'entries'
+    held[vfs:pathsWith 'a.txt'] = 'paths'
+    held[layer:keys()] = 'layer keys'
+    held[layer:duplicateKeys()] = 'duplicate keys'
+    jess.bench.collect()
+    local kept = {}
+
+    for _, name in held do
+      table.insert(kept, name)
+    end
+
+    table.sort(kept)
+    expect(table.concat(kept, ', ')).toBe ''
+  end)
 end)
 
 suite.describe('files', function()

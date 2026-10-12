@@ -8,8 +8,12 @@
 
 export type View<T> = { [number]: T, toTable: (self: View<T>) -> { T } }
 
---- Every value that is a view, for `serialize`, which writes a view as its rows.
-local views = (setmetatable({}, { __mode = 'k' }) :: unknown) :: { [unknown]: () -> { unknown } }
+--- Every value that is a view, with what makes its rows, for `serialize`, which writes a view as
+--- them. The table holds a view weakly and Luau's weak tables are no ephemerons, so what makes the
+--- rows is handed the view and must not hold it: a function that did would keep it for good.
+local views = (setmetatable({}, { __mode = 'k' }) :: unknown) :: {
+  [unknown]: (view: unknown) -> { unknown },
+}
 
 local function copy<T>(items: { T }): { T } return table.move(items, 1, #items, 1, {}) end
 
@@ -19,10 +23,12 @@ local ArrayMeta = table.freeze {
   },
 }
 
+local function arrayRows(view: unknown): { unknown } return copy(view :: { unknown }) end
+
 --- A frozen array as a view.
 local function array<T>(items: { T }): View<T>
   local view = (table.freeze(setmetatable(items, ArrayMeta)) :: unknown) :: View<T>
-  views[view] = function(): { unknown } return (copy(items) :: unknown) :: { unknown } end
+  views[view] = arrayRows
   return view
 end
 
@@ -61,14 +67,14 @@ local function lazy<T>(count: number, row: (index: number) -> T): View<T>
     __newindex = function() error('attempt to modify a readonly table', 2) end,
   }
   local view = (setmetatable({}, meta) :: unknown) :: View<T>
-  views[view] = function(): { unknown } return (toTable() :: unknown) :: { unknown } end
+  views[view] = function(_: unknown): { unknown } return (toTable() :: unknown) :: { unknown } end
   return view
 end
 
 --- The rows of a view, or nil for a value that isn't one.
 local function rows(value: unknown): { unknown }?
   local list = views[value]
-  return if list then list() else nil
+  return if list then list(value) else nil
 end
 
 return table.freeze {
