@@ -320,10 +320,7 @@ end
 --- earlier ones.
 local function fromDirectories(dirs: { string }, archives: { string }?): State
   local vfs = state.new()
-  local loose = (table.create(#dirs) :: unknown) :: { LooseSource }
-  for index, dir in dirs do
-    loose[index] = looseSource(dir)
-  end
+  local loose = [for dir in dirs => looseSource(dir)]
 
   if archives then
     local found: { [string]: string } = {}
@@ -358,11 +355,7 @@ local function pushBatch(
   source: Source,
   list: { { key: string, entry: Entry } }
 ): number
-  local kept = {}
-  for _, item in list do
-    if paths.isSafeNormalized(item.key) then table.insert(kept, item) end
-  end
-
+  local kept = [for item in list if paths.isSafeNormalized(item.key) => item]
   if #kept == 0 then return 0 end
 
   local index = state.pushSource(vfs, source)
@@ -410,12 +403,7 @@ local function entriesWhere(vfs: State, accept: (key: string) -> boolean): views
   end
 
   table.sort(keys)
-  local entries = (table.create(#keys) :: unknown) :: { Entry }
-  for index, key in keys do
-    entries[index] = vfs.files[key]
-  end
-
-  return entriesView(keys, entries)
+  return entriesView(keys, [for key in keys => vfs.files[key]])
 end
 
 --- `provider_record_from_entry`.
@@ -435,12 +423,7 @@ local function record(vfs: State, key: string, entry: Entry): ProviderRecord
 end
 
 local function records(vfs: State, key: string): { ProviderRecord }
-  local out = {}
-  for index, entry in vfs.providers[key] or {} do
-    out[index] = record(vfs, key, entry)
-  end
-
-  return out
+  return [for entry in vfs.providers[key] or {} => record(vfs, key, entry)]
 end
 
 local function treeStream(built: tree.Tree): Tree
@@ -521,13 +504,11 @@ function Methods.keys(self: VFS, limit: number?, descending: boolean?): views.Vi
   if not limit then return views.array(table.clone(keys)) end
 
   local take = math.max(0, math.min(#keys, math.floor(limit)))
-  local selected = (table.create(take) :: unknown) :: { string }
   if descending == true then
-    for index = 1, take do selected[index] = keys[#keys - index + 1] end
-  else
-    for index = 1, take do selected[index] = keys[index] end
+    return views.array([for index in range(#keys, #keys - take + 1, -1) => keys[index]])
   end
-  return views.array(selected)
+
+  return views.array(keys[1:take])
 end
 
 function Methods.entries(self: VFS, limit: number?, descending: boolean?): views.View<EntryRow>
@@ -607,10 +588,7 @@ function Methods.remaining(
   local dirs = check.stringArray('allDirs', allDirs :: { unknown })
   local rel = check.optionalBoolean(name, relative, 4, 5)
   local normalized = paths.normalizeHost(filter)
-  local chosen = {}
-  for _, dir in dirs do
-    if paths.samePath(paths.normalizeHost(dir), normalized) then table.insert(chosen, dir) end
-  end
+  local chosen = [for dir in dirs if paths.samePath(paths.normalizeHost(dir), normalized) => dir]
 
   local filtered = fromDirectories(chosen, nil)
   return treeStream(tree.build(vfs, rel ~= false, function(key: string, entry: Entry): boolean
@@ -797,11 +775,8 @@ function Methods.pushDirectory(self: VFS, root: string)
   local vfs = receiver(self, 'pushDirectory')
   local dir = keyArgument('pushDirectory', root)
   local keys, rels = walkFiles(dir, true)
-  local list = (table.create(#keys) :: unknown) :: { { key: string, entry: Entry } }
-  for index, key in keys do
-    local rel = rels[index]
-    list[index] = { key = key, entry = { path = paths.join(dir, rel), source = 0, rel = rel } }
-  end
+  local list = [for key, rel in zipStrict(keys, rels) =>
+    { key = key, entry = { path = paths.join(dir, rel), source = 0, rel = rel } }]
 
   if #list == 0 then return end
 
@@ -1013,18 +988,13 @@ function Methods.display(self: VFS, relative: boolean?): string
 end
 
 local function skipRows(skipped: { materialize.Skip }): { materialize.Skip }
-  local rows = (table.create(#skipped) :: unknown) :: { materialize.Skip }
-  for index, skip in skipped do
-    rows[index] = {
-      kind = skip.kind,
-      key = skip.key,
-      archive = skip.archive,
-      source = skip.source,
-      error = skip.error,
-    }
-  end
-
-  return rows
+  return [for skip in skipped => {
+    kind = skip.kind,
+    key = skip.key,
+    archive = skip.archive,
+    source = skip.source,
+    error = skip.error,
+  }]
 end
 
 function Methods.dumpToDirectory(
@@ -1092,10 +1062,7 @@ function Methods.diffDirectory(self: VFS, dir: string): DirectoryDiff
       end
     end
 
-    for _, problem in walk.errors do
-      table.insert(unreadable, { path = problem.path, error = problem.message })
-    end
-
+    unreadable = [for problem in walk.errors => { path = problem.path, error = problem.message }]
     table.sort(
       unreadable,
       function(left, right) return paths.pathLess(left.path, right.path) end
@@ -1111,13 +1078,13 @@ function Methods.providerRecordsFor(self: VFS, path: string): views.View<Provide
   local vfs = receiver(self, 'providerRecordsFor')
   local rows = records(vfs, paths.normalize(keyArgument('providerRecordsFor', path)))
   return views.lazy(#rows, function(index: number): ProviderRecord
-    local row = rows[index]
+    local {sourceIndex, source, key, originalPath, resolvedPath} = rows[index]
     return {
-      sourceIndex = row.sourceIndex,
-      source = copySource(row.source),
-      key = row.key,
-      originalPath = row.originalPath,
-      resolvedPath = row.resolvedPath,
+      sourceIndex = sourceIndex,
+      source = copySource(source),
+      key = key,
+      originalPath = originalPath,
+      resolvedPath = resolvedPath,
     }
   end)
 end
@@ -1267,12 +1234,8 @@ end
 
 function Methods.filesFromArchive(self: VFS, archivePath: string): views.View<string>
   local vfs = receiver(self, 'filesFromArchive')
-  local keys: { string } = {}
-  for index, row in archiveRows(vfs, keyArgument('filesFromArchive', archivePath)) do
-    keys[index] = row.key
-  end
-
-  return views.array(keys)
+  local rows = archiveRows(vfs, keyArgument('filesFromArchive', archivePath))
+  return views.array([for row in rows => row.key])
 end
 
 --- The layer index of a VFS, built when first asked for and kept until it changes.
@@ -1281,12 +1244,10 @@ local function layerOf(vfs: State): layer.Layer
   if cached then return cached :: layer.Layer end
 
   local sources, files = state.layerRows(vfs)
-  local rows = (table.create(#sources) :: unknown) :: { { source: Source, files: { string } } }
-  for index, source in sources do
-    rows[index] = { source = source, files = files[index] }
-  end
+  local built = layer.build(
+    [for index, source in enumerate(sources) => { source = source, files = files[index] }]
+  )
 
-  local built = layer.build(rows)
   vfs.layer = built
   return built
 end
