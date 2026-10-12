@@ -216,26 +216,60 @@ local function samePath(left: string, right: string): boolean
   return left == right or comparePaths(left, right) == 0
 end
 
---- Sorts paths in Rust's `Path` order, each split into components once.
+--- A path as the string `sortPaths` orders it by: each component behind its rank, a NUL between
+--- them. A path of names, after a root or not, is spelled without being split.
+local function orderKey(path: string): string
+  if isNames(path, 1) then return '\4' .. string.gsub(path, '/', '\0\4') end
+
+  if string.byte(path, 1) == 47 and isNames(path, 2) then
+    return '\1/\0\4' .. string.gsub(string.sub(path, 2), '/', '\0\4')
+  end
+
+  local parts = components(path)
+  local spelled = table.create(#parts)
+
+  for index, part in parts do
+    spelled[index] = string.char(rank(part)) .. part
+  end
+
+  return table.concat(spelled, '\0')
+end
+
+--- Sorts paths in Rust's `Path` order, each spelled as its order key once. While every key is
+--- one path's alone the keys sort as plain strings; two spellings of one path tie, and where
+--- they land is then left to the sort that compares paths through their keys, as it always was.
 local function sortPaths(paths: { string })
   if #paths < 2 then return end
 
-  local keys = {}
+  local byKey: { [string]: string } = {}
+  local keys = table.create(#paths)
+  local distinct = true
 
-  for _, path in paths do
-    if keys[path] then continue end
-
-    local parts = components(path)
-    local spelled = table.create(#parts)
-
-    for index, part in parts do
-      spelled[index] = string.char(rank(part)) .. part
+  for index, path in paths do
+    local key = orderKey(path)
+    local held = byKey[key]
+    if held and held ~= path then
+      distinct = false
+      break
     end
 
-    keys[path] = table.concat(spelled, '\0')
+    byKey[key] = path
+    keys[index] = key
   end
 
-  table.sort(paths, function(left, right) return keys[left] < keys[right] end)
+  if distinct then
+    table.sort(keys)
+    into(paths)[for key in keys => byKey[key]]
+    return
+  end
+
+  local keyOf: { [string]: string } = {}
+
+  for _, path in paths do
+    keyOf[path] = keyOf[path] or orderKey(path)
+  end
+
+  table.sort(paths, function(left, right) return keyOf[left] < keyOf[right] end)
 end
 
 --- `PathBuf::push`: an absolute path replaces the base; otherwise one separator joins them.
