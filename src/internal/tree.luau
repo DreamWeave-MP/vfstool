@@ -34,30 +34,48 @@ local function listedName(entry: Entry): string
   return fileName(entry) or (if entry.archive then paths.lossy(entry.path) else entry.path)
 end
 
-local function sortNode(target: Node)
-  -- Stable, by file name, a file without one first: the crate's `sort_by` on `Option<&OsStr>`.
-  type Row = { entry: Entry, index: number, name: string? }
-  local order = (table.create(#target.files) :: unknown) :: { Row }
-  for index, entry in target.files do
-    order[index] = { entry = entry, index = index, name = fileName(entry) }
-  end
+--- A directory's files by file name, a file without one first, and files of one name in the
+--- order they came in: the crate's stable `sort_by` on `Option<&OsStr>`. That order is a total
+--- one, so the names sort as plain strings and each brings its files along.
+local function sortFiles(files: { Entry }): { Entry }
+  local sorted: { Entry }, names: { string } = {}, {}
+  local named: { [string]: Entry } = {}
+  local repeated: { [string]: { Entry } } = {}
 
-  table.sort(order, function(left: Row, right: Row): boolean
-    local leftName, rightName = left.name, right.name
-    if leftName ~= rightName then
-      if leftName == nil then return true end
-
-      if rightName == nil then return false end
-
-      return (leftName :: string) < (rightName :: string)
+  for _, entry in files do
+    local name = fileName(entry)
+    if not name then
+      table.insert(sorted, entry)
+      continue
     end
 
-    return left.index < right.index
-  end)
+    if not named[name] then
+      named[name] = entry
+      table.insert(names, name)
+      continue
+    end
 
-  for index, row in order do
-    target.files[index] = row.entry
+    local others = repeated[name]
+    if others then
+      table.insert(others, entry)
+    else
+      repeated[name] = { entry }
+    end
   end
+
+  table.sort(names)
+
+  for _, name in names do
+    table.insert(sorted, named[name])
+    local others = repeated[name]
+    if others then table.move(others, 1, #others, #sorted + 1, sorted) end
+  end
+
+  return sorted
+end
+
+local function sortNode(target: Node)
+  if #target.files > 1 then target.files = sortFiles(target.files) end
 
   for _, child in target.subdirs do
     sortNode(child)
@@ -73,12 +91,23 @@ local function build(
   local rootName = if relative then 'Data Files' else '/'
   local root = node()
 
+  --- What an archive's files are listed under, and the directory every parent path walks to:
+  --- each is worked out for the first file that needs it.
+  local listedUnder: { [types.ArchiveRef]: string } = {}
+  local directories: { [string]: Node } = {}
+
   for key, entry in state.files do
     local ref = entry.archive
     local path: string
     if ref then
-      local parent = if relative then paths.fileName(ref.path) else ref.path
-      path = paths.join(paths.lossy(parent or ''), paths.keyPath(key))
+      local under = listedUnder[ref]
+      if not under then
+        local parent = if relative then paths.fileName(ref.path) else ref.path
+        under = paths.lossy(parent or '')
+        listedUnder[ref] = under
+      end
+
+      path = paths.join(under, paths.keyPath(key))
     else
       path = if relative then paths.keyPath(key) else entry.path
     end
@@ -88,18 +117,25 @@ local function build(
     local parent = paths.parent(path)
     if not parent or parent == '' then parent = rootName end
 
-    local current, target = '', root
-    for _, component in paths.components(parent :: string) do
-      current = if current == '' then component else paths.join(current, component)
-      if paths.samePath(current, rootName) then continue end
+    local target = directories[parent :: string]
+    if not target then
+      local current = ''
+      target = root
 
-      local child = target.subdirs[component]
-      if not child then
-        child = node()
-        target.subdirs[component] = child
+      for _, component in paths.components(parent :: string) do
+        current = if current == '' then component else paths.join(current, component)
+        if paths.samePath(current, rootName) then continue end
+
+        local child = target.subdirs[component]
+        if not child then
+          child = node()
+          target.subdirs[component] = child
+        end
+
+        target = child
       end
 
-      target = child
+      directories[parent :: string] = target
     end
 
     table.insert(target.files, entry)
