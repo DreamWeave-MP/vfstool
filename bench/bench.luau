@@ -771,6 +771,20 @@ workload('vfs.lockManifest', total, function(): number
   return #built:layerIndex():lockManifest(built):entries()
 end)
 
+workload('run.snapshotDirectory', PerDir, function(): number
+  return port.snapshotDirectory(dirs[2]):len()
+end)
+
+workload('run.snapshotDirectoryMetadata', PerDir, function(): number
+  return port.snapshotDirectoryMetadata(dirs[2]):len()
+end)
+
+do
+  local snapshot = port.snapshotDirectory(dirs[2])
+
+  workload('run.changedFiles', 0, function(): number return #port.changedFiles(dirs[2], snapshot) end)
+end
+
 do
   local earlier = port.VFS.fromDirectories { dirs[1], dirs[2] }
   local lock = earlier:layerIndex():lockManifest(earlier)
