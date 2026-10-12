@@ -223,6 +223,39 @@ local function chain(layer: Layer, path: string): { LayerProvider }
   return rows
 end
 
+--- The last row `chain` would list for `path`, and how many rows that is: a key's highest
+--- provider, without a row made for each one below it.
+local function highest(layer: Layer, path: string): (LayerProvider?, number)
+  local key = paths.normalize(path)
+  local sources = layer.toSources[key]
+  if not sources then return nil, 0 end
+
+  local count, top = 0, 0
+
+  for position, sourceIndex in sources do
+    if not layer.sources[sourceIndex] then continue end
+
+    count += 1
+    top = position
+  end
+
+  if top == 0 then return nil, 0 end
+
+  local sourceIndex = sources[top]
+  local occurrence = #[for earlier in sources[1:top] if earlier == sourceIndex => earlier]
+  local bySource = layer.originals[key]
+  local spellings: { string }? = if bySource then bySource[sourceIndex] else nil
+  local provider: LayerProvider = {
+    sourceIndex = sourceIndex,
+    providerIndex = top,
+    source = copySource(layer.sources[sourceIndex]),
+    key = paths.keyPath(key),
+    originalPath = (if spellings then spellings[occurrence] else nil) or paths.keyPath(key),
+  }
+
+  return provider, count
+end
+
 -- Provider I/O ------------------------------------------------------------------------------------
 
 --- How archive providers are hashed: not at all, only a key's winner, or every one.
@@ -349,8 +382,7 @@ local function lockManifest(layer: Layer, state: State): { LockEntry }
   local entries: { LockEntry } = {}
 
   for _, key in sortedKeys(layer) do
-    local providers = chain(layer, paths.keyPath(key))
-    local winner = providers[#providers]
+    local winner, providerCount = highest(layer, paths.keyPath(key))
     if not winner or not isWinner(state, winner) then continue end
 
     local digest, bytes = fingerprint(layer, state, winner, 'winnerOnly')
@@ -360,27 +392,20 @@ local function lockManifest(layer: Layer, state: State): { LockEntry }
       winnerKind = winner.source.kind,
       winnerHashBlake3 = digest,
       winnerSize = size(bytes),
-      providerCount = #providers,
+      providerCount = providerCount,
     })
   end
 
-  local order: { string } = {}
-  for index, entry in entries do
-    order[index] = entry.key
-  end
+  local order = [for entry in entries => entry.key]
+  local byKey: { [string]: LockEntry } = {}
 
   paths.sortPaths(order)
-  local byKey: { [string]: LockEntry } = {}
+
   for _, entry in entries do
     byKey[entry.key] = entry
   end
 
-  local sorted = (table.create(#entries) :: unknown) :: { LockEntry }
-  for index, key in order do
-    sorted[index] = byKey[key]
-  end
-
-  return sorted
+  return [for key in order => byKey[key]]
 end
 
 local DriftKinds = table.freeze {
