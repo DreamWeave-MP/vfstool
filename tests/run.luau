@@ -229,6 +229,24 @@ suite.describe('paths', function()
       { path = 'a\0', rank = 1 },
     }).toBe './a/c#1 ..#1 a\0#1 b/#1 b#2'
   end)
+
+  suite.it('sorts every spelling of one path into its place, and a path given twice', function()
+    local list = { 'b/c', 'c', 'b//c', 'A', 'b/./c', 'b', 'b/c/', 'a' }
+    paths.sortPaths(list)
+    expect(`{list[1]} {list[2]} {list[3]} {list[8]}`).toBe 'A a b c'
+    local spellings = list[4:7]
+    table.sort(spellings)
+    expect(table.concat(spellings, ' ')).toBe 'b/./c b//c b/c b/c/'
+
+    local twice = { 'b/c', '/x', 'a', 'b/c', '/x', 'a' }
+    paths.sortPaths(twice)
+    expect(table.concat(twice, ' ')).toBe '/x /x a a b/c b/c'
+
+    local none, one = {}, { 'b' }
+    paths.sortPaths(none)
+    paths.sortPaths(one)
+    expect(`{#none} {table.concat(one, ' ')}`).toBe '0 b'
+  end)
 end)
 
 suite.describe('lookup and priority', function()
@@ -320,6 +338,23 @@ suite.describe('lookup and priority', function()
     for index = 1, 64 do
       expect(plain[index]).toBe(keys[index])
     end
+  end)
+
+  suite.it('pages its keys from either end', function()
+    local dir = tree('pages', { ['a.txt'] = '', ['b.txt'] = '', ['c/d.txt'] = '' })
+    local vfs = vfstool.VFS.fromDirectories { dir }
+    local function page(limit: number, descending: boolean?): string
+      return table.concat(vfs:keys(limit, descending):toTable(), ',')
+    end
+
+    expect(page(2)).toBe 'a.txt,b.txt'
+    expect(page(2, true)).toBe 'c/d.txt,b.txt'
+    expect(page(1.9)).toBe 'a.txt'
+    expect(page(1.9, true)).toBe 'c/d.txt'
+    expect(page(3)).toBe 'a.txt,b.txt,c/d.txt'
+    expect(page(99, true)).toBe 'c/d.txt,b.txt,a.txt'
+    expect(page(math.huge)).toBe 'a.txt,b.txt,c/d.txt'
+    expect(`{page(0)}|{page(0, true)}|{page(-1)}|{page(-1, true)}|{page(0.5)}`).toBe '||||'
   end)
 end)
 
@@ -541,6 +576,38 @@ suite.describe('files', function()
     assert(string.find(err, 'dream.vfs: ', 1, true), err)
     -- `readAt` raises the OS's error for a file that isn't there, as `size` just did.
     assert(not pcall(missing.readAt, missing, into, 0))
+  end)
+
+  suite.it('read at a whole number however it is spelled, and refuse any other number', function()
+    local dir = tree('whole', { ['data.bin'] = '0123456789' })
+    local builder = archive.bsa.tes3.Builder.new()
+    builder:addBytes('packed.bin', '0123456789')
+    fs.writeFile(`{dir}/Pack.bsa`, builder:toBytes())
+    local vfs = vfstool.VFS.fromDirectories({ dir }, { archives = { 'Pack.bsa' } })
+
+    for _, name in { 'data.bin', 'packed.bin' } do
+      local file = vfs:getFile(name)
+      local into = buffer.create(4)
+      expect(buffer.tostring(file:readRange(integer.create(2), 3))).toBe '234'
+      expect(buffer.tostring(file:readRange(-0, integer.create(2)))).toBe '01'
+      expect(file:readAt(into, integer.create(8), nil, 1)).toBe(2)
+      expect(buffer.tostring(into)).toBe '\00089\0'
+
+      local reader = file:open()
+      reader:seek(integer.create(7))
+      reader:skip(1.0)
+      expect(buffer.tostring(reader:read(2 ^ 53))).toBe '89'
+
+      expect(refused(file.readRange, file, 2.5, 1)).toBe 'dream.vfs.VfsFile.readRange: bad argument #1 (expected integer): Lua stack index 2: number 2.5 is not an exact i64'
+      expect(refused(file.readRange, file, 0, 0 / 0)).toBe 'dream.vfs.VfsFile.readRange: bad argument #2 (expected integer): Lua stack index 3: number nan is not an exact i64'
+      expect(refused(file.readAt, file, into, 0, nil, math.huge)).toBe 'dream.vfs.VfsFile.readAt: bad argument #4 (expected integer): Lua stack index 5: number inf is not an exact i64'
+      expect(refused(file.readAt, file, into, 2 ^ 63)).toBe 'dream.vfs.VfsFile.readAt: bad argument #2 (expected integer): Lua stack index 3: number 9223372036854776000 is not an exact i64'
+      expect(refused(file.readRange, file, 2 ^ 53, 1)).toBe 'dream.vfs: readRange: fileOffset 9007199254740992 past the end (size 10)'
+      expect(refused(file.readRange, file, -(2 ^ 63), 1)).toBe 'dream.vfs: readRange: fileOffset -9223372036854776000 is negative'
+      expect(refused(reader.seek, reader, '3')).toBe 'dream.vfs.Reader.seek: bad argument #1 (expected integer): Lua stack index 2: expected integer, got string'
+      expect(refused(reader.readInto, reader, into, 0.5)).toBe 'dream.vfs.Reader.readInto: bad argument #2 (expected integer): Lua stack index 3: number 0.5 is not an exact i64'
+      expect(refused(file.readInto, file, 'text')).toBe 'dream.vfs.VfsFile.readInto: bad argument #1 (expected buffer): Lua stack index 2: expected buffer, got string'
+    end
   end)
 
   suite.it('open readers that walk sequentially and refuse use after close', function()
