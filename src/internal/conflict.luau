@@ -74,16 +74,19 @@ local function fromLayerData(data: layer.Layer): Index
     originals = {},
   }
 
+  for position = 1, #sources do
+    index.overrides[position] = {}
+    index.overriddenBy[position] = {}
+    index.originals[position] = {}
+  end
+
   --- The first source spelled as each one is, by kind and folded path: a key's sources are told
-  --- apart by that position, worked out once per source and not once per file.
+  --- apart by that position, worked out once per source and not once per file. A layer's sources
+  --- sit where its rows did, a gap included, so they are walked and not indexed.
   local spelledAs: { number } = table.create(#sources, 0)
   local firstSpelled: { [string]: number } = {}
 
   for position, source in sources do
-    index.overrides[position] = {}
-    index.overriddenBy[position] = {}
-    index.originals[position] = {}
-
     local identity = `{source.kind}\0{paths.normalizeHost(source.path)}`
     local first = firstSpelled[identity]
     if not first then
@@ -159,7 +162,12 @@ end
 local function fromLayer(data: layer.Layer): ConflictIndex return new(fromLayerData(data)) end
 
 function Methods.sources(self: ConflictIndex): { string }
-  return [for source in indexOf(self, 'sources').meta => source.path]
+  local out = {}
+  for position, source in indexOf(self, 'sources').meta do
+    out[position] = source.path
+  end
+
+  return out
 end
 
 function Methods.sourcesContaining(self: ConflictIndex, path: string): { number }
@@ -201,11 +209,14 @@ function Methods.conflictsReport(self: ConflictIndex, relative: boolean?)
   local index = indexOf(self, 'conflictsReport')
   local rel = check.optionalBoolean('dream.vfs.ConflictIndex.conflictsReport', relative, 1, 2)
     ~= false
-  local sources = [for position, source in enumerate(index.meta) => {
-    path = source.path,
-    overrides = reportList(index, position, index.overrides[position], rel),
-    overriddenBy = reportList(index, position, index.overriddenBy[position], rel),
-  }]
+  local sources = {}
+  for position, source in index.meta do
+    sources[position] = {
+      path = source.path,
+      overrides = reportList(index, position, index.overrides[position], rel),
+      overriddenBy = reportList(index, position, index.overriddenBy[position], rel),
+    }
+  end
 
   return { sources = sources }
 end
@@ -237,14 +248,22 @@ function Methods.shadowedReport(self: ConflictIndex, relative: boolean?, listFil
 end
 
 local function positions(index: Index, path: string): { number }
-  local exact =
-    [for position, source in enumerate(index.meta) if paths.samePath(source.path, path) => position]
+  local exact = {}
+  for position, source in index.meta do
+    if paths.samePath(source.path, path) then table.insert(exact, position) end
+  end
+
   if #exact > 0 then return exact end
 
   local folded = paths.normalizeHost(path)
+  local found = {}
+  for position, source in index.meta do
+    if paths.samePath(paths.normalizeHost(source.path), folded) then
+      table.insert(found, position)
+    end
+  end
 
-  return [for position, source in enumerate(index.meta)
-    if paths.samePath(paths.normalizeHost(source.path), folded) => position]
+  return found
 end
 
 local function keysOf(index: Index, found: { number }, path: string): { [string]: boolean }
@@ -333,8 +352,11 @@ end
 local function fromDirectories(dirs: unknown): ConflictIndex
   if type(dirs) ~= 'table' then check.tableArgument('dirs', dirs, 1) end
 
-  local rows = [for dir in check.stringArray('dirs', dirs :: { unknown }, check.vfs) =>
-    { source = { path = dir, kind = 'looseDir' :: types.Kind }, files = walkDir(dir) }]
+  local rows = {}
+  for position, dir in check.stringArray('dirs', dirs :: { unknown }, check.vfs) do
+    rows[position] =
+      { source = { path = dir, kind = 'looseDir' :: types.Kind }, files = walkDir(dir) }
+  end
 
   return fromLayer(layer.build(rows))
 end

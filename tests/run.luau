@@ -1106,6 +1106,18 @@ suite.describe('conflict indexes', function()
     expect(table.concat(containing, ',')).toBe '1,2,3'
   end)
 
+  suite.it('keep a source where its row was, over a gap in the file lists', function()
+    local index = vfstool.ConflictIndex.fromFileLists {
+      { source = '/one', files = { 'a.txt' } },
+      nil,
+      { source = '/three', files = {} },
+    }
+
+    expect(index:sources()[3]).toBe '/three'
+    local diff = index:diffReport('/one', '/THREE')
+    expect(`{diff.sourceB} {diff.higherPriority} {table.concat(diff.onlyInA, ',')}`).toBe '/three /three a.txt'
+  end)
+
   suite.it('report shadowed sources, wholly and in part', function()
     local low = tree('shadow-low', { ['a.txt'] = '', ['b.txt'] = '' })
     local partial = tree('shadow-partial', { ['c.txt'] = '', ['d.txt'] = '' })
