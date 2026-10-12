@@ -56,8 +56,18 @@ local function compile(glob: string): Matcher?
   end
 end
 
+--- The glob `matches` was last asked about, and what it compiled to: a caller that holds one glob
+--- against many paths compiles it for the first.
+local lastGlob: string?
+local lastMatcher: Matcher?
+
 local function matches(glob: string, path: string): boolean
-  local matcher = compile(glob)
+  if glob ~= lastGlob then
+    lastMatcher = compile(glob)
+    lastGlob = glob
+  end
+
+  local matcher = lastMatcher
   return matcher ~= nil and matcher(path)
 end
 
