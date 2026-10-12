@@ -288,9 +288,12 @@ local function fingerprint(
   if not entry then return nil, nil end
 
   if layer.sources[provider.sourceIndex].kind == 'looseDir' then
-    if not exists(entry.path) then return nil, nil end
+    -- A path the OS describes nothing at has no fingerprint, as when the crate's `Path::exists`
+    -- said so; what it does describe says how long the file is.
+    local stat = fs.stat(entry.path)
+    if not stat then return nil, nil end
 
-    return hash.entry(entry)
+    return hash.entry(entry, if stat.isFile then stat.size else nil)
   end
 
   if mode == 'disabled' or (mode == 'winnerOnly' and not isWinner(state, provider)) then

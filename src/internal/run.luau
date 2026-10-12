@@ -66,14 +66,9 @@ local function snapshotDirectory(dir: string, tracked: boolean): Snapshot
   local files, count = {}, 0
   for _, rel in filesBelow(dir) do
     local path = paths.join(dir, rel)
-    local digest, size = hash.hostFile(path)
-    local modified
-    if tracked then
-      local stat = fs.stat(path)
-      modified = stat and stat.modified
-    end
-
-    files[rel] = { hash = digest, size = size, modified = modified }
+    local stat = if tracked then fs.stat(path) else nil
+    local digest, size = hash.hostFile(path, if stat and stat.isFile then stat.size else nil)
+    files[rel] = { hash = digest, size = size, modified = stat and stat.modified }
     count += 1
   end
 
