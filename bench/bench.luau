@@ -751,6 +751,17 @@ workload('vfs.removeSource none', total, function(): number
   return built:len()
 end)
 
+do
+  -- A VFS of its own: every call leaves it one unused source longer.
+  local reloaded = port.VFS.fromDirectories(dirs, Options)
+
+  workload('vfs.removeSource and pushDirectory', total, function(): number
+    reloaded:removeSource(dirs[DirCount])
+    reloaded:pushDirectory(dirs[DirCount])
+    return reloaded:len()
+  end)
+end
+
 workload('vfs.layerIndex rebuilt', total, function(): number
   built:removeSource '/no/such/source'
   return sum[for row in built:layerIndex():sourceContributions().sources => row.winningFiles]
