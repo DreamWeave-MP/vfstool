@@ -142,7 +142,7 @@ local function stringArgument(method: string, value: unknown, position: number):
   return check.string(what(method), value, position, position + 1)
 end
 
-local function copySource(source: Source): Source return { path = source.path, kind = source.kind } end
+local function copySource({path, kind}: Source): Source return { path = path, kind = kind } end
 
 --- `LayerIndex::from_file_lists`: each source's files by the key their path normalizes to.
 local function build(rows: { { source: Source, files: { string } } }): Layer
@@ -341,14 +341,16 @@ local function lockOf(
   return lock
 end
 
-local function copyLockEntry(entry: LockEntry): LockEntry
+local function copyLockEntry(
+  {key, winnerSource, winnerKind, winnerHashBlake3, winnerSize, providerCount}: LockEntry
+): LockEntry
   return {
-    key = entry.key,
-    winnerSource = entry.winnerSource,
-    winnerKind = entry.winnerKind,
-    winnerHashBlake3 = entry.winnerHashBlake3,
-    winnerSize = entry.winnerSize,
-    providerCount = entry.providerCount,
+    key = key,
+    winnerSource = winnerSource,
+    winnerKind = winnerKind,
+    winnerHashBlake3 = winnerHashBlake3,
+    winnerSize = winnerSize,
+    providerCount = providerCount,
   }
 end
 
@@ -357,12 +359,7 @@ function LockMethods.schemaVersion(self: VfsLock): number
 end
 
 function LockMethods.entries(self: VfsLock): { LockEntry }
-  local out = {}
-  for index, entry in lockOf(self, 'entries').entries do
-    out[index] = copyLockEntry(entry)
-  end
-
-  return out
+  return [for entry in lockOf(self, 'entries').entries => copyLockEntry(entry)]
 end
 
 function LockMethods.toTable(self: VfsLock): { schemaVersion: number, entries: { LockEntry } }
@@ -513,12 +510,7 @@ function Methods.keys(self: LayerIndex): views.View<string>
 end
 
 function Methods.sources(self: LayerIndex): { Source }
-  local out = {}
-  for index, source in layerOf(self, 'sources').sources do
-    out[index] = copySource(source)
-  end
-
-  return out
+  return [for source in layerOf(self, 'sources').sources => copySource(source)]
 end
 
 function Methods.sourceIdForPath(self: LayerIndex, path: string): number?
@@ -562,30 +554,22 @@ end
 
 function Methods.duplicateKeys(self: LayerIndex): views.View<string>
   local layer = layerOf(self, 'duplicateKeys')
-  local keys: { string } = {}
-  for _, key in sortedKeys(layer) do
-    if #layer.toSources[key] > 1 then table.insert(keys, key) end
-  end
-
-  return views.array(keys)
+  return views.array([for key in sortedKeys(layer) if #layer.toSources[key] > 1 => key])
 end
 
 --- `source_contributions`: what each source provides, wins, overrides, and loses.
 local function contributions(layer: Layer): ContributionReport
-  local rows: { Contribution } = {}
-  for index, source in layer.sources do
-    rows[index] = {
-      sourceIndex = index,
-      source = copySource(source),
-      winningFiles = 0,
-      overridingFiles = 0,
-      overriddenFiles = 0,
-      uniqueFiles = 0,
-      duplicateFiles = 0,
-      looseFiles = 0,
-      archiveFiles = 0,
-    }
-  end
+  local rows: { Contribution } = [for index, source in enumerate(layer.sources) => {
+    sourceIndex = index,
+    source = copySource(source),
+    winningFiles = 0,
+    overridingFiles = 0,
+    overriddenFiles = 0,
+    uniqueFiles = 0,
+    duplicateFiles = 0,
+    looseFiles = 0,
+    archiveFiles = 0,
+  }]
 
   for _, sources in layer.toSources do
     local count = #sources

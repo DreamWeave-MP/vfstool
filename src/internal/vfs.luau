@@ -143,7 +143,7 @@ local trees = (setmetatable({}, { __mode = 'k' }) :: unknown) :: { [unknown]: tr
 
 local function method(name: string): string return check.method('VFS', name) end
 
-local function copySource(source: Source): Source return { path = source.path, kind = source.kind } end
+local function copySource({path, kind}: Source): Source return { path = path, kind = kind } end
 
 -- Providers -------------------------------------------------------------------------------------------
 
