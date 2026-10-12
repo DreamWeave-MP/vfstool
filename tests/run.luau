@@ -1043,6 +1043,22 @@ suite.describe('reports and layers', function()
     expect(#layer:providerChain 'textures/x.dds').toBe(2)
     expect(#layer:sourcesContaining 'y.txt').toBe(1)
   end)
+
+  suite.it('keep a source where its row was, over a gap in the file lists', function()
+    local layer = vfstool.LayerIndex.fromFileLists {
+      { source = { path = '/a', kind = 'looseDir' }, files = { 'x.txt', 'shared.txt' } },
+      nil,
+      { source = { path = '/c', kind = 'looseDir' }, files = { 'Shared.txt' } },
+    }
+
+    expect(layer:sources()[3].path).toBe '/c'
+    expect(layer:sourceIdForPath '/c').toBe(3)
+    local chain = layer:providerChain 'shared.txt'
+    expect(`{chain[1].sourceIndex},{chain[2].sourceIndex}`).toBe '1,3'
+    local report = layer:sourceContributions().sources
+    expect(`{report[1].overriddenFiles}:{report[1].winningFiles}`).toBe '1:1'
+    expect(`{report[3].overridingFiles}:{report[3].winningFiles}`).toBe '1:1'
+  end)
 end)
 
 suite.describe('conflict indexes', function()

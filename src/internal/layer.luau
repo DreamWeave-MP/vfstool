@@ -509,8 +509,15 @@ function Methods.keys(self: LayerIndex): views.View<string>
   return views.array(table.clone(sortedKeys(layerOf(self, 'keys'))))
 end
 
+--- A layer's sources sit where the caller's rows did, a gap in `fromFileLists`'s table included,
+--- so what lists them walks them and does not index them.
 function Methods.sources(self: LayerIndex): { Source }
-  return [for source in layerOf(self, 'sources').sources => copySource(source)]
+  local out = {}
+  for index, source in layerOf(self, 'sources').sources do
+    out[index] = copySource(source)
+  end
+
+  return out
 end
 
 function Methods.sourceIdForPath(self: LayerIndex, path: string): number?
@@ -559,17 +566,20 @@ end
 
 --- `source_contributions`: what each source provides, wins, overrides, and loses.
 local function contributions(layer: Layer): ContributionReport
-  local rows: { Contribution } = [for index, source in enumerate(layer.sources) => {
-    sourceIndex = index,
-    source = copySource(source),
-    winningFiles = 0,
-    overridingFiles = 0,
-    overriddenFiles = 0,
-    uniqueFiles = 0,
-    duplicateFiles = 0,
-    looseFiles = 0,
-    archiveFiles = 0,
-  }]
+  local rows: { Contribution } = {}
+  for index, source in layer.sources do
+    rows[index] = {
+      sourceIndex = index,
+      source = copySource(source),
+      winningFiles = 0,
+      overridingFiles = 0,
+      overriddenFiles = 0,
+      uniqueFiles = 0,
+      duplicateFiles = 0,
+      looseFiles = 0,
+      archiveFiles = 0,
+    }
+  end
 
   for _, sources in layer.toSources do
     local count = #sources
