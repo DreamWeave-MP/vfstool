@@ -8,7 +8,9 @@
 -- grant, the write capability's own refusals (`@dream/fs` refuses for the port), a writer
 -- flushed by the garbage collector, and the zip cases (the port reads no zip archives).
 local archive = require '@dream-archive'
+local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
+local paths = require '@vfs/paths'
 local support = require './support'
 local test = require '@jess/test'
 local vfstool: any = require '@vfs'
@@ -87,6 +89,145 @@ suite.describe('paths', function()
     expect(vfstool.pathGlobMatches('config/*.ini', 'config/settings.ini')).toBe(true)
     expect(vfstool.pathGlobMatches('meshes/**', 'config/settings.ini')).toBe(false)
     expect(vfstool.sourceGlobMatches('**', '/any/where')).toBe(true)
+  end)
+
+  suite.it('matches one glob after another, and a bracket as itself', function()
+    for _ = 1, 2 do
+      expect(vfstool.pathGlobMatches('meshes/*.nif', 'meshes/a.nif')).toBe(true)
+      expect(vfstool.pathGlobMatches('meshes/*.nif', 'MESHES\\B.NIF')).toBe(true)
+      expect(vfstool.pathGlobMatches('meshes/*.nif', 'meshes/x/a.nif')).toBe(false)
+      expect(vfstool.pathGlobMatches('**/*.nif', 'meshes/x/a.nif')).toBe(true)
+      expect(vfstool.pathGlobMatches('[', 'meshes/x/a.nif')).toBe(false)
+      expect(vfstool.pathGlobMatches('[', '[')).toBe(true)
+      expect(vfstool.pathGlobMatches('a?c', 'abc')).toBe(true)
+      expect(vfstool.pathGlobMatches('a?c', 'a/c')).toBe(false)
+    end
+  end)
+
+  suite.it('sorts paths by their components, as it compares them', function()
+    local list = {
+      'meshes/b.nif',
+      'meshes.bak/x',
+      'meshes/a.b',
+      '/abs/z',
+      'meshes/a/b.nif',
+      '../up',
+      'Meshes/a.nif',
+      'a//d',
+      '/abs/a/b',
+      'meshes',
+      './a/c',
+      'a/.hidden',
+      'tex tures/x',
+      '/',
+      'a/./e',
+      'a/b/',
+      '.',
+      'a',
+    }
+
+    paths.sortPaths(list)
+    expect(table.concat(list, ' | ')).toBe(
+      '/ | /abs/a/b | /abs/z | . | ./a/c | ../up | Meshes/a.nif | a | a/.hidden | a/b/ | a//d | a/./e'
+        .. ' | meshes | meshes/a/b.nif | meshes/a.b | meshes/b.nif | meshes.bak/x | tex tures/x'
+    )
+
+    for index = 2, #list do
+      expect(paths.comparePaths(list[index - 1], list[index])).toBe(-1)
+      expect(paths.comparePaths(list[index], list[index - 1])).toBe(1)
+    end
+
+    expect(paths.comparePaths('a//b', 'a/./b')).toBe(0)
+    expect(paths.comparePaths('a/b/', 'a/b')).toBe(0)
+    expect(paths.samePath('/x/y', '/x//y/')).toBe(true)
+    expect(paths.pathLess('a/b', 'a.b')).toBe(true)
+    expect(paths.pathLess('a.b', 'a/b')).toBe(false)
+  end)
+
+  suite.it('finds file names and parents at the last separator', function()
+    for path, expected in
+      {
+        ['a/b/c.nif'] = { 'c.nif', 'a/b' },
+        ['c.nif'] = { 'c.nif', '' },
+        ['/c.nif'] = { 'c.nif', '/' },
+        ['a/b/'] = { 'b', 'a' },
+        ['a/b/.'] = { 'b', 'a' },
+        ['a//b'] = { 'b', 'a' },
+        ['a/..'] = { false, 'a' },
+        ['a/.hidden'] = { '.hidden', 'a' },
+        ['/'] = { false, false },
+        [''] = { false, false },
+        ['.'] = { false, '' },
+      } :: { [string]: { string | boolean } }
+
+    do
+      expect(paths.fileName(path) or false).toBe(expected[1])
+      expect(paths.parent(path) or false).toBe(expected[2])
+    end
+  end)
+
+  suite.it('makes keys of host paths and of stored names', function()
+    for path, expected in
+      {
+        ['Meshes/X/Door.NIF'] = { 'meshes/x/door.nif', 'meshes/x/door.nif' },
+        ['meshes\\x\\door.nif'] = { 'meshes/x/door.nif', 'meshes/x/door.nif' },
+        ['./Meshes//a.nif'] = { 'meshes/a.nif', false },
+        ['a/./b'] = { 'a/b', false },
+        ['a/../b'] = { false, false },
+        ['.hidden/..x'] = { '.hidden/..x', '.hidden/..x' },
+        ['a/b/'] = { 'a/b/', 'a/b/' },
+        ['/abs'] = { false, false },
+        ['C:/x'] = { false, false },
+        ['a\0b'] = { 'a\0b', false },
+        ['a//b'] = { 'a/b', 'a/b' },
+        ['.'] = { false, false },
+        [''] = { false, false },
+      } :: { [string]: { string | boolean } }
+
+    do
+      expect(paths.safeKeyFromHost(path) or false).toBe(expected[1])
+      expect(paths.safeKeyBytes(path) or false).toBe(expected[2])
+    end
+
+    expect(paths.isSafeNormalized 'a/.b/c..').toBe(true)
+    expect(paths.isSafeNormalized 'a/../c').toBe(false)
+    expect(paths.isSafeNormalized './c').toBe(false)
+  end)
+
+  suite.it('sorts rows by a path, ties broken by the caller', function()
+    type Row = { path: string, rank: number }
+    local function ordered(rows: { Row }): string
+      paths.sortByPath(
+        rows,
+        function(row: Row): string return row.path end,
+        function(left: Row, right: Row): boolean return left.rank < right.rank end
+      )
+
+      return table.concat([for row in rows => `{row.path}#{row.rank}`], ' ')
+    end
+
+    expect(ordered {
+      { path = 'b', rank = 1 },
+      { path = 'a.b', rank = 1 },
+      { path = 'a/c', rank = 1 },
+      { path = '/root', rank = 1 },
+    }).toBe '/root#1 a/c#1 a.b#1 b#1'
+
+    expect(ordered {
+      { path = 'b', rank = 2 },
+      { path = 'a.b', rank = 1 },
+      { path = 'b', rank = 1 },
+      { path = 'a/c', rank = 3 },
+      { path = 'a/c', rank = 2 },
+    }).toBe 'a/c#2 a/c#3 a.b#1 b#1 b#2'
+
+    expect(ordered {
+      { path = 'b', rank = 2 },
+      { path = './a/c', rank = 1 },
+      { path = 'b/', rank = 1 },
+      { path = '..', rank = 1 },
+      { path = 'a\0', rank = 1 },
+    }).toBe './a/c#1 ..#1 a\0#1 b/#1 b#2'
   end)
 end)
 
@@ -766,6 +907,116 @@ suite.describe('reports and layers', function()
     expect(table.concat(kinds, ',')).toBe 'winnerSourceChanged,winnerHashChanged,providerCountChanged'
   end)
 
+  suite.it('lock every winner by its contents, in path order', function()
+    local long = string.rep('0123456789abcdef', 4 * 65536) .. 'tail'
+    local dir = tree('lock-contents', {
+      ['a.txt'] = 'short',
+      ['a/b.txt'] = '',
+      ['Big.bin'] = long,
+      ['z/Sub Dir/c.txt'] = 'deep',
+    })
+
+    local builder = archive.bsa.tes3.Builder.new()
+    builder:addBytes('packed\\only.dds', 'packed bytes')
+    builder:addBytes('a.txt', 'shadowed')
+    fs.writeFile(`{dir}/Pack.bsa`, builder:toBytes())
+    local vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex({ dir }, { archives = { 'pack.bsa' } })
+    local lines = {}
+
+    for _, entry in layer:lockManifest(vfs):entries() do
+      table.insert(
+        lines,
+        `{entry.key} {entry.winnerKind} {entry.providerCount} {tostring(entry.winnerSize)} {entry.winnerHashBlake3}`
+      )
+    end
+
+    expect(table.concat(lines, '\n')).toBe(table.concat({
+      `a/b.txt looseDir 1 0 {bytes.blake3 ''}`,
+      `a.txt looseDir 2 5 {bytes.blake3 'short'}`,
+      `big.bin looseDir 1 {#long} {bytes.blake3(long)}`,
+      `pack.bsa looseDir 1 {#fs.readFileString(`{dir}/Pack.bsa`)} {bytes.blake3(
+        fs.readFileString(`{dir}/Pack.bsa`)
+      )}`,
+      `packed/only.dds archive 1 12 {bytes.blake3 'packed bytes'}`,
+      `z/sub dir/c.txt looseDir 1 4 {bytes.blake3 'deep'}`,
+    }, '\n'))
+
+    local provenance = layer:provenance(vfs, 'A.TXT', true)
+    expect(provenance.providers[1].hashBlake3).toBe(bytes.blake3 'shadowed')
+    expect(provenance.providers[2].hashBlake3).toBe(bytes.blake3 'short')
+    fs.remove(`{dir}/a.txt`)
+    expect(layer:provenance(vfs, 'a.txt', true).providers[2].hashBlake3).toBeNil()
+  end)
+
+  suite.it('list an archive twice pushed in path order, each winner after what it beat', function()
+    local dir = scratch 'archive-order'
+    local builder = archive.bsa.tes3.Builder.new()
+    for _, name in { 'meshes\\b.nif', 'meshes.bak\\x.nif', 'meshes\\a\\c.nif', 'a.dds' } do
+      builder:addBytes(name, name)
+    end
+
+    fs.writeFile(`{dir}/Order.bsa`, builder:toBytes())
+    local vfs = vfstool.VFS.new()
+    assert(vfs:pushArchive(`{dir}/Order.bsa`))
+    local rows = [for row in vfs:archiveEntries(`{dir}/ORDER.bsa`) => `{row.key}:{tostring(row.wins)}`]
+    expect(table.concat(rows, ' ')).toBe 'a.dds:true meshes/a/c.nif:true meshes/b.nif:true meshes.bak/x.nif:true'
+    expect(table.concat(vfs:filesFromArchive(`{dir}/Order.bsa`):toTable(), ' ')).toBe 'a.dds meshes/a/c.nif meshes/b.nif meshes.bak/x.nif'
+    assert(vfs:pushArchive(`{dir}/Order.bsa`))
+    rows = [for row in vfs:archiveEntries(`{dir}/Order.bsa`) => `{row.key}:{tostring(row.wins)}`]
+    expect(table.concat(rows, ' ')).toBe(
+      'a.dds:false a.dds:true meshes/a/c.nif:false meshes/a/c.nif:true'
+        .. ' meshes/b.nif:false meshes/b.nif:true meshes.bak/x.nif:false meshes.bak/x.nif:true'
+    )
+
+    local archives = vfs:archives()
+    expect(#archives).toBe(2)
+    expect(`{archives[1].sourceIndex}:{archives[1].winningEntryCount} {archives[2].sourceIndex}:{archives[2].winningEntryCount}`).toBe '1:0 2:4'
+  end)
+
+  suite.it('list a tree with each folder sorted by file name', function()
+    local dir = tree('tree-order', {
+      ['b.txt'] = '',
+      ['B.txt'] = '',
+      ['a/z.txt'] = '',
+      ['a/Y.txt'] = '',
+      ['a/b/c.txt'] = '',
+      ['a.txt'] = '',
+    })
+
+    local builder = archive.bsa.tes3.Builder.new()
+    builder:addBytes('a\\packed.dds', 'packed')
+    builder:addBytes('top.dds', 'packed')
+    fs.writeFile(`{dir}/Pack.bsa`, builder:toBytes())
+    local vfs = vfstool.VFS.fromDirectories({ dir }, { archives = { 'Pack.bsa' } })
+    expect(vfs:display()).toBe(table.concat({
+      '├── Data Files/',
+      '│   ├── Pack.bsa',
+      '│   ├── a.txt',
+      '│   ├── b.txt',
+      '│   ├── Pack.bsa/',
+      '│   │   ├── top.dds',
+      '│   │   ├── a/',
+      '│   │   │   ├── packed.dds',
+      '│   ├── a/',
+      '│   │   ├── Y.txt',
+      '│   │   ├── z.txt',
+      '│   │   ├── b/',
+      '│   │   │   ├── c.txt',
+      '',
+    }, '\n'))
+
+    local rows = {}
+
+    for _, row in vfs:tree() do
+      table.insert(rows, `{row.dir}>{row.file:fileName()}`)
+    end
+
+    expect(table.concat(rows, ' ')).toBe(
+      'Data Files>Pack.bsa Data Files>a.txt Data Files>b.txt Data Files/Pack.bsa>top.dds'
+        .. ' Data Files/Pack.bsa/a>packed.dds Data Files/a>Y.txt Data Files/a>z.txt Data Files/a/b>c.txt'
+    )
+  end)
+
   suite.it('build a layer index from file lists', function()
     local layer = vfstool.LayerIndex.fromFileLists {
       { source = { path = '/a', kind = 'looseDir' }, files = { 'Textures/X.dds', 'y.txt' } },
@@ -894,6 +1145,43 @@ suite.describe('mutation', function()
 
     expect(table.concat(keysOf(vfs), ',')).toBe 'a.txt,dir/b.txt'
     expect(vfs:len()).toBe(2)
+  end)
+
+  suite.it('keeps a folder a folder for as long as a winner sits below it', function()
+    local file = `{tree('folders', { ['a.txt'] = 'a' })}/a.txt`
+    local vfs = vfstool.VFS.new()
+    local function takes(key: string): boolean
+      vfs:setWinnerLooseFile(key, file)
+      return vfs:contains(key)
+    end
+
+    assert(takes 'a/b/c/one.txt' and takes 'a/b/c/two.txt' and takes 'a/b/three.txt')
+    assert(not takes 'a' and not takes 'a/b' and not takes 'a/b/c' and not takes 'A\\B\\C')
+    assert(not takes 'a/b/three.txt/below' and not takes 'a/b/c/one.txt/x/y')
+    assert(vfs:removeResolvedFile 'a/b/c/one.txt' ~= nil)
+    assert(not takes 'a/b/c', 'two.txt still sits in it')
+    assert(vfs:removeResolvedFile 'a/b/c/two.txt' ~= nil)
+    assert(not takes 'a/b', 'three.txt still sits in it')
+    assert(takes 'a/b/c', 'nothing sits in it any more')
+    assert(not takes 'a/b/c/one.txt', 'it is a file now')
+    assert(#vfs:removeResolvedPrefix 'a/b' == 2 and vfs:isEmpty())
+    assert(takes 'a' and not takes 'a/b/three.txt')
+    expect(table.concat(keysOf(vfs), ',')).toBe 'a'
+  end)
+
+  suite.it('removes a source by any spelling of its path, and nothing for a path no source has', function()
+    local low = tree('sources-low', { ['shared.txt'] = 'low', ['low.txt'] = 'low' })
+    local high = tree('sources-high', { ['shared.txt'] = 'high', ['high.txt'] = 'high' })
+    local vfs = vfstool.VFS.fromDirectories { low, high }
+    local before = vfs:revision()
+    expect(#vfs:removeSource(`{low}/nowhere`)).toBe(0)
+    assert(vfs:revision() > before and vfs:len() == 3)
+    local removed = vfs:removeSource(`{high}//`)
+    table.sort(removed, function(left, right) return left.key < right.key end)
+    expect(table.concat([for row in removed => `{row.key}={row.provider.source.path == high}`], ' ')).toBe 'high.txt=true shared.txt=true'
+    expect(table.concat(keysOf(vfs), ',')).toBe 'low.txt,shared.txt'
+    expect(vfs:getFile('shared.txt'):readAll()).toBe 'low'
+    expect(#vfs:providersFor 'shared.txt').toBe(1)
   end)
 
   suite.it('removes by prefix on component boundaries', function()
