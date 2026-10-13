@@ -8,12 +8,15 @@ local cli = require './cli'
 local fs = require '@dream/fs'
 local paths = require '@vfs/paths'
 local process = require '@dream/process'
-local reports = require './reports'
 
 type Options = cli.Options
 type Load = cli.Load
 
 local Exit = cli.Exit
+
+--- The reports and what writes them, required by the first command with a report to write:
+--- finding a file, extracting one, collapsing and running write none, and never compile them.
+local function reports(): typeof(require './reports') return require './reports' end
 
 --- A report written, or the failure as the binary's `vfstool: <error>` and exit 9.
 local function finished(problem: string?): number
@@ -170,7 +173,7 @@ function commands.find(options: FindOptions): number
   if not config then return code end
 
   local vfs = cli.build(config)
-  return finished(reports.writeTree(options, vfs:findByRegex(options.path, options.relative == true)))
+  return finished(reports().writeTree(options, vfs:findByRegex(options.path, options.relative == true)))
 end
 
 --- Whether `path` is one of the config's data directories, spelled any way; else the binary's
@@ -201,7 +204,7 @@ function commands.remaining(options: RemainingOptions): number
     config.dirs,
     options.relative == true
   )
-  return finished(reports.writeTree(options, tree))
+  return finished(reports().writeTree(options, tree))
 end
 
 export type CollapseOptions = Options & {
@@ -225,7 +228,7 @@ function commands.collapse(options: CollapseOptions): number
   }
 
   if options.dryRun then
-    return finished(reports.write(options, reports.Shapes.plan(vfs:materializationPlan(options.into, chosen))))
+    return finished(reports().write(options, reports().Shapes.plan(vfs:materializationPlan(options.into, chosen))))
   end
 
   for _, skip in vfs:collapseInto(options.into, chosen) do
@@ -279,7 +282,7 @@ function commands.explain(options: ExplainOptions): number
     return Exit.findFailed
   end
 
-  return finished(reports.write(options, reports.Shapes.explain(report)))
+  return finished(reports().write(options, reports().Shapes.explain(report)))
 end
 
 export type DuplicatesOptions = Options & { pattern: string? }
@@ -290,7 +293,7 @@ function commands.duplicates(options: DuplicatesOptions): number
   if not config then return code end
 
   local vfs = cli.build(config)
-  return finished(reports.write(options, reports.Shapes.duplicates(vfs:duplicates(options.pattern))))
+  return finished(reports().write(options, reports().Shapes.duplicates(vfs:duplicates(options.pattern))))
 end
 
 --- The loaded archives and how many of their entries win.
@@ -299,12 +302,13 @@ function commands.archives(options: Options): number
   if not config then return code end
 
   local rows = cli.build(config):archives()
+  local shape = reports().Shapes.archive
   local items = table.create(#rows)
   for index, row in rows do
-    items[index] = reports.Shapes.archive(row)
+    items[index] = shape(row)
   end
 
-  return finished(reports.writeList(options, 'archives', (require '@jess/data/value').array(items)))
+  return finished(reports().writeList(options, 'archives', (require '@jess/data/value').array(items)))
 end
 
 export type ArchiveListOptions = Options & { archive: string?, sourceIndex: number? }
@@ -388,12 +392,13 @@ function commands.archiveList(options: ArchiveListOptions): number
   end
 
   local entries = vfs:archiveEntries(chosen)
+  local shape = reports().Shapes.archiveEntry
   local items = table.create(#entries)
   for index, entry in entries do
-    items[index] = reports.Shapes.archiveEntry(entry)
+    items[index] = shape(entry)
   end
 
-  return finished(reports.writeList(options, 'entries', (require '@jess/data/value').array(items)))
+  return finished(reports().writeList(options, 'entries', (require '@jess/data/value').array(items)))
 end
 
 --- What each source provides, wins, overrides, and loses.
@@ -401,7 +406,7 @@ function commands.contributions(options: Options): number
   local config, code = loaded(options)
   if not config then return code end
 
-  return finished(reports.write(options, reports.Shapes.contributions(cli.build(config):sourceContributions())))
+  return finished(reports().write(options, reports().Shapes.contributions(cli.build(config):sourceContributions())))
 end
 
 export type ValidateOptions = Options & { full: boolean? }
@@ -462,7 +467,7 @@ function commands.validate(options: ValidateOptions): number
     if not has(name) then issue('MissingGroundcoverFile', { { 'name', name } }) end
   end
 
-  local problem = reports.write(options, serialize.struct { { 'issues', serialize.array(issues) } })
+  local problem = reports().write(options, serialize.struct { { 'issues', serialize.array(issues) } })
   if problem then return finished(problem) end
 
   return if #issues > 0 then Exit.validation else Exit.ok
@@ -481,7 +486,7 @@ function commands.conflicts(options: Options): number
   if not config then return code end
 
   local report = conflictIndex(config):conflictsReport(options.relative == true)
-  return finished(reports.write(options, reports.Shapes.conflicts(report)))
+  return finished(reports().write(options, reports().Shapes.conflicts(report)))
 end
 
 export type ShadowedOptions = Options & { listFiles: boolean? }
@@ -493,7 +498,7 @@ function commands.shadowed(options: ShadowedOptions): number
 
   local report = conflictIndex(config):shadowedReport(options.relative == true, options.listFiles == true)
   cli.err(`{#report.sources} sources are fully shadowed`)
-  return finished(reports.write(options, reports.Shapes.shadowed(report)))
+  return finished(reports().write(options, reports().Shapes.shadowed(report)))
 end
 
 export type DiffOptions = Options & { sourceA: string, sourceB: string }
@@ -508,7 +513,7 @@ function commands.diff(options: DiffOptions): number
   end
 
   local report = conflictIndex(config):diffReport(options.sourceA, options.sourceB)
-  return finished(reports.write(options, reports.Shapes.diff(report)))
+  return finished(reports().write(options, reports().Shapes.diff(report)))
 end
 
 --- The VFS and its layer index.
@@ -524,7 +529,7 @@ function commands.lock(options: Options): number
   local vfs, index = layered(config)
   local lock = index:lockManifest(vfs)
 
-  return finished(reports.write(options, reports.Shapes.lock(lock:toTable())))
+  return finished(reports().write(options, reports().Shapes.lock(lock:toTable())))
 end
 
 export type DriftOptions = Options & { lockFile: string, failOnDrift: boolean? }
@@ -545,7 +550,7 @@ function commands.drift(options: DriftOptions): number
 
   local report = (require '@vfs/layer').drift(internal.layerOf(state), state, expected)
 
-  local written = reports.write(options, reports.Shapes.drift(report))
+  local written = reports().write(options, reports().Shapes.drift(report))
   if written then return finished(written) end
 
   return if #report.entries > 0 and options.failOnDrift then Exit.drift else Exit.ok
