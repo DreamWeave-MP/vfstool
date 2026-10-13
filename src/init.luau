@@ -154,11 +154,7 @@ local function run(argv: { string }): number
     if not merged then return failure :: number end
     if #positional < 2 then return usage('run requires a command after the merged directory') end
     options.merged = merged
-    local command: { string } = {}
-    for commandIndex = 2, #positional do
-      table.insert(command, positional[commandIndex])
-    end
-    options.command = command
+    options.command = positional[2:#positional]
     return commands.run(options :: commands.RunOptions)
   elseif action == 'conflicts' then
     return commands.conflicts(options :: cli.Options)
