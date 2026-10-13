@@ -5,7 +5,6 @@
 local fs = require '@dream/fs'
 local json = require '@jess/json'
 local layer = require '@vfs/layer'
-local yaml = require '@jess/yaml'
 local Null = json.null
 
 type Entry = layer.LockEntry
@@ -22,8 +21,9 @@ local function decode(path: string, source: string): (unknown?, string?)
     return value, nil
   end
 
+  -- The YAML reader is the largest of the three, and compiled for a YAML lock alone.
   if extension == 'yaml' or extension == 'yml' then
-    return yaml.decode(source), nil
+    return (require '@jess/yaml').decode(source), nil
   end
 
   return nil, `unsupported lock file extension '.{extension}'`
