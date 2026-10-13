@@ -180,7 +180,9 @@ end
 --- message and exit 8.
 local function configured(config: Load, path: string): boolean
   local wanted = paths.normalizeHost(path)
-  if any[for dir in config.dirs => paths.samePath(paths.normalizeHost(dir), wanted)] then return true end
+  for _, dir in config.dirs do
+    if paths.samePath(paths.normalizeHost(dir), wanted) then return true end
+  end
 
   cli.err(`{cli.errPrefix()}{path} is not a configured data directory.`)
   return false
@@ -301,7 +303,10 @@ function commands.archives(options: Options): number
 
   local rows = cli.build(config):archives()
   local shape = reports().Shapes.archive
-  local items = [for row in rows => shape(row)]
+  local items = table.create(#rows)
+  for index, row in rows do
+    items[index] = shape(row)
+  end
 
   return finished(reports().writeList(options, 'archives', (require '@jess/data/value').array(items)))
 end
@@ -311,7 +316,12 @@ export type ArchiveListOptions = Options & { archive: string?, sourceIndex: numb
 local function choices(rows: { cli.ArchiveInfo }): string
   if #rows == 0 then return '<none>' end
 
-  return table.concat([for {sourceIndex, path} in rows => `{sourceIndex - 1}={path}`], ', ')
+  local listed = table.create(#rows)
+  for index, row in rows do
+    listed[index] = `{row.sourceIndex - 1}={row.path}`
+  end
+
+  return table.concat(listed, ', ')
 end
 
 --- Whether `selector` names `archive`: its whole path, its file name, or a path suffix.
@@ -359,7 +369,11 @@ function commands.archiveList(options: ArchiveListOptions): number
       return Exit.invalidInput
     end
 
-    local matches = [for row in rows if selects(selector, row.path) => row]
+    local matches = {}
+    for _, row in rows do
+      if selects(selector, row.path) then table.insert(matches, row) end
+    end
+
     if #matches == 0 then
       cli.err(
         `{cli.errPrefix()}No loaded archive matches '{selector}'. Available archives: {choices(rows)}`
@@ -379,7 +393,10 @@ function commands.archiveList(options: ArchiveListOptions): number
 
   local entries = vfs:archiveEntries(chosen)
   local shape = reports().Shapes.archiveEntry
-  local items = [for entry in entries => shape(entry)]
+  local items = table.create(#entries)
+  for index, entry in entries do
+    items[index] = shape(entry)
+  end
 
   return finished(reports().writeList(options, 'entries', (require '@jess/data/value').array(items)))
 end
@@ -608,7 +625,10 @@ function commands.run(options: RunOptions): number
 
   cli.err(`Dumped {count} files.`)
   local absolute = fs.absolute(merged) or merged
-  local argv = [for argument in options.command => if argument == '{}' then absolute else argument]
+  local argv = (table.create(#options.command) :: unknown) :: { string }
+  for index, argument in options.command do
+    argv[index] = if argument == '{}' then absolute else argument
+  end
 
   local program = table.remove(argv, 1) :: string
   local result, failure = process.run(program, argv, { cwd = options.workingDir })

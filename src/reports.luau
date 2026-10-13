@@ -15,7 +15,12 @@ type Value = serialize.Value
 local function lossy(text: string): string return paths.lossy(text) end
 
 local function lossyList(list: { string }): Value
-  return serialize.array([for item in list => lossy(item)])
+  local items = table.create(#list)
+  for index, item in list do
+    items[index] = lossy(item)
+  end
+
+  return serialize.array(items)
 end
 
 local function optional(value: unknown): Value
@@ -73,23 +78,28 @@ type LockEntry = {
 type Lock = { schemaVersion: number, entries: { LockEntry } }
 type Drift = { entries: { { key: string, kind: string } }, counts: { [string]: number } }
 
-local function sourceMeta({path, kind}: Source): Value
-  return serialize.struct { { 'path', lossy(path) }, { 'kind', Kinds[kind] } }
+local function sourceMeta(source: Source): Value
+  return serialize.struct { { 'path', lossy(source.path) }, { 'kind', Kinds[source.kind] } }
 end
 
 --- `VfsProviderRecord`.
-local function providerRecord({sourceIndex, source, key, originalPath, resolvedPath}: Record): Value
+local function providerRecord(row: Record): Value
   return serialize.struct {
-    { 'source_index', sourceIndex - 1 },
-    { 'source', sourceMeta(source) },
-    { 'key', lossy(key) },
-    { 'original_path', lossy(originalPath) },
-    { 'resolved_path', resolvedPath },
+    { 'source_index', row.sourceIndex - 1 },
+    { 'source', sourceMeta(row.source) },
+    { 'key', lossy(row.key) },
+    { 'original_path', lossy(row.originalPath) },
+    { 'resolved_path', row.resolvedPath },
   }
 end
 
 local function list<T>(rows: { T }, each: (T) -> Value): Value
-  return serialize.array([for row in rows => each(row)])
+  local items = table.create(#rows)
+  for index, row in rows do
+    items[index] = each(row)
+  end
+
+  return serialize.array(items)
 end
 
 --- A camelCase name as serde's `snake_case` renames it.
@@ -98,11 +108,11 @@ local function snake(name: string): string
 end
 
 local Shapes = table.freeze {
-  explain = function({key, winner, overridden}: Explain): Value
+  explain = function(report: Explain): Value
     return serialize.struct {
-      { 'key', lossy(key) },
-      { 'winner', providerRecord(winner) },
-      { 'overridden', list(overridden, providerRecord) },
+      { 'key', lossy(report.key) },
+      { 'winner', providerRecord(report.winner) },
+      { 'overridden', list(report.overridden, providerRecord) },
     }
   end,
 
@@ -110,32 +120,32 @@ local Shapes = table.freeze {
     return serialize.struct {
       {
         'entries',
-        list(report.entries, function({key, providers, winnerIndex}: DuplicateEntry): Value
+        list(report.entries, function(entry: DuplicateEntry): Value
           return serialize.struct {
-            { 'key', lossy(key) },
-            { 'providers', list(providers, providerRecord) },
-            { 'winner_index', winnerIndex - 1 },
+            { 'key', lossy(entry.key) },
+            { 'providers', list(entry.providers, providerRecord) },
+            { 'winner_index', entry.winnerIndex - 1 },
           }
         end),
       },
     }
   end,
 
-  archive = function({sourceIndex, path, entryCount, winningEntryCount}: ArchiveInfo): Value
+  archive = function(info: ArchiveInfo): Value
     return serialize.struct {
-      { 'source_index', sourceIndex - 1 },
-      { 'path', lossy(path) },
-      { 'entry_count', entryCount },
-      { 'winning_entry_count', winningEntryCount },
+      { 'source_index', info.sourceIndex - 1 },
+      { 'path', lossy(info.path) },
+      { 'entry_count', info.entryCount },
+      { 'winning_entry_count', info.winningEntryCount },
     }
   end,
 
-  archiveEntry = function({key, archivePath, originalPath, wins}: ArchiveEntry): Value
+  archiveEntry = function(entry: ArchiveEntry): Value
     return serialize.struct {
-      { 'key', lossy(key) },
-      { 'archive_path', lossy(archivePath) },
-      { 'original_path', lossy(originalPath) },
-      { 'wins', wins },
+      { 'key', lossy(entry.key) },
+      { 'archive_path', lossy(entry.archivePath) },
+      { 'original_path', lossy(entry.originalPath) },
+      { 'wins', entry.wins },
     }
   end,
 
@@ -161,14 +171,14 @@ local Shapes = table.freeze {
   end,
 
   plan = function(report: Plan): Value
-    local function row({kind, key, source, archive, dest}: PlanRow): Value
-      local fields: { { unknown } } = { { 'key', lossy(key) } }
-      for _, pair in { { 'source', source }, { 'archive', archive }, { 'dest', dest } } do
+    local function row(entry: PlanRow): Value
+      local fields: { { unknown } } = { { 'key', lossy(entry.key) } }
+      for _, pair in { { 'source', entry.source }, { 'archive', entry.archive }, { 'dest', entry.dest } } do
         local value = pair[2]
         if value then table.insert(fields, { pair[1], lossy(value) }) end
       end
 
-      return serialize.variant(snake(kind), serialize.struct(fields))
+      return serialize.variant(snake(entry.kind), serialize.struct(fields))
     end
 
     return serialize.struct {
@@ -181,11 +191,11 @@ local Shapes = table.freeze {
     return serialize.struct {
       {
         'sources',
-        list(report.sources, function({path, overrides, overriddenBy}): Value
+        list(report.sources, function(source): Value
           return serialize.struct {
-            { 'path', lossy(path) },
-            { 'overrides', lossyList(overrides) },
-            { 'overridden_by', lossyList(overriddenBy) },
+            { 'path', lossy(source.path) },
+            { 'overrides', lossyList(source.overrides) },
+            { 'overridden_by', lossyList(source.overriddenBy) },
           }
         end),
       },
@@ -196,11 +206,11 @@ local Shapes = table.freeze {
     return serialize.struct {
       {
         'sources',
-        list(report.sources, function({path, shadowedFiles}): Value
-          local fields: { { unknown } } = { { 'path', lossy(path) } }
+        list(report.sources, function(source): Value
+          local fields: { { unknown } } = { { 'path', lossy(source.path) } }
           -- `skip_serializing_if = "Vec::is_empty"`.
-          if #shadowedFiles > 0 then
-            table.insert(fields, { 'shadowed_files', lossyList(shadowedFiles) })
+          if #source.shadowedFiles > 0 then
+            table.insert(fields, { 'shadowed_files', lossyList(source.shadowedFiles) })
           end
 
           return serialize.struct(fields)
@@ -209,32 +219,34 @@ local Shapes = table.freeze {
     }
   end,
 
-  diff = function({sourceA, sourceB, higherPriority, shared, onlyInA, onlyInB}: Diff): Value
+  diff = function(report: Diff): Value
     return serialize.struct {
-      { 'source_a', lossy(sourceA) },
-      { 'source_b', lossy(sourceB) },
-      { 'higher_priority', lossy(higherPriority) },
-      { 'shared', serialize.array((shared :: unknown) :: { unknown }) },
-      { 'only_in_a', serialize.array((onlyInA :: unknown) :: { unknown }) },
-      { 'only_in_b', serialize.array((onlyInB :: unknown) :: { unknown }) },
+      { 'source_a', lossy(report.sourceA) },
+      { 'source_b', lossy(report.sourceB) },
+      { 'higher_priority', lossy(report.higherPriority) },
+      { 'shared', serialize.array((report.shared :: unknown) :: { unknown }) },
+      { 'only_in_a', serialize.array((report.onlyInA :: unknown) :: { unknown }) },
+      { 'only_in_b', serialize.array((report.onlyInB :: unknown) :: { unknown }) },
     }
   end,
 
-  lock = function({schemaVersion, entries}: Lock): Value
-    local function entry(
-      {key, winnerSource, winnerKind, winnerHashBlake3, winnerSize, providerCount}: LockEntry
-    ): Value
-      return serialize.struct {
-        { 'key', lossy(key) },
-        { 'winner_source', lossy(winnerSource) },
-        { 'winner_kind', if winnerKind == 'looseDir' then 'loose_dir' else 'archive' },
-        { 'winner_hash_blake3', optional(winnerHashBlake3) },
-        { 'winner_size', optional(winnerSize) },
-        { 'provider_count', providerCount },
-      }
-    end
-
-    return serialize.struct { { 'schema_version', schemaVersion }, { 'entries', list(entries, entry) } }
+  lock = function(report: Lock): Value
+    return serialize.struct {
+      { 'schema_version', report.schemaVersion },
+      {
+        'entries',
+        list(report.entries, function(entry): Value
+          return serialize.struct {
+            { 'key', lossy(entry.key) },
+            { 'winner_source', lossy(entry.winnerSource) },
+            { 'winner_kind', if entry.winnerKind == 'looseDir' then 'loose_dir' else 'archive' },
+            { 'winner_hash_blake3', optional(entry.winnerHashBlake3) },
+            { 'winner_size', optional(entry.winnerSize) },
+            { 'provider_count', entry.providerCount },
+          }
+        end),
+      },
+    }
   end,
 
   drift = function(report: Drift): Value
@@ -250,8 +262,8 @@ local Shapes = table.freeze {
     return serialize.struct {
       {
         'entries',
-        list(report.entries, function({key, kind}): Value
-          return serialize.struct { { 'key', lossy(key) }, { 'kind', snake(kind) } }
+        list(report.entries, function(entry): Value
+          return serialize.struct { { 'key', lossy(entry.key) }, { 'kind', snake(entry.kind) } }
         end),
       },
       { 'counts', counts },
