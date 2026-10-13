@@ -62,17 +62,20 @@ local function listed(listings: Listings, dir: string): Listing
 end
 
 --- `resolve_case_insensitive_file`: the file `components` names below `dir`, matched without
---- regard to case; of several, the greatest path.
-local function resolveLoose(listings: Listings, dir: string, components: { string }): string?
+--- regard to case; of several, the greatest path. With `listings` a folder's names are looked up
+--- by key; without, the folder is read through for them.
+local function resolveLoose(listings: Listings?, dir: string, components: { string }): string?
   local candidates = { dir }
   for index, wanted in components do
     local last = index == #components
     local matches = {}
     for _, candidate in candidates do
-      local names = listed(listings, candidate)[wanted]
+      local names = if listings then listed(listings, candidate)[wanted] else fs.list(candidate)
       if not names then continue end
 
       for _, name in names do
+        if not listings and component(name) ~= wanted then continue end
+
         local path = paths.join(candidate, name)
         local stat = fs.stat(path)
         if stat and (if last then stat.isFile else stat.isDir) then table.insert(matches, path) end
@@ -89,7 +92,10 @@ local function resolveLoose(listings: Listings, dir: string, components: { strin
 end
 
 --- `find_loose_file_fast`: the loose file a VFS path names in the last data directory that has it.
-local function findLoose(listings: Listings, dirs: { string }, path: string): string?
+--- A command that looks for many files hands in the `listings` it keeps. One that looks for one
+--- hands in none: it reads each folder once either way, and a listing costs a table for every name
+--- in the folder.
+local function findLoose(listings: Listings?, dirs: { string }, path: string): string?
   local key = paths.safeKeyBytes(path)
   if not key then return nil end
 
@@ -104,7 +110,7 @@ local function findLoose(listings: Listings, dirs: { string }, path: string): st
   for index = #dirs, 1, -1 do
     local dir = dirs[index]
     -- A folder with nothing of the path's first name has no such file, and costs one lookup.
-    if not listed(listings, dir)[first] then continue end
+    if listings and not listed(listings, dir)[first] then continue end
 
     local found = resolveLoose(listings, dir, components)
     if found then return found end
@@ -141,7 +147,7 @@ function commands.findFile(options: FindFileOptions): number
   local config, code = loaded(options)
   if not config then return code end
 
-  local loose = findLoose({}, config.dirs, options.path)
+  local loose = findLoose(nil, config.dirs, options.path)
   if loose then
     findFileSuccess(options.path, loose, options.simple)
     return Exit.ok
