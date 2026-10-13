@@ -1,6 +1,7 @@
 # vfstool benchmarks
 
-Three benches, because a command-line tool has three costs.
+Four benches. A command-line tool has three costs, and the fourth is for a lookup none of those
+three is large enough to show.
 
 `bench/bench.luau` times the commands warm, through the package's one export, `run`: each over a
 synthetic mod list written under a scratch folder (240 data folders of 25 files, 200 plugins and
@@ -22,6 +23,11 @@ medians are compared.
 folder it is given, turn and turn about, for six commands over three folders, and for two more
 over `bench.luau`'s mod list when that has been left in the same scratch folder.
 
+`bench/crowded.luau` times loose lookups in one data folder of 20,000 names, where what a lookup
+costs is reading the folder: `find-file` for one name, and `validate` for one and for fifty. Each
+line is the median of nine runs after one that is not kept. `find-file` prints the path it finds,
+so the lines come after the paths.
+
 ```sh
 jess run --package jpk/vfstool --package-path jpk \
   --capability filesystem.read --capability filesystem.write \
@@ -33,6 +39,10 @@ jess run --package jpk/vfstool --package-path jpk \
 
 jess run --capability filesystem.read --capability filesystem.write --capability process.spawn \
   jpk/vfstool/bench/process.luau <jess> <package path> <scratch folder> <rounds> <package folder>...
+
+jess run --package jpk/vfstool --package-path jpk \
+  --capability filesystem.read --capability filesystem.write \
+  jpk/vfstool/bench/crowded.luau <scratch folder> [names]
 ```
 
 ## The move onto l3i 2.0, base against head
@@ -42,10 +52,14 @@ jess run --capability filesystem.read --capability filesystem.write --capability
 - Binary: the verified release build of Jess 0.1.0 on l3i 2.0.2 (Luau 0.742), the same one for
   both sides.
 - Base: `0dda493`, the package before the move, with the reports suite and the benches. Head:
-  the source of `5864b68`, which no later commit changes.
+  the source of `5864b68` in the warm, whole-process and cold tables. `456c6a7` after it changes
+  `find-file`'s loose lookup and nothing else, and is the head of the table of one folder of
+  20,000 names; the rows of the others it could move were run again with it and are under that
+  table.
 - Protocol: every A/B alternates base and head, back to back, under one lock. `bench.luau`: three
   runs of each, each cell the median of its three. `cold.luau`: thirty-one runs of each, in each
-  mode. `process.luau`: twenty-one rounds. A difference under 5 percent is called no change.
+  mode. `process.luau`: twenty-one rounds. `crowded.luau`: five runs of each, each cell the median
+  of its five. A difference under 5 percent is called no change.
 
 ### Warm: one run of a command, everything loaded
 
@@ -116,6 +130,18 @@ The same six commands at each commit made for speed, in one run of twenty-one ro
 | first drift, other packages loaded | 0.76 | 1.50 | pays for `lock.luau` |
 | all four, other packages loaded | 14.97 | 15.52 | no change |
 
+### One folder of 20,000 names
+
+| Workload | Base, ms | `5864b68`, ms | Head, ms | Base / head |
+|---|---:|---:|---:|---:|
+| find-file -s, the last of 20,000 names | 10.03 | 13.58 | 9.82 | no change |
+| validate, one name of 20,000 | 9.90 | 13.09 | 13.27 | 0.75x, slower |
+| validate, 50 names of 20,000 | 422.30 | 13.41 | 13.15 | 32.1x |
+
+In the same session, three runs of `bench.luau` a side and twenty-one rounds of `process.luau`,
+`5864b68` against head: warm `validate` 7.64 and 7.57 ms, warm `find-file -s, a file nothing has`
+120.26 and 120.90, and each of the eight processes within 1.4 ms of itself. No change.
+
 ### What moved, and why
 
 Two things, and neither is the dialect.
@@ -128,7 +154,14 @@ command now lists a folder once, keyed by the spelling of each name as a VFS key
 with nothing of a path's first name costs one lookup (`a9e8c68`): 344 ms to 7.6 ms, and what is
 left is reading 240 folders once. The folders are read at most once each where they were read
 again for every file, so a folder that changes while `validate` runs is now seen as it was when
-first read. `find-file` takes the same road for its one path and is the same speed.
+first read.
+
+A listing by key is a table for every name in the folder, which one lookup there does not earn
+back. `find-file` looks for one name, and `a9e8c68` gave it the listing too: over folders
+of a few names that is the same speed, and in a folder of 20,000 it was 13.6 ms where reading the
+folder through had been 10.0. `find-file` reads the folder through again (`456c6a7`). `validate`
+keeps the listing whatever it looks for, so a configuration that names one loose file in a folder
+that large pays the 3 ms, and one that names fifty there is 32 times ahead.
 
 **Every command compiled everything.** `@vfs` with the archive package under it takes about
 120 ms of a cold process to compile, the report shapes and the three writers under them about 15,
