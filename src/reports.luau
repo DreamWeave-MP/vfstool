@@ -15,12 +15,7 @@ type Value = serialize.Value
 local function lossy(text: string): string return paths.lossy(text) end
 
 local function lossyList(list: { string }): Value
-  local items = table.create(#list)
-  for index, item in list do
-    items[index] = lossy(item)
-  end
-
-  return serialize.array(items)
+  return serialize.array([for item in list => lossy(item)])
 end
 
 local function optional(value: unknown): Value
@@ -94,12 +89,7 @@ local function providerRecord(row: Record): Value
 end
 
 local function list<T>(rows: { T }, each: (T) -> Value): Value
-  local items = table.create(#rows)
-  for index, row in rows do
-    items[index] = each(row)
-  end
-
-  return serialize.array(items)
+  return serialize.array([for row in rows => each(row)])
 end
 
 --- A camelCase name as serde's `snake_case` renames it.
