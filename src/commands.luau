@@ -8,6 +8,7 @@ local cli = require './cli'
 local fs = require '@dream/fs'
 local paths = require '@vfs/paths'
 local process = require '@dream/process'
+local reports = require './reports'
 
 type Options = cli.Options
 type Load = cli.Load
@@ -157,7 +158,7 @@ function commands.findFile(options: FindFileOptions): number
   local display = if file:isArchive()
     then paths.join(file:parentArchivePath() or '', options.path)
     else file:path()
-  findFileSuccess(options.path, cli.lossy(display), options.simple)
+  findFileSuccess(options.path, paths.lossy(display), options.simple)
   return Exit.ok
 end
 
@@ -169,7 +170,7 @@ function commands.find(options: FindOptions): number
   if not config then return code end
 
   local vfs = cli.build(config)
-  return finished(cli.writeTree(options, vfs:findByRegex(options.path, options.relative == true)))
+  return finished(reports.writeTree(options, vfs:findByRegex(options.path, options.relative == true)))
 end
 
 --- Whether `path` is one of the config's data directories, spelled any way; else the binary's
@@ -200,7 +201,7 @@ function commands.remaining(options: RemainingOptions): number
     config.dirs,
     options.relative == true
   )
-  return finished(cli.writeTree(options, tree))
+  return finished(reports.writeTree(options, tree))
 end
 
 export type CollapseOptions = Options & {
@@ -224,17 +225,17 @@ function commands.collapse(options: CollapseOptions): number
   }
 
   if options.dryRun then
-    return finished(cli.write(options, cli.Shapes.plan(vfs:materializationPlan(options.into, chosen))))
+    return finished(reports.write(options, reports.Shapes.plan(vfs:materializationPlan(options.into, chosen))))
   end
 
   for _, skip in vfs:collapseInto(options.into, chosen) do
     if skip.kind == 'archiveEntry' then
-      cli.err(`vfstool: skipping {cli.lossy(skip.key)}, loaded from archive: {cli.lossy(skip.archive or '')}`)
+      cli.err(`vfstool: skipping {paths.lossy(skip.key)}, loaded from archive: {paths.lossy(skip.archive or '')}`)
     elseif skip.kind == 'archiveFile' then
       local archive = skip.archive or ''
-      cli.err(`vfstool: skipping archive {cli.lossy(paths.fileName(archive) or archive)}`)
+      cli.err(`vfstool: skipping archive {paths.lossy(paths.fileName(archive) or archive)}`)
     else
-      cli.err(`vfstool: skipping {cli.lossy(skip.key)}`)
+      cli.err(`vfstool: skipping {paths.lossy(skip.key)}`)
     end
   end
 
@@ -278,7 +279,7 @@ function commands.explain(options: ExplainOptions): number
     return Exit.findFailed
   end
 
-  return finished(cli.write(options, cli.Shapes.explain(report)))
+  return finished(reports.write(options, reports.Shapes.explain(report)))
 end
 
 export type DuplicatesOptions = Options & { pattern: string? }
@@ -289,7 +290,7 @@ function commands.duplicates(options: DuplicatesOptions): number
   if not config then return code end
 
   local vfs = cli.build(config)
-  return finished(cli.write(options, cli.Shapes.duplicates(vfs:duplicates(options.pattern))))
+  return finished(reports.write(options, reports.Shapes.duplicates(vfs:duplicates(options.pattern))))
 end
 
 --- The loaded archives and how many of their entries win.
@@ -300,10 +301,10 @@ function commands.archives(options: Options): number
   local rows = cli.build(config):archives()
   local items = table.create(#rows)
   for index, row in rows do
-    items[index] = cli.Shapes.archive(row)
+    items[index] = reports.Shapes.archive(row)
   end
 
-  return finished(cli.writeList(options, 'archives', (require '@jess/data/value').array(items)))
+  return finished(reports.writeList(options, 'archives', (require '@jess/data/value').array(items)))
 end
 
 export type ArchiveListOptions = Options & { archive: string?, sourceIndex: number? }
@@ -389,10 +390,10 @@ function commands.archiveList(options: ArchiveListOptions): number
   local entries = vfs:archiveEntries(chosen)
   local items = table.create(#entries)
   for index, entry in entries do
-    items[index] = cli.Shapes.archiveEntry(entry)
+    items[index] = reports.Shapes.archiveEntry(entry)
   end
 
-  return finished(cli.writeList(options, 'entries', (require '@jess/data/value').array(items)))
+  return finished(reports.writeList(options, 'entries', (require '@jess/data/value').array(items)))
 end
 
 --- What each source provides, wins, overrides, and loses.
@@ -400,7 +401,7 @@ function commands.contributions(options: Options): number
   local config, code = loaded(options)
   if not config then return code end
 
-  return finished(cli.write(options, cli.Shapes.contributions(cli.build(config):sourceContributions())))
+  return finished(reports.write(options, reports.Shapes.contributions(cli.build(config):sourceContributions())))
 end
 
 export type ValidateOptions = Options & { full: boolean? }
@@ -419,9 +420,9 @@ function commands.validate(options: ValidateOptions): number
   for _, dir in config.dirs do
     local stat = fs.stat(dir)
     if not stat then
-      issue('MissingDataDirectory', { { 'path', cli.lossy(dir) } })
+      issue('MissingDataDirectory', { { 'path', paths.lossy(dir) } })
     elseif not stat.isDir then
-      issue('DataPathNotDirectory', { { 'path', cli.lossy(dir) } })
+      issue('DataPathNotDirectory', { { 'path', paths.lossy(dir) } })
     end
   end
 
@@ -448,7 +449,7 @@ function commands.validate(options: ValidateOptions): number
     if file then
       local path = file:path()
       if not loadedArchives[path] then
-        issue('UnreadableFallbackArchive', { { 'name', name }, { 'path', cli.lossy(path) } })
+        issue('UnreadableFallbackArchive', { { 'name', name }, { 'path', paths.lossy(path) } })
       end
     end
   end
@@ -461,7 +462,7 @@ function commands.validate(options: ValidateOptions): number
     if not has(name) then issue('MissingGroundcoverFile', { { 'name', name } }) end
   end
 
-  local problem = cli.write(options, serialize.struct { { 'issues', serialize.array(issues) } })
+  local problem = reports.write(options, serialize.struct { { 'issues', serialize.array(issues) } })
   if problem then return finished(problem) end
 
   return if #issues > 0 then Exit.validation else Exit.ok
@@ -480,7 +481,7 @@ function commands.conflicts(options: Options): number
   if not config then return code end
 
   local report = conflictIndex(config):conflictsReport(options.relative == true)
-  return finished(cli.write(options, cli.Shapes.conflicts(report)))
+  return finished(reports.write(options, reports.Shapes.conflicts(report)))
 end
 
 export type ShadowedOptions = Options & { listFiles: boolean? }
@@ -492,7 +493,7 @@ function commands.shadowed(options: ShadowedOptions): number
 
   local report = conflictIndex(config):shadowedReport(options.relative == true, options.listFiles == true)
   cli.err(`{#report.sources} sources are fully shadowed`)
-  return finished(cli.write(options, cli.Shapes.shadowed(report)))
+  return finished(reports.write(options, reports.Shapes.shadowed(report)))
 end
 
 export type DiffOptions = Options & { sourceA: string, sourceB: string }
@@ -507,7 +508,7 @@ function commands.diff(options: DiffOptions): number
   end
 
   local report = conflictIndex(config):diffReport(options.sourceA, options.sourceB)
-  return finished(cli.write(options, cli.Shapes.diff(report)))
+  return finished(reports.write(options, reports.Shapes.diff(report)))
 end
 
 --- The VFS and its layer index.
@@ -523,7 +524,7 @@ function commands.lock(options: Options): number
   local vfs, index = layered(config)
   local lock = index:lockManifest(vfs)
 
-  return finished(cli.write(options, cli.Shapes.lock(lock:toTable())))
+  return finished(reports.write(options, reports.Shapes.lock(lock:toTable())))
 end
 
 export type DriftOptions = Options & { lockFile: string, failOnDrift: boolean? }
@@ -544,7 +545,7 @@ function commands.drift(options: DriftOptions): number
 
   local report = (require '@vfs/layer').drift(internal.layerOf(state), state, expected)
 
-  local written = cli.write(options, cli.Shapes.drift(report))
+  local written = reports.write(options, reports.Shapes.drift(report))
   if written then return finished(written) end
 
   return if #report.entries > 0 and options.failOnDrift then Exit.drift else Exit.ok
