@@ -43,6 +43,10 @@ end
 local merged = `{root}/merged`
 local Change = 'echo changed > "$0/textures/rock.dds"; echo new > "$0/new.txt"; mkdir "$0/deep"; echo deeper > "$0/deep/file.txt"'
 
+-- What the first run captures goes to data-local, which the VFS holds: the next run's merged
+-- folder has it already, and the same changes again would leave it nothing to capture.
+local Again = 'echo again > "$0/textures/rock.dds"; echo second > "$0/second.txt"; echo deepest > "$0/deep/more.txt"'
+
 run('run, capturing to data-local', { 'run', '--config', root, merged, '--', 'sh', '-c', Change, '{}' })
 table.insert(parts, `local: {listing(`{root}/Local`)}\nmerged: {listing(merged)}\n`)
 run('run --copy --keep-merged --output', {
@@ -57,7 +61,7 @@ run('run --copy --keep-merged --output', {
   '--',
   'sh',
   '-c',
-  Change,
+  Again,
   '{}',
 })
 table.insert(parts, `captured: {listing(`{root}/captured`)}\nmerged kept: {tostring(fs.exists(merged))}\n`)
