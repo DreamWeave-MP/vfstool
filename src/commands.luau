@@ -33,17 +33,45 @@ end
 --- A file's or directory's name as a VFS key spells it: ASCII lowercase, `\` read as `/`.
 local function component(name: string): string return paths.normalizeHost(name) end
 
+--- What a folder holds, by the VFS key a name spells: the names that spell it, in the order the
+--- folder lists them.
+type Listing = { [string]: { string } }
+
+--- The folders one command has listed, by path. A command that looks for many files walks the
+--- data directories for each, and lists a folder the first time alone.
+type Listings = { [string]: Listing }
+
+local function listed(listings: Listings, dir: string): Listing
+  local known = listings[dir]
+  if known then return known end
+
+  local listing: Listing = {}
+  for _, name in fs.list(dir) or {} do
+    local key = component(name)
+    local names = listing[key]
+    if names then
+      table.insert(names, name)
+    else
+      listing[key] = { name }
+    end
+  end
+
+  listings[dir] = listing
+  return listing
+end
+
 --- `resolve_case_insensitive_file`: the file `components` names below `dir`, matched without
 --- regard to case; of several, the greatest path.
-local function resolveLoose(dir: string, components: { string }): string?
+local function resolveLoose(listings: Listings, dir: string, components: { string }): string?
   local candidates = { dir }
   for index, wanted in components do
     local last = index == #components
     local matches = {}
     for _, candidate in candidates do
-      for _, name in fs.list(candidate) or {} do
-        if component(name) ~= wanted then continue end
+      local names = listed(listings, candidate)[wanted]
+      if not names then continue end
 
+      for _, name in names do
         local path = paths.join(candidate, name)
         local stat = fs.stat(path)
         if stat and (if last then stat.isFile else stat.isDir) then table.insert(matches, path) end
@@ -60,7 +88,7 @@ local function resolveLoose(dir: string, components: { string }): string?
 end
 
 --- `find_loose_file_fast`: the loose file a VFS path names in the last data directory that has it.
-local function findLoose(dirs: { string }, path: string): string?
+local function findLoose(listings: Listings, dirs: { string }, path: string): string?
   local key = paths.safeKeyBytes(path)
   if not key then return nil end
 
@@ -71,8 +99,13 @@ local function findLoose(dirs: { string }, path: string): string?
 
   if #components == 0 then return nil end
 
+  local first = components[1]
   for index = #dirs, 1, -1 do
-    local found = resolveLoose(dirs[index], components)
+    local dir = dirs[index]
+    -- A folder with nothing of the path's first name has no such file, and costs one lookup.
+    if not listed(listings, dir)[first] then continue end
+
+    local found = resolveLoose(listings, dir, components)
     if found then return found end
   end
 
@@ -107,7 +140,7 @@ function commands.findFile(options: FindFileOptions): number
   local config, code = loaded(options)
   if not config then return code end
 
-  local loose = findLoose(config.dirs, options.path)
+  local loose = findLoose({}, config.dirs, options.path)
   if loose then
     findFileSuccess(options.path, loose, options.simple)
     return Exit.ok
@@ -396,9 +429,10 @@ function commands.validate(options: ValidateOptions): number
   end
 
   local vfs = if options.full then cli.build(config) else nil
+  local listings: Listings = {}
   local has: (name: string) -> boolean = if vfs
     then function(name: string): boolean return vfs:getFile(name) ~= nil end
-    else function(name: string): boolean return findLoose(config.dirs, name) ~= nil end
+    else function(name: string): boolean return findLoose(listings, config.dirs, name) ~= nil end
 
   local loadedArchives: { [string]: boolean } = {}
   if vfs then
