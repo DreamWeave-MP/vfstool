@@ -1,0 +1,94 @@
+--!strict
+-- Loose lookups in one data folder of many names, where what a lookup costs is reading the
+-- folder: `find-file` for one name, and `validate` for one name and for fifty. Run by `jess run
+-- --capability filesystem.read --capability filesystem.write --package jpk/vfstool --package-path
+-- jpk jpk/vfstool/bench/crowded.luau <scratch> [names]`, on a release build; the folder holds
+-- 20,000 names unless told otherwise. `find-file` prints the path it finds on standard output,
+-- once a run, so the lines this prints come after them all: a workload's name, a tab, and the
+-- median seconds of nine runs of the command, after one that is not kept. Every run's exit code
+-- is checked, and `validate`'s report.
+local fs = require '@dream/fs'
+local vfstool = require '@vfstool'
+
+if not jess.bench.verified then
+  error('vfstool bench: this jess was built without the verified toolchain: measure on a release build', 0)
+end
+
+local scratch: string?, wanted: string? = ...
+
+if not scratch then error('vfstool bench: a scratch folder is required', 0) end
+
+local Names = tonumber(wanted) or 20000
+local Looked = 50
+
+assert(fs.mkdir(scratch, { recursive = true }))
+
+local root = `{assert(fs.canonicalize(scratch))}/vfstool-crowded`
+
+if fs.exists(root) then assert(fs.remove(root, { recursive = true })) end
+
+assert(fs.mkdir(`{root}/Data`, { recursive = true }))
+
+for index = 1, Names do
+  assert(fs.writeFile(`{root}/Data/Plugin {index}.esp`, ''))
+end
+
+--- A configuration of the folder that names its last `count` plugins, each spelled another way
+--- than the folder spells it.
+local function configuration(name: string, count: number): string
+  local lines = [for index in range(Names - count + 1, Names) => `content=plugin {index}.ESP`]
+
+  table.insert(lines, 1, `data="{root}/Data"`)
+  assert(fs.mkdir(`{root}/{name}`, { recursive = true }))
+  assert(fs.writeFile(`{root}/{name}/openmw.cfg`, table.concat(lines, '\n') .. '\n'))
+  return `{root}/{name}`
+end
+
+local one, several = configuration('one', 1), configuration('several', Looked)
+local report = `{root}/report.json`
+local results = {}
+
+--- Times a command that must exit with 0 and, when it writes a report, find nothing missing.
+local function workload(name: string, argv: { string }, reports: boolean)
+  local samples = {}
+
+  for sample = 0, 9 do
+    if fs.exists(report) then assert(fs.remove(report)) end
+
+    jess.bench.collect()
+
+    local start = os.clock()
+    -- `run` takes the command's name off the list it is given.
+    local code = vfstool.run(table.clone(argv))
+    local seconds = os.clock() - start
+
+    if code ~= 0 then error(`vfstool bench: {name} exited with {code}, not 0`, 0) end
+
+    if reports and fs.readFileString(report) ~= '{"issues":[]}' then
+      error(`vfstool bench: {name} wrote a report that fails its check`, 0)
+    end
+
+    if sample > 0 then table.insert(samples, seconds) end
+  end
+
+  table.sort(samples)
+  table.insert(results, `{name}\t{string.format('%.9f', samples[(#samples + 1) // 2])}`)
+end
+
+workload(`find-file -s, the last of {Names} names`, { 'find-file', '-s', '--config', one, `plugin {Names}.ESP` }, false)
+workload(
+  `validate, one name of {Names}`,
+  { 'validate', '--config', one, '--format', 'json', '--output', report },
+  true
+)
+workload(
+  `validate, {Looked} names of {Names}`,
+  { 'validate', '--config', several, '--format', 'json', '--output', report },
+  true
+)
+
+assert(fs.remove(root, { recursive = true }))
+
+for _, line in results do
+  print(line)
+end
