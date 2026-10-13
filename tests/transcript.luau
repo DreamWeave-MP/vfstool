@@ -1,0 +1,417 @@
+--!strict
+--!native
+-- Every vfstool command over one small load order, as a list of named observations: the exit
+-- code, and the report it wrote in each format, with the run's folder spelled `<root>`. The
+-- reports suite holds the list to `golden/reports.txt`, which is what the commands wrote before
+-- anything in them was moved onto the l3i dialect.
+local archive = require '@dream-archive'
+local fs = require '@dream/fs'
+local vfstool = require '@vfstool'
+
+export type Step = { group: string, name: string, text: string }
+
+local Formats = { 'yaml', 'json', 'toml' }
+
+--- The groups the steps come in, in order.
+local Groups = { 'command line', 'configuration', 'lookups', 'reports', 'materializing', 'locks' }
+
+--- Writes `files` (relative path, contents) below `root`, in the order given.
+local function writeTree(root: string, files: { { string } })
+  for _, file in files do
+    local path = `{root}/{file[1]}`
+    local parent = string.match(path, '^(.*)/[^/]*$')
+    if parent then fs.mkdir(parent, { recursive = true }) end
+
+    fs.writeFile(path, file[2])
+  end
+end
+
+--- A Morrowind archive of `files` (stored name, contents).
+local function packed(files: { { string } }): string
+  local builder = archive.bsa.tes3.Builder.new()
+  for _, file in files do
+    builder:addBytes(file[1], file[2])
+  end
+
+  return builder:toBytes()
+end
+
+--- `text` with every spelling of `root` written `<root>`.
+local function scrub(text: string, root: string): string
+  local out = {}
+  local start = 1
+  while true do
+    local found = string.find(text, root, start, true)
+    if not found then break end
+
+    table.insert(out, string.sub(text, start, found - 1))
+    table.insert(out, '<root>')
+    start = found + #root
+  end
+
+  table.insert(out, string.sub(text, start))
+  return table.concat(out)
+end
+
+--- A JSON tree report of absolute paths with the folders down to `root`, which are the tree's
+--- outer levels, spelled `<root>`.
+local function scrubTree(text: string, root: string): string
+  local opening = { '{"/":' }
+  for name in string.gmatch(root, '[^/]+') do
+    table.insert(opening, `\{"{name}":`)
+  end
+
+  local prefix = table.concat(opening)
+  if string.sub(text, 1, #prefix) ~= prefix then return text end
+
+  return `<root>:{string.sub(text, #prefix + 1, -#opening - 1)}`
+end
+
+--- Every file and folder below `dir`: a file with the text it holds, or its length when it is
+--- not text.
+local function listing(dir: string): string
+  if not fs.exists(dir) then return '<missing>' end
+
+  local walk = fs.walk(dir, { sort = true })
+  local lines = {}
+  for index, path in walk.paths do
+    local kind = walk.kinds[index]
+    if kind ~= 'file' then
+      table.insert(lines, `{path}: <{kind}>`)
+      continue
+    end
+
+    local contents = fs.readFileString(`{dir}/{path}`) or ''
+    local text = utf8.len(contents) and not string.find(contents, '%c')
+    table.insert(lines, `{path}: {if text then contents else `<{#contents} bytes>`}`)
+  end
+
+  return table.concat(lines, '\n')
+end
+
+--- The load order: three mods over a base folder that holds two archives, one of the mods
+--- overridden file for file, an empty folder, and a second configuration that names what isn't
+--- there.
+local function build(root: string)
+  writeTree(`{root}/Base`, {
+    { 'Morrowind.esm', 'the master' },
+    { 'Textures/Rock.dds', 'base rock' },
+    { 'Meshes/x/Chair.nif', 'base chair' },
+    { 'Icons/a.tga', 'base icon' },
+    {
+      'Packed.bsa',
+      packed {
+        { 'textures\\rock.dds', 'packed rock' },
+        { 'meshes\\door.nif', 'packed door' },
+        { 'sound\\packed.wav', 'packed sound' },
+        { 'icons\\a.tga', 'packed icon' },
+      },
+    },
+    { 'Other.bsa', packed { { 'meshes\\door.nif', 'other door' }, { 'bookart\\page.dds', 'page' } } },
+  })
+
+  writeTree(`{root}/Shadowed`, {
+    { 'textures/rock.dds', 'shadowed rock' },
+    { 'Meshes/X/chair.NIF', 'shadowed chair' },
+  })
+
+  writeTree(`{root}/Mod A`, {
+    { 'Textures/rock.DDS', 'a rock' },
+    { 'meshes/x/chair.nif', 'a chair' },
+    { 'Sound/Hit.wav', 'a hit' },
+    { 'Patch.esp', 'a patch' },
+    { 'Sub/Other.bsa', packed { { 'sound\\sub.wav', 'sub sound' } } },
+  })
+
+  writeTree(`{root}/Mod B`, {
+    { 'textures/rock.dds', 'b rock' },
+    { 'Grass.esp', 'b grass' },
+    { 'docs/readme.txt', 'b readme' },
+  })
+
+  fs.mkdir(`{root}/Empty`, { recursive = true })
+  fs.mkdir(`{root}/Local`, { recursive = true })
+
+  local order = table.concat({
+    `data = "{root}/Base"`,
+    `data = "{root}/Shadowed"`,
+    `data = "{root}/Mod A"`,
+    `data = "{root}/Mod B"`,
+    `data = "{root}/Empty"`,
+  }, '\n')
+
+  local settings = table.concat({
+    'fallback-archive = Packed.bsa',
+    'fallback-archive = Other.bsa',
+    'content = Morrowind.esm',
+    'content = patch.ESP',
+    'groundcover = Grass.esp',
+  }, '\n')
+
+  local missing = table.concat({
+    `data = "{root}/Gone"`,
+    `data = "{root}/Base/Morrowind.esm"`,
+    'fallback-archive = Absent.bsa',
+    'fallback-archive = Patch.esp',
+    'content = Absent.esp',
+    'content = Sub/other.bsa',
+    'groundcover = Absent Grass.esp',
+  }, '\n')
+
+  writeTree(root, {
+    { 'openmw.cfg', `{order}\ndata-local = "{root}/Local"\n{settings}\n` },
+    { 'broken/OpenMW.cfg', `{order}\n{settings}\n{missing}\n` },
+    { 'broken/notes.txt', 'not a configuration' },
+    { 'bare/readme.txt', 'no configuration here' },
+  })
+end
+
+--- What the commands do over a fresh load order under `root`, in order.
+local function record(root: string): { Step }
+  local steps: { Step } = {}
+  local out = `{root}/out`
+  local group = Groups[1]
+  build(root)
+  fs.mkdir(out, { recursive = true })
+
+  local function step(name: string, text: string)
+    table.insert(steps, { group = group, name = name, text = scrub(text, root) })
+  end
+
+  --- `argv` with `options` after the command's name, where no option's missing value can take
+  --- them for its own.
+  local function with(argv: { string }, options: { string }): { string }
+    local arguments = table.clone(argv)
+    for index, option in options do
+      table.insert(arguments, index + 1, option)
+    end
+
+    return arguments
+  end
+
+  --- A command's exit code: with the main configuration, another, or for `''` none.
+  local function status(name: string, argv: { string }, config: string?)
+    local arguments = if config == '' then table.clone(argv) else with(argv, { '--config', config or root })
+    step(name, `exit {vfstool.run(arguments)}`)
+  end
+
+  --- A command's exit code and report, in each format.
+  local function report(name: string, argv: { string }, config: string?)
+    for _, format in Formats do
+      local path = `{out}/report.{format}`
+      if fs.exists(path) then fs.remove(path) end
+
+      local options = { '--config', config or root, '--format', format, '--output', path }
+      local code = vfstool.run(with(argv, options))
+      step(`{name}, {format}`, `exit {code}\n{fs.readFileString(path) or '<no report>'}`)
+    end
+  end
+
+  --- A command's exit code and its tree of absolute paths. In YAML and TOML the folders above
+  --- `root` are levels of the document, so those are read off the relative trees instead.
+  local function tree(name: string, argv: { string })
+    local path = `{out}/tree.json`
+    if fs.exists(path) then fs.remove(path) end
+
+    local code = vfstool.run(with(argv, { '--config', root, '--format', 'json', '--output', path }))
+    step(name, `exit {code}\n{scrubTree(fs.readFileString(path) or '<no report>', root)}`)
+  end
+
+  status('no arguments', {}, '')
+  status('help', { 'help' }, '')
+  status('--help', { '--help' }, '')
+  status('-h', { '-h' }, '')
+  status('an unknown command', { 'not-a-command' })
+  status('an unknown option', { 'lock', '--bogus' })
+  status('--config without a path', { 'lock', '--config' }, '')
+  status('-c without a path', { 'lock', '-c' }, '')
+  status('--format without a value', { 'lock', '--format' })
+  status('--format xml', { 'lock', '-f', 'xml' })
+  status('--output without a path', { 'lock', '--output' })
+  status('-o without a path', { 'lock', '-o' })
+  status('--source-index without a value', { 'archive-list', '--source-index' })
+  status('--working-dir without a value', { 'run', 'merged', 'true', '--working-dir' })
+  status('collapse without a destination', { 'collapse' })
+  status('extract without a source', { 'extract' })
+  status('extract without a destination', { 'extract', 'textures/rock.dds' })
+  status('find-file without a path', { 'find-file' })
+  status('find without a pattern', { 'find' })
+  status('remaining without a folder', { 'remaining' })
+  status('explain without a path', { 'explain' })
+  status('diff without folders', { 'diff' })
+  status('diff with one folder', { 'diff', `{root}/Base` })
+  status('drift without a lock file', { 'drift' })
+  status('run without a merged folder', { 'run' })
+  status('run without a command', { 'run', `{out}/merged` })
+  status('run with its command after --, none given', { 'run', `{out}/merged`, '--' })
+
+  group = Groups[2]
+  status('no configuration named', { 'lock' }, '')
+  status('a configuration that is not there', { 'lock' }, `{root}/absent`)
+  status('a folder without a configuration', { 'lock' }, `{root}/bare`)
+  report('a configuration found without regard to case', { 'archives' }, `{root}/broken`)
+  report('a configuration named by its file', { 'archives' }, `{root}/broken/OpenMW.cfg`)
+
+  group = Groups[3]
+  status('find-file, a loose file', { 'find-file', 'Textures\\ROCK.dds' })
+  status('find-file -s, a loose file', { 'find-file', '-s', 'meshes/x/chair.nif' })
+  status('find-file --simple, a packed file', { 'find-file', '--simple', 'sound/packed.wav' })
+  status('find-file, a packed file', { 'find-file', 'sound/packed.wav' })
+  status('find-file -p, a packed file', { 'find-file', '-p', 'sound/packed.wav' })
+  status('find-file --only_physical -s, a packed file', { 'find-file', '--only_physical', '-s', 'meshes/door.nif' })
+  status('find-file, a missing file', { 'find-file', 'meshes/absent.nif' })
+  status('find-file -s, a missing file', { 'find-file', '-s', 'meshes/absent.nif' })
+  status('find-file, a folder', { 'find-file', 'meshes/x' })
+  status('find-file, an unsafe path', { 'find-file', '../openmw.cfg' })
+  status('find-file, no path at all', { 'find-file', '//' })
+  tree('find', { 'find', 'rock|chair' })
+  tree('find, nothing matching', { 'find', 'zzz' })
+  report('find -r', { 'find', '-r', '\\.(nif|wav)$' })
+  report('find --use-relative, nothing matching', { 'find', '--use-relative', 'zzz' })
+  tree('remaining', { 'remaining', `{root}/Base` })
+  tree('remaining --replacements-only', { 'remaining', '--replacements-only', `{root}/Shadowed` })
+  tree('remaining, a folder spelled another way', { 'remaining', string.upper(`{root}/Base`) })
+  report('remaining -r', { 'remaining', '-r', `{root}/Mod A` })
+  report('remaining -r --replacements-only', { 'remaining', '-r', '--replacements-only', `{root}/Shadowed` })
+  status('remaining, a folder not configured', { 'remaining', `{root}/Local/elsewhere` })
+  report('explain, loose over packed', { 'explain', 'Textures/Rock.dds' })
+  report('explain, packed twice', { 'explain', 'meshes\\door.nif' })
+  report('explain, one provider', { 'explain', 'docs/readme.txt' })
+  status('explain, a missing path', { 'explain', 'meshes/absent.nif' })
+
+  group = Groups[4]
+  report('duplicates', { 'duplicates' })
+  report('duplicates, a pattern', { 'duplicates', '^meshes/' })
+  report('duplicates, a pattern nothing matches', { 'duplicates', 'zzz' })
+  report('archives', { 'archives' })
+  report('archive-list, a name', { 'archive-list', 'packed.BSA' })
+  report('archive-list, a path suffix', { 'archive-list', 'base/other.bsa' })
+  report('archive-list, a whole path', { 'archive-list', `{root}/Base/Packed.bsa` })
+  report('archive-list --source-index 0', { 'archive-list', '--source-index', '0' })
+  report('archive-list --source-index 1', { 'archive-list', '--source-index', '1' })
+  status('archive-list --source-index 7', { 'archive-list', '--source-index', '7' })
+  status('archive-list --source-index, not a number', { 'archive-list', '--source-index', 'first' })
+  status('archive-list, no selector', { 'archive-list' })
+  status('archive-list, nothing matching', { 'archive-list', 'absent.bsa' })
+  status('archive-list, half a name', { 'archive-list', 'acked.bsa' })
+  status('archive-list, a name two archives have', { 'archive-list', '.bsa' })
+  report('contributions', { 'contributions' })
+  report('conflicts', { 'conflicts' })
+  report('conflicts -r', { 'conflicts', '-r' })
+  report('shadowed', { 'shadowed' })
+  report('shadowed -l', { 'shadowed', '-l' })
+  report('shadowed --list-files -r', { 'shadowed', '--list-files', '-r' })
+  report('diff', { 'diff', `{root}/Mod A`, `{root}/Mod B` })
+  report('diff, the higher folder first', { 'diff', `{root}/Mod B`, `{root}/Base` })
+  report('diff, a folder against itself', { 'diff', `{root}/Shadowed`, `{root}/Shadowed` })
+  status('diff, a folder not configured', { 'diff', `{root}/Base`, `{root}/out` })
+  report('validate', { 'validate' })
+  report('validate --full', { 'validate', '--full' })
+  report('validate, what is not there', { 'validate' }, `{root}/broken`)
+  report('validate --full, what is not there', { 'validate', '--full' }, `{root}/broken`)
+
+  group = Groups[5]
+  report('collapse --dry-run', { 'collapse', '--dry-run', `{out}/collapsed` })
+  report('collapse --dry-run -a', { 'collapse', '--dry-run', '-a', `{out}/collapsed` })
+  report('collapse --dry-run -e', { 'collapse', '--dry-run', '--extract-archives', `{out}/collapsed` })
+  report('collapse --dry-run -s', { 'collapse', '--dry-run', '-s', '--allow-copying', '-e', `{out}/collapsed` })
+  status('collapse -a', { 'collapse', '-a', `{out}/collapsed` })
+  step('collapse -a, what it left', listing(`{out}/collapsed`))
+  status('collapse -a -e', { 'collapse', '--allow-copying', '-e', `{out}/unpacked` })
+  step('collapse -a -e, what it left', listing(`{out}/unpacked`))
+  status('extract, a loose file', { 'extract', 'Meshes/X/Chair.nif', `{out}/extracted` })
+  status('extract, a packed file', { 'extract', 'sound/packed.wav', `{out}/extracted` })
+  status('extract, a missing file', { 'extract', 'meshes/absent.nif', `{out}/extracted` })
+  step('extract, what it left', listing(`{out}/extracted`))
+  status('run, a merged folder that holds files', { 'run', `{out}/extracted`, 'true' })
+  status('run, no data-local and no output', { 'run', `{out}/merged`, 'true' }, `{root}/broken`)
+
+  -- A lock in each format, then the load order changed under it.
+  group = Groups[6]
+  report('lock', { 'lock' })
+  for _, format in Formats do
+    status(`lock, kept as {format}`, { 'lock', '--format', format, '--output', `{root}/kept.{format}` })
+    report(`drift from a {format} lock, none`, { 'drift', `{root}/kept.{format}` })
+    report(`drift from a {format} lock, none, --fail-on-drift`, { 'drift', '--fail-on-drift', `{root}/kept.{format}` })
+  end
+
+  writeTree(`{root}/Mod B`, { { 'textures/new.dds', 'b new' }, { 'meshes/x/chair.nif', 'b chair' } })
+  writeTree(`{root}/Mod A`, { { 'Sound/Hit.wav', 'a louder hit' } })
+  fs.remove(`{root}/Mod B/docs/readme.txt`)
+
+  for _, format in Formats do
+    report(`drift from a {format} lock`, { 'drift', `{root}/kept.{format}` })
+    report(`drift from a {format} lock, --fail-on-drift`, { 'drift', '--fail-on-drift', `{root}/kept.{format}` })
+  end
+
+  report('lock, after the change', { 'lock' })
+
+  local entry = '"key":"a","winner_source":"Base"'
+  local locks = {
+    { 'not-a-table.json', '7' },
+    { 'no-entries.json', '{"schema_version":1}' },
+    { 'newer.json', '{"schema_version":2,"entries":[]}' },
+    { 'entry-not-a-table.json', '{"schema_version":1,"entries":[7]}' },
+    { 'entry-without-a-key.yaml', 'schema_version: 1\nentries:\n  - winner_source: Base\n' },
+    {
+      'entry-of-another-kind.toml',
+      'schema_version = 1\n[[entries]]\nkey = "a"\nwinner_source = "Base"\nwinner_kind = "folder"\nprovider_count = 1\n',
+    },
+    {
+      'entry-with-a-numeric-hash.json',
+      `\{"schema_version":1,"entries":[\{{entry},"winner_kind":"archive","winner_hash_blake3":7,"provider_count":1\}]\}`,
+    },
+    {
+      'entry-with-a-textual-size.json',
+      `\{"schema_version":1,"entries":[\{{entry},"winner_kind":"archive","winner_size":"7","provider_count":1\}]\}`,
+    },
+    { 'entry-without-a-count.json', `\{"schema_version":1,"entries":[\{{entry},"winner_kind":"loose_dir"\}]\}` },
+    {
+      'second-entry-wrong.json',
+      `\{"schema_version":1,"entries":[\{{entry},"winner_kind":"loose_dir","provider_count":1\},\{"key":7\}]\}`,
+    },
+    {
+      'entry-with-nulls.json',
+      `\{"schema_version":1,"entries":[\{{entry},"winner_kind":"archive","winner_hash_blake3":null,"winner_size":null,"provider_count":2\}]\}`,
+    },
+    { 'lock.txt', 'schema_version: 1\nentries: []\n' },
+    { 'UPPER.YML', 'schema_version: 1\nentries: []\n' },
+  }
+
+  writeTree(`{root}/locks`, locks)
+  for _, lock in locks do
+    report(`drift from {lock[1]}`, { 'drift', `{root}/locks/{lock[1]}` })
+  end
+
+  status('drift from a lock that is not there', { 'drift', `{root}/locks/absent.json` })
+  return steps
+end
+
+--- The steps as the golden file spells them.
+local function render(steps: { Step }): string
+  local parts = {}
+  for _, step in steps do
+    table.insert(parts, `### {step.name}\n{step.text}\n`)
+  end
+
+  return table.concat(parts)
+end
+
+--- A golden file's steps, by name.
+local function parse(text: string): { [string]: string }
+  local steps: { [string]: string } = {}
+  -- Every step ends with the newline `render` gives it, which the split leaves on the last alone.
+  for _, section in string.split(`\n{string.sub(text, 1, -2)}`, '\n### ') do
+    local name, body = string.match(section, '^([^\n]*)\n(.*)$')
+    if name then steps[name] = body end
+  end
+
+  return steps
+end
+
+return table.freeze {
+  Groups = Groups,
+  record = record,
+  render = render,
+  parse = parse,
+}

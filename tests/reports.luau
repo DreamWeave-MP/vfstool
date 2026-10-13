@@ -1,0 +1,66 @@
+--!strict
+--!native
+-- Every command's exit code and every report it writes, in each format, over the load order
+-- `transcript.luau` builds, held to `golden/reports.txt`: what the commands wrote before anything
+-- in them was moved onto the l3i dialect. Everything it writes stays under the test's scratch root.
+local fs = require '@dream/fs'
+local support = require './support'
+local test = require '@jess/test'
+local transcript = require './transcript'
+
+local expect = test.expect
+local suite = test.new()
+local globals = _G :: { [string]: unknown }
+local scratchRoot = globals.scratchRoot or support.settings.scratchRoot or `{fs.cwd()}/vfs-suite`
+
+--- Where this file is, from its chunk name: the folder the suites and the golden are in.
+local function here(): string
+  local source = debug.info(1, 's')
+  local first = string.sub(source, 1, 1)
+  local path = if first == '@' or first == '=' then string.sub(source, 2) else source
+
+  return string.match(path, '^(.*)/[^/]*$') or '.'
+end
+
+local golden = transcript.parse(assert(jess.fs.read(`{here()}/golden/reports.txt`), 'no golden'))
+local recorded: { transcript.Step }?
+
+--- The commands' steps, run once for every case.
+local function steps(): { transcript.Step }
+  local kept = recorded
+  if kept then return kept end
+
+  local made = transcript.record(fs.canonicalize(support.fresh(`{scratchRoot}/vfstool-reports`)))
+  recorded = made
+  return made
+end
+
+suite.describe('vfstool reports', function()
+  for _, group in transcript.Groups do
+    suite.it(`does what it did: {group}`, function()
+      local seen = 0
+      for _, step in steps() do
+        if step.group ~= group then continue end
+
+        seen += 1
+        expect(`{step.name}\n{step.text}`).toBe(`{step.name}\n{golden[step.name] or '<no golden>'}`)
+      end
+
+      expect(seen > 0).toBe(true)
+    end)
+  end
+
+  suite.it('covers every step of the golden', function()
+    local names: { [string]: boolean } = {}
+    for _, step in steps() do
+      expect(names[step.name]).toBe(nil)
+      names[step.name] = true
+    end
+
+    for name in golden do
+      expect(if names[name] then name else `{name}: not run`).toBe(name)
+    end
+  end)
+end)
+
+return suite
