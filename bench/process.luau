@@ -8,7 +8,9 @@
 -- folders of this package (two builds of it, to compare them). The folders take turns, round by
 -- round, so what else the machine is doing falls on each alike. Prints one line per folder and
 -- command: the folder, the command, a tab, and the median wall-clock seconds of its runs. Every
--- run's exit code is checked, and the report of one that writes a report.
+-- run's exit code is checked, and the report of one that writes a report. When `bench.luau` has
+-- run over the same scratch folder, the mod list of 240 folders it left there gets two commands
+-- too: the ones that never build a VFS, where a run is more than starting up.
 local fs = require '@dream/fs'
 local process = require '@dream/process'
 
@@ -53,7 +55,7 @@ local kept = `{root}/kept.json`
 
 type Command = { name: string, argv: { string }, code: number, check: ((written: string) -> boolean)? }
 
-local Commands: { Command } = {
+local commands: { Command } = {
   { name = 'help', argv = { 'help' }, code = 0 },
   { name = 'find-file -s, a loose file', argv = { 'find-file', '-s', '--config', root, 'mod 1.ESP' }, code = 0 },
   {
@@ -83,6 +85,24 @@ local Commands: { Command } = {
   },
 }
 
+local modList = `{assert(fs.canonicalize(scratch))}/vfstool-bench`
+
+if fs.exists(`{modList}/openmw.cfg`) then
+  -- The first folder's plugin is found after every later folder has been listed for it.
+  table.insert(commands, {
+    name = 'find-file -s, the first of 240 folders',
+    argv = { 'find-file', '-s', '--config', modList, 'mod 001.ESP' },
+    code = 0,
+  })
+
+  table.insert(commands, {
+    name = 'validate, 240 folders',
+    argv = { 'validate', '--config', modList, '--format', 'json', '--output', report },
+    code = 0,
+    check = function(written: string): boolean return written == '{"issues":[]}' end,
+  })
+end
+
 --- One run of a command by the package in `folder`: its wall-clock seconds, checked.
 local function run(folder: string, command: Command, output: string?): number
   local argv = { 'package', 'run', folder, '--package-path', packagePath, '--trusted', '--' }
@@ -110,13 +130,13 @@ local function run(folder: string, command: Command, output: string?): number
   return seconds
 end
 
-run(packages[1], Commands[5], kept)
+run(packages[1], commands[5], kept)
 
 local samples: { [string]: { number } } = {}
 
 for _ = 0, rounds do
   for _, folder in packages do
-    for _, command in Commands do
+    for _, command in commands do
       local name = `{folder}: {command.name}`
       local list = samples[name]
       if not list then
@@ -134,7 +154,7 @@ end
 assert(fs.remove(root, { recursive = true }))
 
 for _, folder in packages do
-  for _, command in Commands do
+  for _, command in commands do
     local list = samples[`{folder}: {command.name}`]
     table.sort(list)
     print(`{folder}: {command.name}\t{string.format('%.9f', list[(#list + 1) // 2])}`)
