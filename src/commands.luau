@@ -6,11 +6,8 @@
 -- them.
 local cli = require './cli'
 local fs = require '@dream/fs'
-local layer = require '@vfs/layer'
-local lockFile = require './lock'
 local paths = require '@vfs/paths'
 local process = require '@dream/process'
-local vfstool = require '@vfs'
 
 type Options = cli.Options
 type Load = cli.Load
@@ -311,7 +308,7 @@ end
 
 export type ArchiveListOptions = Options & { archive: string?, sourceIndex: number? }
 
-local function choices(rows: { vfstool.ArchiveInfo }): string
+local function choices(rows: { cli.ArchiveInfo }): string
   if #rows == 0 then return '<none>' end
 
   local listed = table.create(#rows)
@@ -447,8 +444,9 @@ function commands.validate(options: ValidateOptions): number
       continue
     end
 
-    if vfs then
-      local path = (vfs:getFile(name) :: vfstool.VfsFile):path()
+    local file = if vfs then vfs:getFile(name) else nil
+    if file then
+      local path = file:path()
       if not loadedArchives[path] then
         issue('UnreadableFallbackArchive', { { 'name', name }, { 'path', cli.lossy(path) } })
       end
@@ -470,8 +468,9 @@ function commands.validate(options: ValidateOptions): number
 end
 
 --- The conflict index of the config's load order.
-local function conflictIndex(config: Load): vfstool.ConflictIndex
-  local _, index = vfstool.VFS.fromDirectoriesWithConflictIndex(config.dirs, { archives = config.archives })
+local function conflictIndex(config: Load): cli.ConflictIndex
+  local _, index =
+    cli.library().VFS.fromDirectoriesWithConflictIndex(config.dirs, { archives = config.archives })
   return index
 end
 
@@ -512,8 +511,8 @@ function commands.diff(options: DiffOptions): number
 end
 
 --- The VFS and its layer index.
-local function layered(config: Load): (vfstool.VFS, vfstool.LayerIndex)
-  return vfstool.VFS.fromDirectoriesWithLayerIndex(config.dirs, { archives = config.archives })
+local function layered(config: Load): (cli.VFS, cli.LayerIndex)
+  return cli.library().VFS.fromDirectoriesWithLayerIndex(config.dirs, { archives = config.archives })
 end
 
 --- A deterministic manifest of every winner.
@@ -524,14 +523,15 @@ function commands.lock(options: Options): number
   local vfs, index = layered(config)
   local lock = index:lockManifest(vfs)
 
-  return finished(cli.write(options, cli.Shapes.lock((lock :: vfstool.VfsLock):toTable())))
+  return finished(cli.write(options, cli.Shapes.lock(lock:toTable())))
 end
 
 export type DriftOptions = Options & { lockFile: string, failOnDrift: boolean? }
 
---- The VFS against a lock manifest; exit 4 for drift when `failOnDrift`.
+--- The VFS against a lock manifest; exit 4 for drift when `failOnDrift`. The lock reader and the
+--- decoders it reads with are required here: no other command compiles them.
 function commands.drift(options: DriftOptions): number
-  local expected, problem = lockFile.read(options.lockFile)
+  local expected, problem = (require './lock').read(options.lockFile)
   if not expected then return finished(problem) end
 
   local config, code = loaded(options)
@@ -542,7 +542,7 @@ function commands.drift(options: DriftOptions): number
   local state = internal.stateOf(vfs)
   if not state then return finished('could not access VFS state') end
 
-  local report = layer.drift(internal.layerOf(state), state, expected)
+  local report = (require '@vfs/layer').drift(internal.layerOf(state), state, expected)
 
   local written = cli.write(options, cli.Shapes.drift(report))
   if written then return finished(written) end
@@ -615,7 +615,7 @@ function commands.run(options: RunOptions): number
   end
 
   cli.err(`Dumping VFS to {merged}...`)
-  local count, baseline = vfstool.runSetupTracked(vfs, merged, not options.copy)
+  local count, baseline = cli.library().runSetupTracked(vfs, merged, not options.copy)
 
   cli.err(`Dumped {count} files.`)
   local absolute = fs.absolute(merged) or merged
@@ -640,7 +640,7 @@ function commands.run(options: RunOptions): number
     return exitCode
   end
 
-  local copied = vfstool.runFinalizeTracked(merged, destination, baseline)
+  local copied = cli.library().runFinalizeTracked(merged, destination, baseline)
 
   local rows = copied
   if #rows == 0 then

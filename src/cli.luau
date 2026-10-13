@@ -9,9 +9,16 @@ local openmwConfig = require '@openmw-config'
 local paths = require '@vfs/paths'
 local process = require '@dream/process'
 local serialize = require '@jess/data/value'
-local vfs = require '@vfs'
 
 type Value = serialize.Value
+
+--- `@vfs`, required the first time a command builds a VFS or an index over one: a command that
+--- reads the configuration and looks among loose files alone never compiles it.
+local function library(): typeof(require '@vfs') return require '@vfs' end
+
+export type VFS = typeof(library().VFS.new())
+export type ConflictIndex = typeof(library().ConflictIndex.fromFileLists({}))
+export type LayerIndex = typeof(library().LayerIndex.fromFileLists({}))
 
 export type Format = 'json' | 'yaml' | 'toml'
 
@@ -142,8 +149,8 @@ local function load(options: Options): (Load?, number)
 end
 
 --- The VFS the config describes: its data directories over its fallback archives.
-local function build(loaded: Load): vfs.VFS
-  return vfs.VFS.fromDirectories(loaded.dirs, { archives = loaded.archives })
+local function build(loaded: Load): VFS
+  return library().VFS.fromDirectories(loaded.dirs, { archives = loaded.archives })
 end
 
 local function lossy(text: string): string return paths.lossy(text) end
@@ -176,7 +183,7 @@ type Record = {
 type Explain = { key: string, winner: Record, overridden: { Record } }
 type DuplicateEntry = { key: string, providers: { Record }, winnerIndex: number }
 type Duplicates = { entries: { DuplicateEntry } }
-type ArchiveInfo = { sourceIndex: number, path: string, entryCount: number, winningEntryCount: number }
+export type ArchiveInfo = { sourceIndex: number, path: string, entryCount: number, winningEntryCount: number }
 type ArchiveEntry = { key: string, archivePath: string, originalPath: string, wins: boolean }
 type Contribution = {
   sourceIndex: number,
@@ -463,6 +470,7 @@ return table.freeze {
   blue = blue,
   green = green,
   load = load,
+  library = library,
   build = build,
   Shapes = Shapes,
   lossy = lossy,
