@@ -1,0 +1,106 @@
+--!strict
+-- What one vfstool process pays before anything is warm: `@vfstool` required, with whatever that
+-- compiles, then the first run of three commands over a load order of three folders, each of
+-- which compiles what it is the first to need. Run by `jess run --capability filesystem.read
+-- --capability filesystem.write --package jpk/vfstool --package-path jpk
+-- jpk/vfstool/bench/cold.luau <scratch> [own]`, on a release build. With `own`, every module of
+-- another package that vfstool can require is loaded first, so the lines time the package's own
+-- four modules alone. Each line is one sample of something a process does once, so compare
+-- medians over many runs. This file uses none of the l3i dialect, so that whatever a module's
+-- first use of it costs is paid inside the `require` timed here.
+local fs = require '@dream/fs'
+
+if not jess.bench.verified then
+  error('vfstool bench: this jess was built without the verified toolchain: measure on a release build', 0)
+end
+
+local scratch: string?, mode: string? = ...
+
+if not scratch then error('vfstool bench: a scratch folder is required', 0) end
+
+assert(fs.mkdir(scratch, { recursive = true }))
+
+local root = `{assert(fs.canonicalize(scratch))}/vfstool-cold`
+
+if fs.exists(root) then assert(fs.remove(root, { recursive = true })) end
+
+local Folders, PerFolder = 3, 8
+local lines = {}
+
+for folder = 1, Folders do
+  local dir = `{root}/Mod {folder}`
+  assert(fs.mkdir(`{dir}/Textures`, { recursive = true }))
+
+  -- Half of a folder's files are the next folder's too.
+  for file = 1, PerFolder do
+    assert(fs.writeFile(`{dir}/Textures/Tx_Rock_{folder * PerFolder // 2 + file}.dds`, `{folder}:{file}`))
+  end
+
+  assert(fs.writeFile(`{dir}/Mod {folder}.esp`, `plugin {folder}`))
+  table.insert(lines, `data="{dir}"`)
+  table.insert(lines, `content=Mod {folder}.esp`)
+end
+
+assert(fs.writeFile(`{root}/openmw.cfg`, table.concat(lines, '\n') .. '\n'))
+
+--- Every module of another package that one of vfstool's requires.
+local Others = {
+  '@dream/fs',
+  '@dream/process',
+  '@openmw-config',
+  '@jess/data/value',
+  '@jess/json',
+  '@jess/yaml',
+  '@vfs',
+  '@vfs/paths',
+  '@vfs/layer',
+  '@vfs/encode',
+  '@vfs/core',
+}
+
+if mode == 'own' then
+  for _, name in Others do
+    require(name)
+  end
+end
+
+local started = os.clock()
+local vfstool = require '@vfstool'
+local required = os.clock() - started
+
+local validated, locked, drifted = `{root}/validate.json`, `{root}/lock.json`, `{root}/drift.json`
+
+--- A command's exit code and how long its first run took.
+local function first(argv: { string }): (number, number)
+  local start = os.clock()
+  local code = vfstool.run(argv)
+  return code, os.clock() - start
+end
+
+local validateCode, firstValidate = first { 'validate', '--config', root, '--format', 'json', '--output', validated }
+local lockCode, firstLock = first { 'lock', '--config', root, '--format', 'json', '--output', locked }
+local driftCode, firstDrift = first { 'drift', locked, '--config', root, '--format', 'json', '--output', drifted }
+
+local keys = Folders * (PerFolder // 2 + 1) + PerFolder // 2
+local entries = select(2, string.gsub(fs.readFileString(locked) or '', '"provider_count":', ''))
+
+if
+  validateCode ~= 0
+  or fs.readFileString(validated) ~= '{"issues":[]}'
+  or lockCode ~= 0
+  or entries ~= keys
+  or driftCode ~= 0
+  or fs.readFileString(drifted) ~= '{"entries":[],"counts":{}}'
+then
+  error('vfstool bench: the cold commands did not write what the load order holds', 0)
+end
+
+assert(fs.remove(root, { recursive = true }))
+
+local suffix = if mode == 'own' then ', other packages loaded' else ''
+
+print(`cold: require @vfstool{suffix}\t{string.format('%.9f', required)}`)
+print(`cold: first validate{suffix}\t{string.format('%.9f', firstValidate)}`)
+print(`cold: first lock{suffix}\t{string.format('%.9f', firstLock)}`)
+print(`cold: first drift{suffix}\t{string.format('%.9f', firstDrift)}`)
+print(`cold: all four{suffix}\t{string.format('%.9f', required + firstValidate + firstLock + firstDrift)}`)

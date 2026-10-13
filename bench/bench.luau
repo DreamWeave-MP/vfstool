@@ -1,0 +1,426 @@
+--!strict
+-- The vfstool commands, timed from Luau through the package's one export, `run`: each over a
+-- synthetic mod list written under a scratch folder (240 data folders of 25 files, 200 plugins
+-- among them, and a 2,500-entry BSA), its report written to a file. Run on a release build by
+-- `jess run --capability filesystem.read --capability filesystem.write --package jpk/vfstool
+-- --package-path jpk jpk/vfstool/bench/bench.luau <scratch> [filter]`. Prints one line per
+-- workload: its name, a tab, and the seconds one run of the command takes, configuration, VFS
+-- and report included. Every run's exit code is checked, and its report is held to a count the
+-- load order's generator works out without the port, so a command that stopped doing the work
+-- fails instead of posting a time. The reports stay in `<scratch>/vfstool-bench/reports`: two
+-- builds run over the same scratch folder must leave the same bytes there.
+local archive = require '@dream-archive'
+local fs = require '@dream/fs'
+local vfstool = require '@vfstool'
+
+-- A build without the verified toolchain runs Luau slower than a release does, so a number from
+-- one says nothing about what ships.
+if not jess.bench.verified then
+  error('vfstool bench: this jess was built without the verified toolchain: measure on a release build', 0)
+end
+
+--- The arguments: a folder to write the load order into, and a filter on the workload names.
+local scratch: string?, filter: string? = ...
+local only = if filter and filter ~= '' then filter else nil
+
+if not scratch then error('vfstool bench: a scratch folder is required', 0) end
+
+local function median(samples: { number }): number
+  table.sort(samples)
+  return samples[(#samples + 1) // 2]
+end
+
+--- Seconds per call of `body`: warmed up, then the median of seven batches of a size that takes
+--- about a tenth of a second, a full collection before each. `verify` is given the result of the
+--- first call and of one more after the last batch, outside the time.
+local function measure(body: () -> number, verify: (result: number) -> ()): number
+  jess.bench.collect()
+  verify(body())
+  local start = os.clock()
+  body()
+  local once = math.max(os.clock() - start, 1e-7)
+  local iterations = math.max(1, math.floor(0.1 / once))
+  local samples = {}
+
+  for batch = 1, 7 do
+    jess.bench.collect()
+    start = os.clock()
+
+    for _ = 1, iterations do
+      body()
+    end
+
+    samples[batch] = (os.clock() - start) / iterations
+  end
+
+  verify(body())
+  return median(samples)
+end
+
+-- The load order -------------------------------------------------------------------------------------
+
+local random = 0x2545f491
+
+local function nextRandom(): number
+  random = bit32.bxor(random, bit32.lshift(random, 13))
+  random = bit32.bxor(random, bit32.rshift(random, 17))
+  random = bit32.bxor(random, bit32.lshift(random, 5))
+  return random
+end
+
+local function pick(list: { string }): string return list[nextRandom() % #list + 1] end
+
+--- How many data folders the mod list has, how many of them the earlier list had, and how many
+--- files each provides of a pool of `PoolSize`, the first `ArchiveEntries` of which are packed.
+local FolderCount, EarlierCount, PerFolder, PoolSize, ArchiveEntries = 240, 200, 25, 4000, 2500
+
+--- The folder every file of which the next one overrides.
+local ShadowedFolder = 2
+
+--- One stride through the pool per folder, each coprime to the pool's size, so a folder never
+--- picks a file twice.
+local Strides = { 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47 }
+
+local Tops = { 'Meshes', 'Textures', 'Icons', 'Sound', 'Music', 'BookArt', 'Scripts', 'Splash' }
+
+local Folders = {
+  'x',
+  'm',
+  'a',
+  'Actors',
+  'Clutter',
+  'Fx',
+  'Menus',
+  'Architecture/Hlaalu',
+  'Landscape/Grass',
+  'Creatures/Kwama/Forager',
+}
+
+local Stems = {
+  'Ex_Hlaalu_Door',
+  'In_Velothi_Wall',
+  'Tx_Rock_Brown',
+  'Furn_De_Table',
+  'Misc_Com_Bottle',
+  'Terrain_Ashland',
+  'Act_Banner',
+  'Light_Lantern',
+}
+
+local Extensions = { 'NIF', 'dds', 'tga', 'wav', 'kf', 'lua' }
+
+--- Every file a folder can provide, as a mod author spelled it; its number is in its name.
+local pool = [for index in range(1, PoolSize) =>
+  `{pick(Tops)}/{pick(Folders)}/{pick(Stems)}_{string.format('%04d', index)}.{pick(Extensions)}`]
+
+--- The key a path has, worked out without the port.
+local function keyOf(path: string): string return string.lower(path) end
+
+--- A path as one of three installers left it: as written, lowered, or raised.
+local function spell(path: string, style: number): string
+  if style == 0 then return path end
+
+  return if style == 1 then string.lower(path) else string.upper(path)
+end
+
+--- Which pool files each folder provides; the shadowed folder provides what the next one does.
+local picks: { { number } } = {}
+
+for folder = 1, FolderCount do
+  local start, stride = nextRandom() % PoolSize, Strides[folder % #Strides + 1]
+
+  picks[folder] = [for offset in range(0, PerFolder - 1) => (start + stride * offset) % PoolSize + 1]
+end
+
+picks[ShadowedFolder] = table.clone(picks[ShadowedFolder + 1])
+
+--- Whether a folder has a plugin of its own, and whether a groundcover plugin too. The shadowed
+--- folder has neither.
+local function hasPlugin(folder: number): boolean return folder % 6 ~= ShadowedFolder end
+
+local function hasGroundcover(folder: number): boolean return folder % 40 == 0 end
+
+local function folderName(folder: number): string return string.format('Mod %03d', folder) end
+
+--- The folders that provide each key, lowest first, and whether the archive does.
+local providers: { [string]: { number } }, archived: { [string]: boolean } = {}, {}
+
+--- Every key of the pool that something provides, in first-seen order.
+local keyList: { string } = {}
+
+for index = 1, ArchiveEntries do
+  local key = keyOf(pool[index])
+  archived[key] = true
+  providers[key] = {}
+  table.insert(keyList, key)
+end
+
+for folder, chosen in picks do
+  for _, index in chosen do
+    local key = keyOf(pool[index])
+    local list = providers[key]
+    if not list then
+      list = {}
+      providers[key] = list
+      table.insert(keyList, key)
+    end
+
+    table.insert(list, folder)
+  end
+end
+
+local plugins = [for folder in range(1, FolderCount) if hasPlugin(folder) => `{folderName(folder)}.esp`]
+local groundcover = [for folder in range(1, FolderCount) if hasGroundcover(folder) => `Grass {folder}.esp`]
+
+--- How many sources provide a key: the folders and the archive.
+local function stackSize(key: string): number return #providers[key] + (if archived[key] then 1 else 0) end
+
+--- The last folder that provides a key some folder provides: its winner's.
+local function highest(key: string): number
+  local folders = providers[key]
+  return folders[#folders]
+end
+
+--- How many keys the VFS holds: the pool's, the plugins, and the archive's own file.
+local total = #keyList + #plugins + #groundcover + 1
+local duplicated = #[for key in keyList if stackSize(key) > 1 => key]
+
+--- How many of the pool's keys `accept` takes, given the folders that provide each.
+local function keysWhere(accept: (key: string, folders: { number }) -> boolean): number
+  return #[for key in keyList if accept(key, providers[key]) => key]
+end
+
+assert(fs.mkdir(scratch, { recursive = true }))
+
+local root = `{assert(fs.canonicalize(scratch))}/vfstool-bench`
+
+if fs.exists(root) then assert(fs.remove(root, { recursive = true })) end
+
+local function dirOf(folder: number): string return `{root}/mods/{folderName(folder)}` end
+
+do
+  local made: { [string]: boolean } = {}
+
+  local function write(path: string, contents: string)
+    local parent = string.match(path, '^(.*)/[^/]*$')
+    if parent and not made[parent] then
+      assert(fs.mkdir(parent, { recursive = true }))
+      made[parent] = true
+    end
+
+    assert(fs.writeFile(path, contents))
+  end
+
+  for folder, chosen in picks do
+    local dir = dirOf(folder)
+
+    for _, index in chosen do
+      local relative = spell(pool[index], (index + folder) % 3)
+      write(`{dir}/{relative}`, `{folder}:{relative}`)
+    end
+
+    if hasPlugin(folder) then write(`{dir}/{folderName(folder)}.esp`, `plugin {folder}`) end
+
+    if hasGroundcover(folder) then write(`{dir}/Grass {folder}.esp`, `grass {folder}`) end
+  end
+
+  local builder = archive.bsa.tes3.Builder.new()
+
+  for index = 1, ArchiveEntries do
+    local name = string.lower((string.gsub(pool[index], '/', '\\')))
+    builder:addBytes(name, name)
+  end
+
+  write(`{dirOf(1)}/Base.bsa`, builder:toBytes())
+
+  --- An openmw.cfg of the first `count` folders, with the plugins they hold.
+  local function configuration(count: number): string
+    local lines = [for folder in range(1, count) => `data="{dirOf(folder)}"`]
+    table.insert(lines, 'fallback-archive=Base.bsa')
+
+    for folder = 1, count do
+      if hasPlugin(folder) then table.insert(lines, `content={folderName(folder)}.esp`) end
+
+      if hasGroundcover(folder) then table.insert(lines, `groundcover=Grass {folder}.esp`) end
+    end
+
+    return table.concat(lines, '\n') .. '\n'
+  end
+
+  write(`{root}/openmw.cfg`, configuration(FolderCount))
+  write(`{root}/earlier/openmw.cfg`, configuration(EarlierCount))
+  assert(fs.mkdir(`{root}/reports`, { recursive = true }))
+end
+
+-- The commands -----------------------------------------------------------------------------------------
+
+--- How many times `pattern` matches in `text`.
+local function matches(text: string, pattern: string): number
+  return (select(2, string.gsub(text, pattern, '')))
+end
+
+--- Runs a command with the mod list's configuration (or `config`) and a report file of its own,
+--- and answers its exit code with what it wrote, or `''` for nothing.
+local function command(
+  name: string,
+  format: string,
+  argv: { string },
+  config: string?
+): (() -> number, () -> string)
+  local path = `{root}/reports/{string.gsub(name, '[^%w]+', '-')}.{format}`
+  local arguments = table.clone(argv)
+
+  for index, option in { '--config', config or root, '--format', format, '--output', path } do
+    table.insert(arguments, index + 1, option)
+  end
+
+  return function(): number
+    -- `run` takes the command's name off the list it is given.
+    return vfstool.run(table.clone(arguments))
+  end, function(): string return fs.readFileString(path) or '' end
+end
+
+--- Times a command that must exit with `code` and leave a report `check` accepts.
+local function workload(
+  name: string,
+  format: string,
+  argv: { string },
+  code: number,
+  check: (report: string) -> boolean,
+  config: string?
+)
+  if only and not string.find(name, only, 1, true) then return end
+
+  local body, written = command(name, format, argv, config)
+
+  local function verify(result: number)
+    if result ~= code then error(`vfstool bench: {name} exited with {result}, not {code}`, 0) end
+
+    if not check(written()) then error(`vfstool bench: {name} wrote a report that fails its check`, 0) end
+  end
+
+  print(`{name}\t{string.format('%.9f', measure(body, verify))}`)
+end
+
+--- A check that `pattern` matches a report `count` times.
+local function counted(pattern: string, count: number): (report: string) -> boolean
+  return function(report: string): boolean return matches(report, pattern) == count end
+end
+
+local function exactly(text: string): (report: string) -> boolean
+  return function(report: string): boolean return report == text end
+end
+
+-- What validate looks for is all there: a folder's plugin is found in that folder, after every
+-- later folder has been listed for it.
+workload('validate', 'json', { 'validate' }, 0, exactly '{"issues":[]}')
+workload('validate --full', 'json', { 'validate', '--full' }, 0, exactly '{"issues":[]}')
+workload('find-file -s, a file nothing has', 'json', { 'find-file', '-s', 'meshes/x/absent.nif' }, 1, exactly '')
+
+-- A report of one key and a report of two rows: what a command costs before its report does.
+do
+  local key = keyList[1]
+
+  workload('explain', 'json', { 'explain', key }, 0, counted('"source_index":', stackSize(key)))
+  workload('archives', 'json', { 'archives' }, 0, counted('"entry_count":' .. ArchiveEntries .. ',', 1))
+end
+
+do
+  --- The pool's files numbered below a hundred that something provides, and what the fifth folder
+  --- still provides: the keys nothing later has.
+  local low = #[for index in range(1, 99) if providers[keyOf(pool[index])] => index]
+  local fifth = keysWhere(function(_: string, folders: { number }): boolean return folders[#folders] == 5 end)
+
+  workload('find -r', 'json', { 'find', '-r', '_00[0-9][0-9]\\.' }, 0, counted('_00%d%d%.', low))
+  workload('remaining -r', 'yaml', { 'remaining', '-r', dirOf(5) }, 0, counted('_%d%d%d%d%.', fifth))
+end
+
+workload('duplicates', 'json', { 'duplicates' }, 0, counted('"winner_index":', duplicated))
+workload('archive-list', 'json', { 'archive-list', 'base.bsa' }, 0, counted('"wins":', ArchiveEntries))
+workload('contributions', 'json', { 'contributions' }, 0, counted('"winning_files":', FolderCount + 1))
+
+do
+  --- Every provider below a key's winner is overridden, and every provider above its lowest
+  --- overrides: a row in the report of the source it comes from, each way. The archive is below
+  --- every folder, so what it has that a folder has too is a row of its own, spelled with `::`.
+  local below = sum[for key in keyList => stackSize(key) - 1]
+  local packedBelow = #[for key in keyList if archived[key] and stackSize(key) > 1 => key]
+
+  --- A folder is shadowed when it has no plugin and a later folder has every file it has.
+  local function isShadowed(folder: number): boolean
+    if hasPlugin(folder) or hasGroundcover(folder) then return false end
+
+    return all[for index in picks[folder] => highest(keyOf(pool[index])) > folder]
+  end
+
+  local shadowed = #[for folder in range(1, FolderCount) if isShadowed(folder) => folder]
+
+  workload('conflicts', 'json', { 'conflicts' }, 0, counted('::', packedBelow))
+  workload('conflicts -r', 'json', { 'conflicts', '-r' }, 0, counted('_%d%d%d%d%.', 2 * below))
+  workload('shadowed -l', 'json', { 'shadowed', '-l' }, 0, function(report: string): boolean
+    return matches(report, '"shadowed_files":') == shadowed
+      and matches(report, '_%d%d%d%d%.') == shadowed * PerFolder
+  end)
+  workload(
+    'diff',
+    'json',
+    { 'diff', dirOf(ShadowedFolder), dirOf(ShadowedFolder + 1) },
+    0,
+    counted('_%d%d%d%d%.', PerFolder)
+  )
+end
+
+-- The plan links every loose winner and names every packed one, its own archive's file included.
+workload('collapse --dry-run, json', 'json', { 'collapse', '--dry-run', `{root}/collapsed` }, 0, counted('"key":', total))
+workload('collapse --dry-run, yaml', 'yaml', { 'collapse', '--dry-run', `{root}/collapsed` }, 0, counted('\n  key: ', total))
+
+--- The last field of a lock's entry, as each format spells it.
+local ProviderCounts = { json = '"provider_count":', yaml = '\n  provider_count: ', toml = '\nprovider_count = ' }
+
+for _, format in { 'json', 'yaml', 'toml' } do
+  workload(`lock, {format}`, format, { 'lock' }, 0, counted(ProviderCounts[format], total))
+end
+
+-- Locks to read: the mod list's own in each format, and the earlier list's.
+do
+  local function keep(name: string, format: string, config: string?): string
+    local path = `{root}/{name}.{format}`
+    local arguments = { 'lock', '--config', config or root, '--format', format, '--output', path }
+    if vfstool.run(arguments) ~= 0 then error(`vfstool bench: no {name} lock`, 0) end
+
+    return path
+  end
+
+  for _, format in { 'json', 'yaml', 'toml' } do
+    local path = keep('kept', format)
+
+    workload(`drift from a {format} lock, none`, 'json', { 'drift', path }, 0, exactly '{"entries":[],"counts":{}}')
+  end
+
+  --- What the forty folders added since the earlier list change: a key only they provide is
+  --- added, and one they provide over an earlier winner has a new source, hash and count.
+  local function later(folders: { number }): boolean
+    return #folders > 0 and folders[#folders] > EarlierCount
+  end
+
+  local added = keysWhere(function(key: string, folders: { number }): boolean
+    return later(folders) and folders[1] > EarlierCount and not archived[key]
+  end)
+
+  local changed = keysWhere(function(key: string, folders: { number }): boolean
+    return later(folders) and (folders[1] <= EarlierCount or archived[key])
+  end)
+
+  local newPlugins = #[for folder in range(EarlierCount + 1, FolderCount) if hasPlugin(folder) => folder]
+    + #[for folder in range(EarlierCount + 1, FolderCount) if hasGroundcover(folder) => folder]
+
+  local earlier = keep('earlier', 'json', `{root}/earlier`)
+
+  workload(
+    'drift from a json lock, forty folders added',
+    'json',
+    { 'drift', '--fail-on-drift', earlier },
+    4,
+    counted('"kind":', added + newPlugins + 3 * changed)
+  )
+end
