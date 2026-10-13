@@ -12,6 +12,10 @@ tests = ["tests/run.luau", "tests/reports.luau", "tests/style.luau"]
 "org.dreamweave.openmw-config" = "0.1"
 "org.dreamweave.vfs" = "0.1"
 
+# The suites and the bench pack their fixture archives with it.
+[dev-dependencies]
+"org.dreamweave.dream-archive" = "0.1"
+
 [modules]
 "@vfstool" = "src/init.luau"
 
