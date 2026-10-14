@@ -2,13 +2,13 @@
 -- Whole vfstool processes, timed from outside: `jess package run` of each package folder given,
 -- for commands over a load order of three folders, where starting up is most of what a run
 -- costs. Run by `jess run --capability filesystem.read --capability filesystem.write
--- --capability process.spawn jpk/vfstool/bench/process.luau <jess> <package path> <scratch>
+-- --capability process.spawn jpk/vfstool/bench/process.jsl <jess> <package path> <scratch>
 -- <rounds> <package folder>...`: the jess to start (a release build), the folder the packages'
 -- dependencies are found in, a scratch folder, how many times each command runs, and one or more
 -- folders of this package (two builds of it, to compare them). The folders take turns, round by
 -- round, so what else the machine is doing falls on each alike. Prints one line per folder and
 -- command: the folder, the command, a tab, and the median wall-clock seconds of its runs. Every
--- run's exit code is checked, and the report of one that writes a report. When `bench.luau` has
+-- run's exit code is checked, and the report of one that writes a report. When `bench.jsl` has
 -- run over the same scratch folder, the mod list of 240 folders it left there gets two commands
 -- too: the ones that never build a VFS, where a run is more than starting up.
 local fs = require '@dream/fs'
@@ -19,7 +19,7 @@ local packages: { string } = { select(5, ...) }
 local rounds = tonumber(roundCount)
 
 if not jessPath or not packagePath or not scratch or not rounds or #packages == 0 then
-  error('vfstool bench: usage: process.luau <jess> <package path> <scratch> <rounds> <package folder>...', 0)
+  error('vfstool bench: usage: process.jsl <jess> <package path> <scratch> <rounds> <package folder>...', 0)
 end
 
 assert(fs.mkdir(scratch, { recursive = true }))

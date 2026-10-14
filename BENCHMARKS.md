@@ -3,7 +3,7 @@
 Four benches. A command-line tool has three costs, and the fourth is for a lookup none of those
 three is large enough to show.
 
-`bench/bench.luau` times the commands warm, through the package's one export, `run`: each over a
+`bench/bench.jsl` times the commands warm, through the package's one export, `run`: each over a
 synthetic mod list written under a scratch folder (240 data folders of 25 files, 200 plugins and
 6 groundcover plugins beside them, and a 2,500-entry BSA: 3,816 keys), its report written to a
 file. One line per workload: its name, a tab, the seconds one run of the command takes with the
@@ -13,17 +13,17 @@ them. Every run's exit code is checked, and its report is held to a count the mo
 generator works out without the port. The reports stay in `<scratch>/vfstool-bench/reports`: two
 builds run over the same scratch folder must leave the same bytes there.
 
-`bench/cold.luau` times what one process pays once, from inside it: `@vfstool` required, then the
+`bench/cold.jsl` times what one process pays once, from inside it: `@vfstool` required, then the
 first `validate`, `lock` and `drift` over three folders, each of which compiles what it is the
 first to need. With `own`, every module of another package is loaded first, so the lines time
 this package's own modules alone. Each line is one sample, so it is run many times and the
 medians are compared.
 
-`bench/process.luau` times whole processes from outside: `jess package run` of each package
+`bench/process.jsl` times whole processes from outside: `jess package run` of each package
 folder it is given, turn and turn about, for six commands over three folders, and for two more
-over `bench.luau`'s mod list when that has been left in the same scratch folder.
+over `bench.jsl`'s mod list when that has been left in the same scratch folder.
 
-`bench/crowded.luau` times loose lookups in one data folder of 20,000 names, where what a lookup
+`bench/crowded.jsl` times loose lookups in one data folder of 20,000 names, where what a lookup
 costs is reading the folder: `find-file` for one name, and `validate` for one and for fifty. Each
 line is the median of nine runs after one that is not kept. `find-file` prints the path it finds,
 so the lines come after the paths.
@@ -31,18 +31,18 @@ so the lines come after the paths.
 ```sh
 jess run --package jpk/vfstool --package-path jpk \
   --capability filesystem.read --capability filesystem.write \
-  jpk/vfstool/bench/bench.luau <scratch folder> [filter]
+  jpk/vfstool/bench/bench.jsl <scratch folder> [filter]
 
 jess run --package jpk/vfstool --package-path jpk \
   --capability filesystem.read --capability filesystem.write \
-  jpk/vfstool/bench/cold.luau <scratch folder> [own]
+  jpk/vfstool/bench/cold.jsl <scratch folder> [own]
 
 jess run --capability filesystem.read --capability filesystem.write --capability process.spawn \
-  jpk/vfstool/bench/process.luau <jess> <package path> <scratch folder> <rounds> <package folder>...
+  jpk/vfstool/bench/process.jsl <jess> <package path> <scratch folder> <rounds> <package folder>...
 
 jess run --package jpk/vfstool --package-path jpk \
   --capability filesystem.read --capability filesystem.write \
-  jpk/vfstool/bench/crowded.luau <scratch folder> [names]
+  jpk/vfstool/bench/crowded.jsl <scratch folder> [names]
 ```
 
 ## The move onto l3i 2.0, base against head
@@ -56,9 +56,9 @@ jess run --package jpk/vfstool --package-path jpk \
   `find-file`'s loose lookup and nothing else, and is the head of the table of one folder of
   20,000 names; the rows of the others it could move were run again with it and are under that
   table.
-- Protocol: every A/B alternates base and head, back to back, under one lock. `bench.luau`: three
-  runs of each, each cell the median of its three. `cold.luau`: thirty-one runs of each, in each
-  mode. `process.luau`: twenty-one rounds. `crowded.luau`: five runs of each, each cell the median
+- Protocol: every A/B alternates base and head, back to back, under one lock. `bench.jsl`: three
+  runs of each, each cell the median of its three. `cold.jsl`: thirty-one runs of each, in each
+  mode. `process.jsl`: twenty-one rounds. `crowded.jsl`: five runs of each, each cell the median
   of its five. A difference under 5 percent is called no change.
 
 ### Warm: one run of a command, everything loaded
@@ -125,9 +125,9 @@ The same six commands at each commit made for speed, in one run of twenty-one ro
 | first drift | 0.83 | 3.76 | pays for the lock reader |
 | all four | 179.11 | 164.58 | 1.09x |
 | require @vfstool, other packages loaded | 13.07 | 10.29 | 1.27x |
-| first validate, other packages loaded | 0.29 | 2.77 | pays for `reports.luau` |
+| first validate, other packages loaded | 0.29 | 2.77 | pays for `reports.jsl` |
 | first lock, other packages loaded | 0.82 | 0.86 | no change |
-| first drift, other packages loaded | 0.76 | 1.50 | pays for `lock.luau` |
+| first drift, other packages loaded | 0.76 | 1.50 | pays for `lock.jsl` |
 | all four, other packages loaded | 14.97 | 15.52 | no change |
 
 ### One folder of 20,000 names
@@ -138,7 +138,7 @@ The same six commands at each commit made for speed, in one run of twenty-one ro
 | validate, one name of 20,000 | 9.90 | 13.09 | 13.27 | 0.75x, slower |
 | validate, 50 names of 20,000 | 422.30 | 13.41 | 13.15 | 32.1x |
 
-In the same session, three runs of `bench.luau` a side and twenty-one rounds of `process.luau`,
+In the same session, three runs of `bench.jsl` a side and twenty-one rounds of `process.jsl`,
 `5864b68` against head: warm `validate` 7.64 and 7.57 ms, warm `find-file -s, a file nothing has`
 120.26 and 120.90, and each of the eight processes within 1.4 ms of itself. No change.
 
@@ -186,7 +186,7 @@ copy, which is under what the A/B can show, and was not kept.
 The loops the dialect expresses exactly were converted (`5e57ff3`, `9e696ac`, `2a67123`: seven
 comprehensions, an `any`, a slice, and fourteen record patterns, thirteen of them in the report
 shapes), measured, and put back (`5864b68`). None of them is in a path that runs more than once per process, so
-none could be faster warm, and each module that gained one loads slower. `cold.luau own`,
+none could be faster warm, and each module that gained one loads slower. `cold.jsl own`,
 thirty-one runs of each, in ms; the middle rows are scratch builds with one module's conversions
 taken out again:
 
@@ -194,13 +194,13 @@ taken out again:
 |---|---:|---:|---:|
 | plain (`93b3475`) | 10.13 | 2.69 | 15.13 |
 | converted (`2a67123`) | 11.20 | 3.09 | 16.57 |
-| converted, `init.luau` plain (no slice) | 10.90 | 3.07 | 16.36 |
-| converted, `commands.luau` plain (no `any`, no comprehensions) | 10.53 | 3.10 | 16.06 |
-| converted, `reports.luau` without its two comprehensions | 11.29 | 3.00 | 16.60 |
-| converted, `reports.luau` plain (no comprehensions, no patterns) | 11.15 | 2.71 | 16.19 |
+| converted, `init.jsl` plain (no slice) | 10.90 | 3.07 | 16.36 |
+| converted, `commands.jsl` plain (no `any`, no comprehensions) | 10.53 | 3.10 | 16.06 |
+| converted, `reports.jsl` without its two comprehensions | 11.29 | 3.00 | 16.60 |
+| converted, `reports.jsl` plain (no comprehensions, no patterns) | 11.15 | 2.71 | 16.19 |
 
-That is 0.3 ms for `init.luau`'s one slice, 0.7 ms for `commands.luau`'s `any` and five
-comprehensions, and 0.4 ms for `reports.luau`, 0.3 of it the record patterns, which are not free
+That is 0.3 ms for `init.jsl`'s one slice, 0.7 ms for `commands.jsl`'s `any` and five
+comprehensions, and 0.4 ms for `reports.jsl`, 0.3 of it the record patterns, which are not free
 at load: 1.1 ms on
 every process and 0.4 more on one that writes a report. From outside, over forty-one rounds, the
 six commands were each slower converted, by 0.2 to 2.6 ms (0.2 to 2.2 percent): under what this

@@ -2,7 +2,7 @@
 --!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- What every vfstool command shares: the openmw.cfg it reads, the VFS it builds from it, and the
--- messages it prints. The reports are in `reports.luau`.
+-- messages it prints. The reports are in `reports.jsl`.
 local fs = require '@dream/fs'
 local openmwConfig = require '@openmw-config'
 local paths = require '@vfs/paths'

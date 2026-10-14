@@ -3,7 +3,7 @@
 -- compiles, then the first run of three commands over a load order of three folders, each of
 -- which compiles what it is the first to need. Run by `jess run --capability filesystem.read
 -- --capability filesystem.write --package jpk/vfstool --package-path jpk
--- jpk/vfstool/bench/cold.luau <scratch> [own]`, on a release build. With `own`, every module of
+-- jpk/vfstool/bench/cold.jsl <scratch> [own]`, on a release build. With `own`, every module of
 -- another package that vfstool can require is loaded first, so the lines time the package's own
 -- four modules alone. Each line is one sample of something a process does once, so compare
 -- medians over many runs. This file uses none of the l3i dialect, so that whatever a module's

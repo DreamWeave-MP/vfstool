@@ -1,10 +1,10 @@
 --!strict
--- One process's worth of every vfstool command, for `differential.luau` to run against two
+-- One process's worth of every vfstool command, for `differential.jsl` to run against two
 -- builds of the package and compare stream for stream: the steps the reports suite records, then
 -- what a suite on every platform can't hold: `run` with real children (through `sh`), and a
 -- data folder whose folders and files differ only by case. `jess run --package <build>
 -- --package-path jpk --capability filesystem.read --capability filesystem.write --capability
--- process.environment --capability process.spawn tests/session.luau <scratch> <transcript>`
+-- process.environment --capability process.spawn tests/session.jsl <scratch> <transcript>`
 -- writes the steps and their exit codes to `<transcript>`; what the commands print goes where
 -- they print it.
 local fs = require '@dream/fs'

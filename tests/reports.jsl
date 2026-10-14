@@ -1,7 +1,7 @@
 --!strict
 --!native
 -- Every command's exit code and every report it writes, in each format, over the load order
--- `transcript.luau` builds, held to `golden/reports.txt`: what the commands wrote before anything
+-- `transcript.jsl` builds, held to `golden/reports.txt`: what the commands wrote before anything
 -- in them was moved onto the l3i dialect. Everything it writes stays under the test's scratch root.
 local fs = require '@dream/fs'
 local support = require './support'

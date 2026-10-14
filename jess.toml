@@ -6,7 +6,7 @@ version = "0.1.0"
 jess_api = "1"
 default_target = "vfstool"
 include = ["src"]
-tests = ["tests/run.luau", "tests/reports.luau", "tests/loose.luau", "tests/style.luau"]
+tests = ["tests/run.jsl", "tests/reports.jsl", "tests/loose.jsl", "tests/style.jsl"]
 
 [dependencies]
 "org.dreamweave.openmw-config" = "0.1"
@@ -17,7 +17,7 @@ tests = ["tests/run.luau", "tests/reports.luau", "tests/loose.luau", "tests/styl
 "org.dreamweave.dream-archive" = "0.1"
 
 [modules]
-"@vfstool" = "src/init.luau"
+"@vfstool" = "src/init.jsl"
 
 # The module is inert API: it does nothing until something requires it, and runs with the
 # authority of whatever calls it.
@@ -33,5 +33,5 @@ exports = ["@vfstool"]
 [targets.vfstool]
 kind = "command"
 command = "vfstool"
-entry = "src/main.luau"
+entry = "src/main.jsl"
 capabilities = ["filesystem.read", "filesystem.write", "process.environment", "process.spawn"]

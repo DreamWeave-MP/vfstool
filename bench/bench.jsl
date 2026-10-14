@@ -3,7 +3,7 @@
 -- synthetic mod list written under a scratch folder (240 data folders of 25 files, 200 plugins
 -- among them, and a 2,500-entry BSA), its report written to a file. Run on a release build by
 -- `jess run --capability filesystem.read --capability filesystem.write --package jpk/vfstool
--- --package-path jpk jpk/vfstool/bench/bench.luau <scratch> [filter]`. Prints one line per
+-- --package-path jpk jpk/vfstool/bench/bench.jsl <scratch> [filter]`. Prints one line per
 -- workload: its name, a tab, and the seconds one run of the command takes, configuration, VFS
 -- and report included. Every run's exit code is checked, and its report is held to a count the
 -- load order's generator works out without the port, so a command that stopped doing the work

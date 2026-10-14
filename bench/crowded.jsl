@@ -2,7 +2,7 @@
 -- Loose lookups in one data folder of many names, where what a lookup costs is reading the
 -- folder: `find-file` for one name, and `validate` for one name and for fifty. Run by `jess run
 -- --capability filesystem.read --capability filesystem.write --package jpk/vfstool --package-path
--- jpk jpk/vfstool/bench/crowded.luau <scratch> [names]`, on a release build; the folder holds
+-- jpk jpk/vfstool/bench/crowded.jsl <scratch> [names]`, on a release build; the folder holds
 -- 20,000 names unless told otherwise. `find-file` prints the path it finds on standard output,
 -- once a run, so the lines this prints come after them all: a workload's name, a tab, and the
 -- median seconds of nine runs of the command, after one that is not kept. Every run's exit code

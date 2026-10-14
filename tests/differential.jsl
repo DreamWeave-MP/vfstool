@@ -1,12 +1,12 @@
 --!strict
--- Two builds of the package, compared as command lines: `session.luau` run by each in a process
+-- Two builds of the package, compared as command lines: `session.jsl` run by each in a process
 -- of its own, over the same scratch folder, and what each printed to standard output and to
 -- standard error, and the steps and exit codes each recorded, held byte for byte to the other's.
 -- The suites pin the reports and the exit codes; this is for the messages, the paths `find-file`
 -- prints, and `run`'s children, which a suite can't capture. It needs `sh` and a file system that
 -- tells names apart by case, so the manifest doesn't name it: run it by hand, by `jess run
 -- --capability filesystem.read --capability filesystem.write --capability process.spawn
--- tests/differential.luau <jess> <package path> <scratch> <one build> <another>`. Exits 1 when
+-- tests/differential.jsl <jess> <package path> <scratch> <one build> <another>`. Exits 1 when
 -- the two differ, and says where.
 local fs = require '@dream/fs'
 local process = require '@dream/process'
@@ -14,7 +14,7 @@ local process = require '@dream/process'
 local jessPath: string?, packagePath: string?, scratch: string?, base: string?, head: string? = ...
 
 if not (jessPath and packagePath and scratch and base and head) then
-  error('usage: differential.luau <jess> <package path> <scratch> <one build> <another>', 0)
+  error('usage: differential.jsl <jess> <package path> <scratch> <one build> <another>', 0)
 end
 
 --- Where this file is, from its chunk name: the folder the session is in.
@@ -48,7 +48,7 @@ local function session(build: string, label: string): (dream_process_Result, str
     'process.environment',
     '--capability',
     'process.spawn',
-    `{here()}/session.luau`,
+    `{here()}/session.jsl`,
     root,
     written,
   }
