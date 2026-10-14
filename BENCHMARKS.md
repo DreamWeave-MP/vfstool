@@ -1,6 +1,6 @@
 # VFS benchmarks
 
-`bench/bench.luau` times the package through what it exports: path normalization and ordering
+`bench/bench.jsl` times the package through what it exports: path normalization and ordering
 (`@vfs/paths`), layer and conflict indexes over a synthetic load order (nine sources, 20,400
 files, 10,158 keys), semantic comparison, and a VFS over four folders of 1,500 files and a
 3,666-entry BSA (7,124 keys) written under a scratch folder: built, looked up, read from, listed,
@@ -13,7 +13,7 @@ a time.
 ```sh
 jess run --package jpk/vfs --package-path jpk \
   --capability filesystem.read --capability filesystem.write \
-  jpk/vfs/bench/bench.luau <scratch folder> [filter]
+  jpk/vfs/bench/bench.jsl <scratch folder> [filter]
 ```
 
 One line per workload: its name, a tab, the seconds one call takes. A workload's call is the

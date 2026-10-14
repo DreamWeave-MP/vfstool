@@ -3,7 +3,7 @@
 -- a synthetic load order, semantic comparison, and a VFS over loose folders and an archive written
 -- under a scratch folder: built, looked up, listed, reported on and locked. Run on a release build
 -- by `jess run --capability filesystem.read --capability filesystem.write --package jpk/vfs
--- --package-path jpk jpk/vfs/bench/bench.luau <scratch> [filter]`. Prints one line per workload:
+-- --package-path jpk jpk/vfs/bench/bench.jsl <scratch> [filter]`. Prints one line per workload:
 -- its name, a tab, and the seconds one call takes. Every workload answers what its inputs say it
 -- must (a count, a length, a kind), worked out here without the port, so a path that stopped doing
 -- the work fails instead of posting a time.

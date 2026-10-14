@@ -2,7 +2,7 @@
 -- The VFS's ordered indexes, checked on a handful of winners: a byte prefix and a component prefix
 -- find different ranges, a page comes off either end, and a mutation moves the revision so the
 -- next page sees it. Run by `jess run --capability filesystem.read --capability filesystem.write
--- --package jpk/vfs --package-path jpk jpk/vfs/perf/vfs-indexes.luau`.
+-- --package jpk/vfs --package-path jpk jpk/vfs/perf/vfs-indexes.jsl`.
 local module = require '@vfs'
 
 --- A view's rows as keys: an entry row by its key, a key as it is.

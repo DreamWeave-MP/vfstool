@@ -31,7 +31,7 @@ export type State = {
   count: number,
   revision: number,
   providers: { [string]: { Entry } },
-  --- `files` and `providers` again, by key token (`keys.luau`), for lookups by any spelling.
+  --- `files` and `providers` again, by key token (`keys.jsl`), for lookups by any spelling.
   winners: { [number]: Entry },
   stacks: { [number]: { Entry } },
   sources: { Source },
