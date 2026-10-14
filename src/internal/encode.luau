@@ -134,7 +134,7 @@ end
 local function nodeValue(current: tree.Node): Value
   local node = serialize.map()
   if #current.files > 0 then
-    local names = [for entry in current.files => paths.lossy(tree.listedName(entry))]
+    local names = [for entry in current.files => paths.lossy(tree.listedName(entry)) :: unknown]
     serialize.set(node, '.', serialize.array(names))
   end
 

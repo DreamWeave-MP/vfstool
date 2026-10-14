@@ -235,7 +235,7 @@ local function sortPaths(paths: { string })
   if #paths < 2 then return end
 
   local byKey: { [string]: string } = {}
-  local keys = table.create(#paths)
+  local keys = table.create(#paths) :: { string }
   local distinct = true
 
   for index, path in paths do
@@ -278,7 +278,7 @@ local function sortByPath<T>(
   if count < 2 then return end
 
   local byFlat: { [string]: T } = {}
-  local flats = table.create(count)
+  local flats = table.create(count) :: { string }
   local named, distinct = true, true
 
   for index, row in rows do
@@ -315,7 +315,7 @@ local function sortByPath<T>(
 
   local ranked = [for index, row in enumerate(rows) => { row = row, flat = flats[index] }]
 
-  table.sort(ranked, function(left, right): boolean
+  table.sort(ranked, function(left: { row: T, flat: string }, right: { row: T, flat: string }): boolean
     if left.flat ~= right.flat then return left.flat < right.flat end
 
     if not before then return false end

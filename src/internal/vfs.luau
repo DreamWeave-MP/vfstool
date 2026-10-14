@@ -787,7 +787,7 @@ function Methods.pushDirectory(self: VFS, root: string)
   local dir = keyArgument('pushDirectory', root)
   local keys, rels = walkFiles(dir, true)
   local list = [for key, rel in zipStrict(keys, rels) =>
-    { key = key, entry = { path = paths.join(dir, rel), source = 0, rel = rel } }]
+    { key = key, entry = { path = paths.join(dir, rel), source = 0, rel = rel } } :: { key: string, entry: Entry }]
 
   if #list == 0 then return end
 

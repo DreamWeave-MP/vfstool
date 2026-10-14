@@ -68,7 +68,9 @@ local function matches(glob: string, path: string): boolean
   end
 
   local matcher = lastMatcher
-  return matcher ~= nil and matcher(path)
+  if not matcher then return false end
+
+  return matcher(path)
 end
 
 return table.freeze {
