@@ -6,14 +6,14 @@
 local bytes = require '@dream/bytes'
 
 --- ASCII capitals and `\`, and what they become.
-local Folded, Folds = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ\\', 'abcdefghijklmnopqrstuvwxyz/'
+local Fold = bytes.rules { nocase = true, replace = { ['\\'] = '/' } }
 
 --- dream-path's normalization: `\` is `/`, ASCII is lowercased, leading separators go and
 --- repeated ones collapse; a trailing one stays. A key already in that spelling costs one native
 --- scan, which returns it as it is.
 @native
 local function normalize(path: string): string
-  local key = bytes.translate(path, Folded, Folds)
+  local key = bytes.translate(path, Fold)
   if string.byte(key, 1) == 47 or string.find(key, '//', 1, true) then
     key = (string.gsub((string.gsub(key, '^/+', '')), '//+', '/'))
   end
@@ -30,7 +30,7 @@ end
 --- vfstool's `normalize_host_path`: `\` to `/` and ASCII lowercase, nothing else, so a textual
 --- comparison of host paths ignores case and separator spelling.
 @native
-local function normalizeHost(path: string): string return bytes.translate(path, Folded, Folds) end
+local function normalizeHost(path: string): string return bytes.translate(path, Fold) end
 
 --- Whether a normalized key is one a VFS may hold: not empty, relative, no drive letter, no NUL,
 --- and no `.` or `..` component.

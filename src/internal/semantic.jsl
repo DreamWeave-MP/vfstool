@@ -7,6 +7,7 @@
 local json = require './json'
 local paths = require './paths'
 local public = require './public'
+local toml = require '@jess/data/toml'
 
 export type Delta = public.Delta
 
@@ -244,8 +245,8 @@ end
 local function tomlValue(source: string): string?
   if not isUtf8(source) then return nil end
 
-  -- jess.toml.decode throws for a document that isn't TOML.
-  local ok, value, layout = pcall(jess.toml.decode, source)
+  -- toml.decode throws for a document that isn't TOML.
+  local ok, value, layout = pcall(toml.decode, source)
   if not ok then return nil end
 
   return tomlCanonical(value, false, (layout :: unknown) :: TomlLayout)

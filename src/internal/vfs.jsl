@@ -3,6 +3,7 @@
 -- `VFS`: provider stacks low to high priority and the winner of every key. Built from data
 -- directories the way OpenMW builds its own (later directories win, every loose file beats every
 -- archive), or by hand; queried, mutated, reported on, and written out.
+local bytes = require '@dream/bytes'
 local check = require './check'
 local conflict = require './conflict'
 local encode = require './encode'
@@ -21,6 +22,8 @@ local state = require './state'
 local tree = require './tree'
 local types = require './types'
 local views = require './views'
+
+type Regex = dream_bytes_Regex
 
 type State = types.State
 type Entry = types.Entry
@@ -378,8 +381,8 @@ local function treeStream(built: tree.Tree): Tree
 end
 
 local function regex(pattern: string): Regex
-  -- `jess.regex.new` is a Rust binding that raises for a pattern it cannot compile.
-  local ok, compiled = pcall(jess.regex.new, pattern, { caseInsensitive = true } :: RegexOptions)
+  -- `bytes.regex` is a Rust binding that raises for a pattern it cannot compile.
+  local ok, compiled = pcall(bytes.regex, pattern, { caseInsensitive = true })
   if not ok then
     local message = string.gsub(tostring(compiled), '^jess%.regex%.new: ', '')
     check.vfs(`invalid regex: {message}`)

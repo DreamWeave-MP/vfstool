@@ -410,9 +410,12 @@ local blob = buffer.create(BlobSize)
 
 into(blob, 'u8')[for offset in range(0, BlobSize - 1) => blobByte(offset)]
 
-assert(fs.mkdir(scratch, { recursive = true }))
+local done, problem = fs.mkdir(scratch, { recursive = true })
+if not done then error(problem, 0) end
 
-local treeRoot = `{assert(fs.canonicalize(scratch))}/tree`
+local canonical, problem = fs.canonicalize(scratch)
+if not canonical then error(problem, 0) end
+local treeRoot = `{canonical}/tree`
 
 if fs.exists(treeRoot) then fs.remove(treeRoot, { recursive = true }) end
 
@@ -427,11 +430,13 @@ do
   local function write(path: string, contents: string)
     local parent = string.match(path, '^(.*)/[^/]*$')
     if parent and not made[parent] then
-      assert(fs.mkdir(parent, { recursive = true }))
+      local done, problem = fs.mkdir(parent, { recursive = true })
+      if not done then error(problem, 0) end
       made[parent] = true
     end
 
-    assert(fs.writeFile(path, contents))
+    local done, problem = fs.writeFile(path, contents)
+    if not done then error(problem, 0) end
   end
 
   for dir = 1, DirCount do
