@@ -172,3 +172,121 @@ The first run of this bench was killed for memory in `vfs.keys`. A key list's vi
 weak table by a function that held the list, and Luau's weak tables are not ephemerons, so every
 list `keys()`, `duplicateKeys()` or `filesFromArchive()` ever returned stayed for good. That was
 fixed before the baseline was taken (`e1ff176`), so it is in both columns above.
+
+## Which modules are native, and why
+
+Jess compiles to machine code only what is marked (`--!native` on a module, `@native` on one
+function), and every load pays for what is marked. A module carries `--!native` when a row below
+spends its time there and the module is small (12 KB or less); a larger module carries `@native`
+on the functions the row spends its time in, and nothing else.
+
+Measured 2026-10-14 with `jess 0.1.0`, the verified release build of jess `07c38cb` on l3i
+2.0.3, on the i7-10870H, the one-minute load 1.18 and 1.33 at the start of the two
+sessions. In each session the bench ran alternately on this package and on a copy of it with
+every module marked, three fresh runs of `bench/bench.jsl` each, every run's row the median of
+its batches; a column is the median of the three, and a ratio is against the all-marked runs of
+the same session. Which functions a row spends its time in comes from `jess run --profile` of
+that row alone, unmarked. The load cost is a fresh `jess run --package <this package>
+--package-path jpk` of a script that only requires `@vfs`, the two sides alternating, the
+median of five each after one warm-up.
+
+| Requiring `@vfs` | All marked | This state |
+| --- | ---: | ---: |
+| Unmarked | 0.180 s | 0.134 s |
+| Final | 0.186 s | 0.160 s |
+
+| Row | All marked (ms) | Unmarked / all marked | Final (ms) | Final / all marked |
+| --- | ---: | ---: | ---: | ---: |
+| paths.normalize | 5.738 | **1.210×** | 5.706 | 0.994× |
+| paths.safeKeyFromHost | 7.044 | **1.453×** | 6.785 | 0.963× |
+| paths.sortPaths keys | 7.690 | **1.257×** | 7.675 | 0.998× |
+| paths.sortPaths absolute | 9.661 | **1.319×** | 9.409 | 0.974× |
+| paths.comparePaths | 7.149 | **1.511×** | 6.913 | 0.967× |
+| layer.fromFileLists | 18.53 | **1.330×** | 18.82 | 1.016× |
+| layer.duplicateKeys | 0.6157 | **1.446×** | 0.6447 | 1.047× |
+| layer.sourceContributions | 1.061 | **2.921×** | 1.057 | 0.997× |
+| layer.providerChain | 3.386 | **1.316×** | 3.354 | 0.990× |
+| layer.sourcesContaining | 9.836 | **1.283×** | 10.09 | 1.026× |
+| conflict.fromFileLists | 29.81 | **1.291×** | 30.34 | 1.018× |
+| conflict.conflictsReport relative | 14.34 | **1.293×** | 13.94 | 0.972× |
+| conflict.conflictsReport absolute | 26.09 | **1.345×** | 26.70 | 1.024× |
+| conflict.shadowedReport | 0.3439 | **1.391×** | 0.3330 | 0.968× |
+| conflict.diffReport | 3.203 | **1.148×** | 3.190 | 0.996× |
+| semantic.text | 1.894 | **1.663×** | 1.938 | 1.023× |
+| semantic.ini | 5.115 | **1.675×** | 4.987 | 0.975× |
+| semantic.json | 7.186 | **1.559×** | 7.019 | 0.977× |
+| vfs.fromDirectories loose | 23.01 | **1.161×** | 23.27 | 1.011× |
+| vfs.fromDirectories with archive | 33.42 | **1.166×** | 33.59 | 1.005× |
+| vfs.pushDirectory | 6.696 | **1.208×** | 6.830 | 1.020× |
+| vfs.pushArchive | 8.999 | **1.300×** | 9.276 | 1.031× |
+| vfs.getFile | 11.24 | **1.095×** | 10.86 | 0.966× |
+| vfs.contains | 6.305 | **1.212×** | 6.232 | 0.988× |
+| vfs.providersFor | 2.148 | **1.226×** | 2.062 | 0.960× |
+| vfs.explain | 3.678 | **1.318×** | 3.549 | 0.965× |
+| file.readAt loose | 1.431 | **1.708×** | 1.411 | 0.986× |
+| file.readRange loose | 1.599 | **1.512×** | 1.570 | 0.982× |
+| reader.readInto loose | 1.431 | **1.457×** | 1.422 | 0.994× |
+| reader.read loose | 1.556 | **1.363×** | 1.567 | 1.007× |
+| file.readAt packed | 0.6576 | **2.487×** | 0.6639 | 1.009× |
+| file.readRange packed | 0.8179 | **1.977×** | 0.8216 | 1.005× |
+| reader.readInto packed | 0.6552 | **1.864×** | 0.6542 | 0.999× |
+| reader.read packed | 0.7784 | **1.687×** | 0.7925 | 1.018× |
+| vfs.keys | 0.02803 | **1.067×** | 0.02727 | 0.973× |
+| vfs.entries | 3.147 | **1.180×** | 3.315 | **1.053×** |
+| vfs.pathsWith | 0.1310 | **1.713×** | 0.1310 | 1.000× |
+| vfs.pathsStartingWith | 0.07528 | **1.488×** | 0.07548 | 1.003× |
+| vfs.keysStartingWith | 0.01961 | **2.421×** | 0.02193 | **1.118×** |
+| vfs.pathsMatching | 0.6824 | **1.344×** | 0.6605 | 0.968× |
+| vfs.findByRegex | 4.426 | **1.353×** | 4.293 | 0.970× |
+| vfs.tree | 9.010 | **1.386×** | 8.949 | 0.993× |
+| vfs.display | 14.57 | **1.240×** | 14.42 | 0.989× |
+| vfs.serializeTree json | 17.46 | **1.253×** | 17.12 | 0.981× |
+| vfs.duplicates | 6.451 | **1.342×** | 6.229 | 0.965× |
+| vfs.serialize duplicates | 72.57 | **1.158×** | 71.06 | 0.979× |
+| vfs.archives | 0.6634 | **1.546×** | 0.6627 | 0.999× |
+| vfs.archiveEntries | 3.739 | **1.366×** | 3.703 | 0.990× |
+| vfs.filesFromArchive | 3.916 | **1.392×** | 3.917 | 1.000× |
+| vfs.diffDirectory | 4.561 | **1.150×** | 4.643 | 1.018× |
+| vfs.removeResolvedMatchingGlob none | 2.594 | **1.233×** | 2.626 | 1.012× |
+| vfs.removeSource none | 0.00417 | **1.533×** | 0.00420 | 1.006× |
+| vfs.removeSource and pushDirectory | 8.860 | **1.260×** | 8.946 | 1.010× |
+| vfs.layerIndex rebuilt | 8.416 | **1.484×** | 8.468 | 1.006× |
+| vfs.lockManifest | 77.52 | **1.134×** | 78.95 | 1.018× |
+| run.snapshotDirectory | 16.71 | **1.072×** | 16.36 | 0.979× |
+| run.snapshotDirectoryMetadata | 16.78 | **1.079×** | 16.22 | 0.967× |
+| run.changedFiles | 16.31 | **1.057×** | 16.18 | 0.992× |
+| vfs.diffAgainstLock | 91.09 | **1.198×** | 92.68 | 1.017× |
+| glob.pathGlobMatches | 0.9202 | **1.367×** | 0.9410 | 1.023× |
+
+What carries the directive, and the rows that earned it. Every row reads through `paths`, and
+the rows are the library's whole surface, so most modules have a function some row spends its
+time in:
+
+- Whole: `init` (`pathGlobMatches`), `check` (the argument checks every method makes), `encode`,
+  `glob`, `hash`, `json` (the lock manifest), `keys`, `registry`, `run` (snapshots and changed
+  files), `semantic` (the text, INI, and JSON comparisons), `state`, `tree`, and `views`.
+- `paths`, by function: `normalize`, `normalizeHost`, `isSafeNormalized`, `safeKeyBytes`,
+  `safeKeyFromHost`, `atOrUnder`, `lossy`, `keyPath`, `isNames`, `flatten`, `comparePaths`,
+  `samePath`, `orderKey`, `sortPaths`, `sortByPath` and its comparator, `join`, `fileName`,
+  `parent`.
+- `layer`, by function: `stringArgument`, `build`, `sortedKeys`, `chain`, `highest`,
+  `lockManifest`, `Methods.sourcesContaining`, `Methods.providerChain`, `Methods.duplicateKeys`,
+  `contributions`.
+- `conflict`, by function: `fromLayerData`, `reportPath`, `reportList`,
+  `Methods.shadowedReport`, `keysOf`, `Methods.diffReport`.
+- `file`, by function: `lastComponent`, `copyFrom`, `optionalExact`, `window`, `new`,
+  `Methods.readAt`, `Methods.readRange`, `ReaderMethods.read`, `ReaderMethods.readInto`.
+- `vfs`, by function: `walkFiles`, `looseSource`, `appendLoose`, `pushBatch`, `entriesWhere`
+  and its filter, `record`, `records`, `keyArgument`, `Methods.entries`, `Methods.getFile`,
+  `Methods.contains`, `Methods.pathsStartingWith`, `Methods.pathsWith` and their filters,
+  `removeMatching`, `Methods.removeSource`, `Methods.removeResolvedMatchingGlob`,
+  `Methods.diffDirectory`, `Methods.explain`, `Methods.providersFor`, `Methods.duplicates`,
+  `Methods.archives`, `archiveRows`, `Methods.filesFromArchive`, and the closures the profile
+  named inside them.
+- Unmarked: `host`, `materialize`, and `types`, which no row spends time in.
+
+Marking `paths`, `layer`, `conflict`, and `file` whole instead moved no row past what it is
+here, and saved 0.017 s of what requiring `@vfs` costs all marked (0.181 s against 0.198 s, in a
+session of its own) where this saves 0.026 s. The two rows above 5% that remain spend their time
+in functions that are native already (`vfs.keysStartingWith` is a 20 µs call into `views`'s
+`toTable`); what is left is the calls between those and the bytecode around them.
