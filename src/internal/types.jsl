@@ -1,7 +1,7 @@
 --!strict
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- The types the VFS port shares.
-local archive = require '@dream-archive'
+local archive = require '@dream-archive/types'
 
 export type Kind = 'looseDir' | 'archive'
 

@@ -3,7 +3,6 @@
 -- `VFS`: provider stacks low to high priority and the winner of every key. Built from data
 -- directories the way OpenMW builds its own (later directories win, every loose file beats every
 -- archive), or by hand; queried, mutated, reported on, and written out.
-local archive = require '@dream-archive'
 local check = require './check'
 local conflict = require './conflict'
 local encode = require './encode'
@@ -288,13 +287,16 @@ local function archiveEntries(ref: types.ArchiveRef): { { key: string, entry: En
   return out
 end
 
---- Opens an archive the way the crate's `open_archive` does: any failure is no archive.
+--- Opens an archive the way the crate's `open_archive` does: any failure is no archive. The
+--- archive readers load here, with the first archive, so a VFS of loose folders never loads them.
 local function openArchive(path: string): types.ArchiveRef?
+  local archive = require '@dream-archive'
+
   -- @dream-archive's openPath raises for a file it can't read or doesn't recognize.
   local ok, handle = pcall(archive.openPath, path)
   if not ok then return nil end
 
-  return { path = path, handle = handle :: archive.Archive }
+  return { path = path, handle = handle :: types.Archive }
 end
 
 --- Appends a source's entries in order, skipping keys a file and a directory would share.
