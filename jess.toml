@@ -5,7 +5,7 @@ id = "org.dreamweave.vfstool"
 version = "0.1.0"
 jess_api = "1"
 default_target = "vfstool"
-include = ["src"]
+include = ["src", "tests"]
 tests = ["tests/run.jsl", "tests/reports.jsl", "tests/loose.jsl", "tests/style.jsl"]
 
 [dependencies]
@@ -34,4 +34,4 @@ exports = ["@vfstool"]
 kind = "command"
 command = "vfstool"
 entry = "src/main.jsl"
-capabilities = ["filesystem.read", "filesystem.write", "process.environment", "process.spawn"]
+capabilities = ["filesystem.read", "filesystem.write", "process.environment", "process.spawn", "process.stdio"]
