@@ -7,6 +7,7 @@
 local check = require './check'
 local fs = require '@dream/fs'
 local paths = require './paths'
+local public = require './public'
 local types = require './types'
 
 type Entry = types.Entry
@@ -18,38 +19,8 @@ type Backing = {
   bytes: buffer?,
 }
 
-export type VfsFile = {
-  isLoose: (self: VfsFile) -> boolean,
-  isArchive: (self: VfsFile) -> boolean,
-  path: (self: VfsFile) -> string,
-  fileName: (self: VfsFile) -> string?,
-  fileStem: (self: VfsFile) -> string?,
-  parentArchivePath: (self: VfsFile) -> string?,
-  parentArchiveName: (self: VfsFile) -> string?,
-  size: (self: VfsFile) -> number,
-  readAll: (self: VfsFile) -> string,
-  readAllBuffer: (self: VfsFile) -> buffer,
-  readInto: (self: VfsFile, target: buffer, offset: number?) -> number,
-  readAt: (
-    self: VfsFile,
-    target: buffer,
-    fileOffset: number,
-    length: number?,
-    bufferOffset: number?
-  ) -> number,
-  readRange: (self: VfsFile, fileOffset: number, length: number) -> buffer,
-  open: (self: VfsFile) -> Reader,
-}
-
-export type Reader = {
-  read: (self: Reader, length: number) -> buffer,
-  readInto: (self: Reader, target: buffer, bufferOffset: number?, length: number?) -> number,
-  seek: (self: Reader, position: number) -> (),
-  skip: (self: Reader, count: number) -> (),
-  tell: (self: Reader) -> number,
-  size: (self: Reader) -> number,
-  close: (self: Reader) -> (),
-}
+export type VfsFile = public.VfsFile
+export type Reader = public.Reader
 
 type FileState = { entry: Entry, backing: Backing? }
 type ReaderState = { backing: Backing?, size: number, position: number, name: string }

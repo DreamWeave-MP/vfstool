@@ -8,6 +8,7 @@ local file = require './file'
 local fs = require '@dream/fs'
 local hash = require './hash'
 local paths = require './paths'
+local public = require './public'
 local registry = require './registry'
 local semantic = require './semantic'
 local types = require './types'
@@ -17,97 +18,17 @@ type Source = types.Source
 type State = types.State
 type Entry = types.Entry
 
-export type LayerProvider = {
-  sourceIndex: number,
-  providerIndex: number,
-  source: Source,
-  key: string,
-  originalPath: string,
-}
-
-export type LockEntry = {
-  key: string,
-  winnerSource: string,
-  winnerKind: types.Kind,
-  winnerHashBlake3: string?,
-  winnerSize: integer?,
-  providerCount: number,
-}
-
-export type LockData = { schemaVersion: number, entries: { LockEntry } }
-
-export type Contribution = {
-  sourceIndex: number,
-  source: Source,
-  winningFiles: number,
-  overridingFiles: number,
-  overriddenFiles: number,
-  uniqueFiles: number,
-  duplicateFiles: number,
-  looseFiles: number,
-  archiveFiles: number,
-}
-export type ContributionReport = { sources: { Contribution } }
-
-export type VfsLock = {
-  schemaVersion: (self: VfsLock) -> number,
-  entries: (self: VfsLock) -> { LockEntry },
-  toTable: (self: VfsLock) -> { schemaVersion: number, entries: { LockEntry } },
-}
-
-export type ProvenanceRow = {
-  source: Source,
-  resolvedPath: string,
-  hashBlake3: string?,
-  size: integer?,
-}
-export type Provenance = { key: string, winner: Source, providers: { ProvenanceRow } }
-export type SemanticRow = {
-  source: Source,
-  relation: string,
-  hashBlake3: string?,
-  size: integer?,
-  semanticDeltaToWinner: semantic.Delta?,
-}
-
-export type SemanticEntry = {
-  key: string,
-  winner: Source,
-  providers: { SemanticRow },
-  assetClass: string,
-  allIdentical: boolean,
-  distinctVersions: number,
-}
-
-export type LayerIndex = {
-  keys: (self: LayerIndex) -> views.View<string>,
-  sources: (self: LayerIndex) -> { Source },
-  sourceIdForPath: (self: LayerIndex, path: string) -> number?,
-  sourceById: (self: LayerIndex, id: number) -> Source?,
-  sourcesContaining: (self: LayerIndex, path: string) -> { number },
-  providerOriginalPath: (self: LayerIndex, sourceIndex: number, path: string) -> string?,
-  providerChain: (self: LayerIndex, path: string) -> { LayerProvider },
-  duplicateKeys: (self: LayerIndex) -> views.View<string>,
-  sourceContributions: (self: LayerIndex) -> ContributionReport,
-  provenance: (self: LayerIndex, vfs: unknown, path: string, withHashes: boolean) -> Provenance?,
-  lockManifest: (self: LayerIndex, vfs: unknown) -> VfsLock,
-  diffAgainstLock: (
-    self: LayerIndex,
-    vfs: unknown,
-    lock: VfsLock
-  ) -> {
-    entries: { { key: string, kind: string } },
-    counts: { [string]: number },
-  },
-  semanticConflicts: (
-    self: LayerIndex,
-    vfs: unknown,
-    options: {
-      archiveHashMode: string?,
-      includeSemanticDeltas: boolean?,
-    }?
-  ) -> { entries: { SemanticEntry } },
-}
+export type LayerProvider = public.LayerProvider
+export type LockEntry = public.LockEntry
+export type LockData = public.LockData
+export type Contribution = public.Contribution
+export type ContributionReport = public.ContributionReport
+export type VfsLock = public.VfsLock
+export type ProvenanceRow = public.ProvenanceRow
+export type Provenance = public.Provenance
+export type SemanticRow = public.SemanticRow
+export type SemanticEntry = public.SemanticEntry
+export type LayerIndex = public.LayerIndex
 
 export type Layer = {
   sources: { Source },

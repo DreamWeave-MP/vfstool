@@ -8,6 +8,7 @@ local check = require './check'
 local file = require './file'
 local fs = require '@dream/fs'
 local paths = require './paths'
+local public = require './public'
 local types = require './types'
 
 type Entry = types.Entry
@@ -15,15 +16,9 @@ type State = types.State
 
 export type Options = { allowCopying: boolean, extractArchives: boolean, useSymlinks: boolean }
 
-export type Skip = {
-  kind: string,
-  key: string,
-  archive: string?,
-  source: string?,
-  error: string?,
-}
-export type PlanRow = { kind: string, key: string, source: string?, archive: string?, dest: string? }
-export type Plan = { actions: { PlanRow }, issues: { PlanRow } }
+export type Skip = public.Skip
+export type PlanRow = public.PlanRow
+export type Plan = public.Plan
 
 --- What a failed step answers: the crate's `io::Error` text, without the `dream.vfs: ` prefix the
 --- binding adds once, when the public function raises it.

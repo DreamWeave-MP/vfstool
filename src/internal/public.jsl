@@ -1,0 +1,306 @@
+--!strict
+-- SPDX-License-Identifier: MIT OR Apache-2.0
+-- The types a VFS's users see, and nothing that runs: `@vfs/types`. A module that only names a
+-- VFS in its annotations requires this and loads the VFS itself when it makes or reads one.
+local types = require './types'
+
+export type Source = types.Source
+
+export type View<T> = { [number]: T, toTable: (self: View<T>) -> { T } }
+
+export type VfsFile = {
+  isLoose: (self: VfsFile) -> boolean,
+  isArchive: (self: VfsFile) -> boolean,
+  path: (self: VfsFile) -> string,
+  fileName: (self: VfsFile) -> string?,
+  fileStem: (self: VfsFile) -> string?,
+  parentArchivePath: (self: VfsFile) -> string?,
+  parentArchiveName: (self: VfsFile) -> string?,
+  size: (self: VfsFile) -> number,
+  readAll: (self: VfsFile) -> string,
+  readAllBuffer: (self: VfsFile) -> buffer,
+  readInto: (self: VfsFile, target: buffer, offset: number?) -> number,
+  readAt: (
+    self: VfsFile,
+    target: buffer,
+    fileOffset: number,
+    length: number?,
+    bufferOffset: number?
+  ) -> number,
+  readRange: (self: VfsFile, fileOffset: number, length: number) -> buffer,
+  open: (self: VfsFile) -> Reader,
+}
+
+export type Reader = {
+  read: (self: Reader, length: number) -> buffer,
+  readInto: (self: Reader, target: buffer, bufferOffset: number?, length: number?) -> number,
+  seek: (self: Reader, position: number) -> (),
+  skip: (self: Reader, count: number) -> (),
+  tell: (self: Reader) -> number,
+  size: (self: Reader) -> number,
+  close: (self: Reader) -> (),
+}
+
+export type Writer = {
+  write: (self: Writer, data: buffer | string, offset: number?, length: number?) -> number,
+  writeAt: (
+    self: Writer,
+    position: number,
+    data: buffer | string,
+    offset: number?,
+    length: number?
+  ) -> number,
+  seek: (self: Writer, position: number) -> (),
+  tell: (self: Writer) -> number,
+  flush: (self: Writer) -> (),
+  truncate: (self: Writer, length: number) -> (),
+  close: (self: Writer) -> VfsFile?,
+}
+
+export type Skip = {
+  kind: string,
+  key: string,
+  archive: string?,
+  source: string?,
+  error: string?,
+}
+
+export type PlanRow = { kind: string, key: string, source: string?, archive: string?, dest: string? }
+
+export type Plan = { actions: { PlanRow }, issues: { PlanRow } }
+
+export type Delta = { kind: string, changeSummary: { string }? }
+
+export type LayerProvider = {
+  sourceIndex: number,
+  providerIndex: number,
+  source: Source,
+  key: string,
+  originalPath: string,
+}
+
+export type LockEntry = {
+  key: string,
+  winnerSource: string,
+  winnerKind: types.Kind,
+  winnerHashBlake3: string?,
+  winnerSize: integer?,
+  providerCount: number,
+}
+
+export type LockData = { schemaVersion: number, entries: { LockEntry } }
+
+export type Contribution = {
+  sourceIndex: number,
+  source: Source,
+  winningFiles: number,
+  overridingFiles: number,
+  overriddenFiles: number,
+  uniqueFiles: number,
+  duplicateFiles: number,
+  looseFiles: number,
+  archiveFiles: number,
+}
+
+export type ContributionReport = { sources: { Contribution } }
+
+export type VfsLock = {
+  schemaVersion: (self: VfsLock) -> number,
+  entries: (self: VfsLock) -> { LockEntry },
+  toTable: (self: VfsLock) -> { schemaVersion: number, entries: { LockEntry } },
+}
+
+export type ProvenanceRow = {
+  source: Source,
+  resolvedPath: string,
+  hashBlake3: string?,
+  size: integer?,
+}
+
+export type Provenance = { key: string, winner: Source, providers: { ProvenanceRow } }
+
+export type SemanticRow = {
+  source: Source,
+  relation: string,
+  hashBlake3: string?,
+  size: integer?,
+  semanticDeltaToWinner: Delta?,
+}
+
+export type SemanticEntry = {
+  key: string,
+  winner: Source,
+  providers: { SemanticRow },
+  assetClass: string,
+  allIdentical: boolean,
+  distinctVersions: number,
+}
+
+export type LayerIndex = {
+  keys: (self: LayerIndex) -> View<string>,
+  sources: (self: LayerIndex) -> { Source },
+  sourceIdForPath: (self: LayerIndex, path: string) -> number?,
+  sourceById: (self: LayerIndex, id: number) -> Source?,
+  sourcesContaining: (self: LayerIndex, path: string) -> { number },
+  providerOriginalPath: (self: LayerIndex, sourceIndex: number, path: string) -> string?,
+  providerChain: (self: LayerIndex, path: string) -> { LayerProvider },
+  duplicateKeys: (self: LayerIndex) -> View<string>,
+  sourceContributions: (self: LayerIndex) -> ContributionReport,
+  provenance: (self: LayerIndex, vfs: unknown, path: string, withHashes: boolean) -> Provenance?,
+  lockManifest: (self: LayerIndex, vfs: unknown) -> VfsLock,
+  diffAgainstLock: (
+    self: LayerIndex,
+    vfs: unknown,
+    lock: VfsLock
+  ) -> {
+    entries: { { key: string, kind: string } },
+    counts: { [string]: number },
+  },
+  semanticConflicts: (
+    self: LayerIndex,
+    vfs: unknown,
+    options: {
+      archiveHashMode: string?,
+      includeSemanticDeltas: boolean?,
+    }?
+  ) -> { entries: { SemanticEntry } },
+}
+
+export type ConflictIndex = {
+  sources: (self: ConflictIndex) -> { string },
+  sourcesContaining: (self: ConflictIndex, path: string) -> { number },
+  conflictsReport: (
+    self: ConflictIndex,
+    relative: boolean?
+  ) -> {
+    sources: { { path: string, overrides: { string }, overriddenBy: { string } } },
+  },
+  shadowedReport: (
+    self: ConflictIndex,
+    relative: boolean?,
+    listFiles: boolean?
+  ) -> {
+    sources: { { path: string, shadowedFiles: { string } } },
+  },
+  diffReport: (
+    self: ConflictIndex,
+    sourceA: string,
+    sourceB: string
+  ) -> {
+    sourceA: string,
+    sourceB: string,
+    higherPriority: string,
+    shared: { string },
+    onlyInA: { string },
+    onlyInB: { string },
+  },
+}
+
+export type VfsProvider = {
+  source: (self: VfsProvider) -> Source,
+  file: (self: VfsProvider) -> VfsFile,
+}
+
+export type EntryRow = { key: string, file: VfsFile }
+
+export type ProviderRow = { source: Source, file: VfsFile }
+
+export type ProviderRecord = {
+  sourceIndex: number,
+  source: Source,
+  key: string,
+  originalPath: string,
+  resolvedPath: string,
+}
+
+export type TreeRow = { dir: string, file: VfsFile }
+
+export type ArchiveInfo = {
+  sourceIndex: number,
+  path: string,
+  entryCount: number,
+  winningEntryCount: number,
+}
+
+export type ArchiveEntry = { key: string, archivePath: string, originalPath: string, wins: boolean }
+
+export type DuplicateEntry = { key: string, providers: { ProviderRecord }, winnerIndex: number }
+
+export type DuplicateReport = { entries: { DuplicateEntry } }
+
+export type MaterializationPlan = Plan
+
+export type Tree = {
+  count: (self: Tree) -> number,
+  toTable: (self: Tree) -> { [string]: unknown },
+}
+
+--- What `diffDirectory` finds a folder would do to the VFS: the keys it would replace, the keys it
+--- would add, and what in it couldn't be read.
+export type DirectoryDiff = {
+  conflicts: { { key: string, incoming: VfsFile, current: VfsFile } },
+  additions: { { key: string, file: VfsFile } },
+  unreadable: { { path: string, error: string } },
+}
+
+--- Every method a VFS has, in the order they are defined below.
+export type VFS = {
+  len: (self: VFS) -> number,
+  revision: (self: VFS) -> number,
+  isEmpty: (self: VFS) -> boolean,
+  keys: (self: VFS, limit: number?, descending: boolean?) -> View<string>,
+  entries: (self: VFS, limit: number?, descending: boolean?) -> View<EntryRow>,
+  getFile: (self: VFS, path: string) -> VfsFile?,
+  contains: (self: VFS, path: string) -> boolean,
+  findByRegex: (self: VFS, pattern: string, relative: boolean?) -> Tree,
+  remaining: (self: VFS, path: string, replacementsOnly: boolean, dirs: { string }, relative: boolean?) -> Tree,
+  pathsMatching: (self: VFS, substring: string) -> View<EntryRow>,
+  pathsStartingWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> View<EntryRow>,
+  keysStartingWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> View<string>,
+  pathsWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> View<EntryRow>,
+  setWinnerLooseFile: (self: VFS, key: string, physicalPath: string) -> VfsFile?,
+  setWinnerFile: (self: VFS, key: string, value: VfsFile) -> VfsFile?,
+  pushDirectory: (self: VFS, root: string) -> (),
+  pushProvider: (self: VFS, key: string, provider: VfsProvider) -> boolean,
+  pushArchive: (self: VFS, path: string) -> boolean,
+  removeWinner: (self: VFS, key: string) -> VfsProvider?,
+  removeResolvedFile: (self: VFS, key: string) -> VfsFile?,
+  removeProviderPrefix: (self: VFS, prefix: string) -> (),
+  removeResolvedPrefix: (self: VFS, prefix: string) -> (),
+  removeProvider: (self: VFS, key: string, sourcePath: string) -> { ProviderRow },
+  removeSource: (self: VFS, sourcePath: string) -> (),
+  removeResolvedMatchingGlob: (self: VFS, pattern: string) -> (),
+  tree: (self: VFS, relative: boolean?) -> Tree,
+  display: (self: VFS, relative: boolean?) -> string,
+  dumpToDirectory: (self: VFS, dir: string, useHardlinks: boolean) -> (number, { Skip }),
+  collapseInto: (self: VFS, dest: string, options: unknown?) -> { Skip },
+  extractFile: (self: VFS, path: string, target: string) -> string?,
+  diffDirectory: (self: VFS, dir: string) -> DirectoryDiff,
+  providerRecordsFor: (self: VFS, path: string) -> View<ProviderRecord>,
+  explain: (self: VFS, path: string) -> { key: string, winner: ProviderRecord, overridden: { ProviderRecord } }?,
+  providersFor: (self: VFS, path: string) -> View<ProviderRow>?,
+  duplicates: (self: VFS, pattern: string?) -> DuplicateReport,
+  archives: (self: VFS) -> { ArchiveInfo },
+  archiveEntries: (self: VFS, archive: string) -> { ArchiveEntry },
+  filesFromArchive: (self: VFS, archive: string) -> View<string>,
+  sourceContributions: (self: VFS) -> ContributionReport,
+  materializationPlan: (self: VFS, dest: string, options: unknown?) -> MaterializationPlan,
+  layerIndex: (self: VFS) -> LayerIndex,
+  serializeTree: (self: VFS, relative: boolean?, format: string) -> string,
+  writeRoot: (self: VFS) -> string?,
+  setWriteRoot: (self: VFS, dir: string) -> (),
+  writeFile: (self: VFS, key: string, data: buffer | string, options: unknown?) -> VfsFile,
+  openWrite: (self: VFS, key: string, options: unknown?) -> Writer,
+  mkdir: (self: VFS, key: string) -> (),
+  remove: (self: VFS, key: string) -> (),
+  rename: (self: VFS, from: string, to: string) -> (),
+}
+
+export type VFSClass = {
+  new: () -> VFS,
+  fromDirectories: (dirs: { string }, options: unknown?) -> VFS,
+  fromDirectoriesWithConflictIndex: (dirs: { string }, options: unknown?) -> (VFS, ConflictIndex),
+  fromDirectoriesWithLayerIndex: (dirs: { string }, options: unknown?) -> (VFS, LayerIndex),
+}
+
+return table.freeze {}

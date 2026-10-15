@@ -14,6 +14,7 @@ local keys = require './keys'
 local layer = require './layer'
 local materialize = require './materialize'
 local paths = require './paths'
+local public = require './public'
 local registry = require './registry'
 local serialize = require '@jess/data/value'
 local state = require './state'
@@ -26,115 +27,22 @@ type Entry = types.Entry
 type Source = types.Source
 type VfsFile = file.VfsFile
 
-export type VfsProvider = {
-  source: (self: VfsProvider) -> Source,
-  file: (self: VfsProvider) -> VfsFile,
-}
-
-export type EntryRow = { key: string, file: VfsFile }
-export type ProviderRow = { source: Source, file: VfsFile }
-export type ProviderRecord = {
-  sourceIndex: number,
-  source: Source,
-  key: string,
-  originalPath: string,
-  resolvedPath: string,
-}
-export type TreeRow = { dir: string, file: VfsFile }
-export type ArchiveInfo = {
-  sourceIndex: number,
-  path: string,
-  entryCount: number,
-  winningEntryCount: number,
-}
-export type ArchiveEntry = { key: string, archivePath: string, originalPath: string, wins: boolean }
-export type DuplicateEntry = { key: string, providers: { ProviderRecord }, winnerIndex: number }
-export type DuplicateReport = { entries: { DuplicateEntry } }
-export type Contribution = {
-  sourceIndex: number,
-  source: Source,
-  winningFiles: number,
-  overridingFiles: number,
-  overriddenFiles: number,
-  uniqueFiles: number,
-  duplicateFiles: number,
-  looseFiles: number,
-  archiveFiles: number,
-}
-export type ContributionReport = { sources: { Contribution } }
-export type MaterializationPlan = materialize.Plan
-export type Tree = {
-  count: (self: Tree) -> number,
-  toTable: (self: Tree) -> { [string]: unknown },
-}
-
---- What `diffDirectory` finds a folder would do to the VFS: the keys it would replace, the keys it
---- would add, and what in it couldn't be read.
-export type DirectoryDiff = {
-  conflicts: { { key: string, incoming: VfsFile, current: VfsFile } },
-  additions: { { key: string, file: VfsFile } },
-  unreadable: { { path: string, error: string } },
-}
-
---- Every method a VFS has, in the order they are defined below.
-export type VFS = {
-  len: (self: VFS) -> number,
-  revision: (self: VFS) -> number,
-  isEmpty: (self: VFS) -> boolean,
-  keys: (self: VFS, limit: number?, descending: boolean?) -> views.View<string>,
-  entries: (self: VFS, limit: number?, descending: boolean?) -> views.View<EntryRow>,
-  getFile: (self: VFS, path: string) -> VfsFile?,
-  contains: (self: VFS, path: string) -> boolean,
-  findByRegex: (self: VFS, pattern: string, relative: boolean?) -> Tree,
-  remaining: (self: VFS, path: string, replacementsOnly: boolean, dirs: { string }, relative: boolean?) -> Tree,
-  pathsMatching: (self: VFS, substring: string) -> views.View<EntryRow>,
-  pathsStartingWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> views.View<EntryRow>,
-  keysStartingWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> views.View<string>,
-  pathsWith: (self: VFS, prefix: string, limit: number?, descending: boolean?) -> views.View<EntryRow>,
-  setWinnerLooseFile: (self: VFS, key: string, physicalPath: string) -> VfsFile?,
-  setWinnerFile: (self: VFS, key: string, value: VfsFile) -> VfsFile?,
-  pushDirectory: (self: VFS, root: string) -> (),
-  pushProvider: (self: VFS, key: string, provider: VfsProvider) -> boolean,
-  pushArchive: (self: VFS, path: string) -> boolean,
-  removeWinner: (self: VFS, key: string) -> VfsProvider?,
-  removeResolvedFile: (self: VFS, key: string) -> VfsFile?,
-  removeProviderPrefix: (self: VFS, prefix: string) -> (),
-  removeResolvedPrefix: (self: VFS, prefix: string) -> (),
-  removeProvider: (self: VFS, key: string, sourcePath: string) -> { ProviderRow },
-  removeSource: (self: VFS, sourcePath: string) -> (),
-  removeResolvedMatchingGlob: (self: VFS, pattern: string) -> (),
-  tree: (self: VFS, relative: boolean?) -> Tree,
-  display: (self: VFS, relative: boolean?) -> string,
-  dumpToDirectory: (self: VFS, dir: string, useHardlinks: boolean) -> (number, { materialize.Skip }),
-  collapseInto: (self: VFS, dest: string, options: unknown?) -> { materialize.Skip },
-  extractFile: (self: VFS, path: string, target: string) -> string?,
-  diffDirectory: (self: VFS, dir: string) -> DirectoryDiff,
-  providerRecordsFor: (self: VFS, path: string) -> views.View<ProviderRecord>,
-  explain: (self: VFS, path: string) -> { key: string, winner: ProviderRecord, overridden: { ProviderRecord } }?,
-  providersFor: (self: VFS, path: string) -> views.View<ProviderRow>?,
-  duplicates: (self: VFS, pattern: string?) -> DuplicateReport,
-  archives: (self: VFS) -> { ArchiveInfo },
-  archiveEntries: (self: VFS, archive: string) -> { ArchiveEntry },
-  filesFromArchive: (self: VFS, archive: string) -> views.View<string>,
-  sourceContributions: (self: VFS) -> ContributionReport,
-  materializationPlan: (self: VFS, dest: string, options: unknown?) -> MaterializationPlan,
-  layerIndex: (self: VFS) -> layer.LayerIndex,
-  serializeTree: (self: VFS, relative: boolean?, format: string) -> string,
-  writeRoot: (self: VFS) -> string?,
-  setWriteRoot: (self: VFS, dir: string) -> (),
-  writeFile: (self: VFS, key: string, data: buffer | string, options: unknown?) -> VfsFile,
-  openWrite: (self: VFS, key: string, options: unknown?) -> host.Writer,
-  mkdir: (self: VFS, key: string) -> (),
-  remove: (self: VFS, key: string) -> (),
-  rename: (self: VFS, from: string, to: string) -> (),
-}
-
-export type VFSClass = {
-  new: () -> VFS,
-  fromDirectories: (dirs: { string }, options: unknown?) -> VFS,
-  fromDirectoriesWithConflictIndex: (dirs: { string }, options: unknown?) -> (VFS, conflict.ConflictIndex),
-  fromDirectoriesWithLayerIndex: (dirs: { string }, options: unknown?) -> (VFS, layer.LayerIndex),
-}
+export type VfsProvider = public.VfsProvider
+export type EntryRow = public.EntryRow
+export type ProviderRow = public.ProviderRow
+export type ProviderRecord = public.ProviderRecord
+export type TreeRow = public.TreeRow
+export type ArchiveInfo = public.ArchiveInfo
+export type ArchiveEntry = public.ArchiveEntry
+export type DuplicateEntry = public.DuplicateEntry
+export type DuplicateReport = public.DuplicateReport
+export type Contribution = public.Contribution
+export type ContributionReport = public.ContributionReport
+export type MaterializationPlan = public.MaterializationPlan
+export type Tree = public.Tree
+export type DirectoryDiff = public.DirectoryDiff
+export type VFS = public.VFS
+export type VFSClass = public.VFSClass
 
 --- A VFS's tree stream: its rows, and the tree they came from.
 local trees = (setmetatable({}, { __mode = 'k' }) :: unknown) :: { [unknown]: tree.Tree }

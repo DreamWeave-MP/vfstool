@@ -6,39 +6,12 @@ local check = require './check'
 local fs = require '@dream/fs'
 local layer = require './layer'
 local paths = require './paths'
+local public = require './public'
 local types = require './types'
 
 type Source = types.Source
 
-export type ConflictIndex = {
-  sources: (self: ConflictIndex) -> { string },
-  sourcesContaining: (self: ConflictIndex, path: string) -> { number },
-  conflictsReport: (
-    self: ConflictIndex,
-    relative: boolean?
-  ) -> {
-    sources: { { path: string, overrides: { string }, overriddenBy: { string } } },
-  },
-  shadowedReport: (
-    self: ConflictIndex,
-    relative: boolean?,
-    listFiles: boolean?
-  ) -> {
-    sources: { { path: string, shadowedFiles: { string } } },
-  },
-  diffReport: (
-    self: ConflictIndex,
-    sourceA: string,
-    sourceB: string
-  ) -> {
-    sourceA: string,
-    sourceB: string,
-    higherPriority: string,
-    shared: { string },
-    onlyInA: { string },
-    onlyInB: { string },
-  },
-}
+export type ConflictIndex = public.ConflictIndex
 
 type Index = {
   meta: { Source },

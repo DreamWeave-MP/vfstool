@@ -6,8 +6,9 @@
 -- by their parsed values, text by its trimmed non-blank lines, anything else byte for byte.
 local json = require './json'
 local paths = require './paths'
+local public = require './public'
 
-export type Delta = { kind: string, changeSummary: { string }? }
+export type Delta = public.Delta
 
 --- Rust's `char::is_whitespace` beyond ASCII, as UTF-8.
 local UnicodeSpaces = table.freeze {

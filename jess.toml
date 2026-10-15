@@ -12,6 +12,8 @@ tests = ["tests/run.jsl", "tests/style.jsl"]
 
 [modules]
 "@vfs" = "src/init.jsl"
+# The public types alone, for a module that names a VFS before it needs one.
+"@vfs/types" = "src/internal/public.jsl"
 # Exported for vfstool, whose command line is built from these four; they are not the VFS API.
 "@vfs/paths" = "src/internal/paths.jsl"
 "@vfs/layer" = "src/internal/layer.jsl"
@@ -24,4 +26,4 @@ tests = ["tests/run.jsl", "tests/style.jsl"]
 [[layer]]
 id = "vfs.core"
 requires = ["dream-archive.core"]
-exports = ["@vfs", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]
+exports = ["@vfs", "@vfs/types", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]

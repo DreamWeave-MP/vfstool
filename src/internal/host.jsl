@@ -6,23 +6,10 @@ local check = require './check'
 local file = require './file'
 local fs = require '@dream/fs'
 local paths = require './paths'
+local public = require './public'
 local views = require './views'
 
-export type Writer = {
-  write: (self: Writer, data: buffer | string, offset: number?, length: number?) -> number,
-  writeAt: (
-    self: Writer,
-    position: number,
-    data: buffer | string,
-    offset: number?,
-    length: number?
-  ) -> number,
-  seek: (self: Writer, position: number) -> (),
-  tell: (self: Writer) -> number,
-  flush: (self: Writer) -> (),
-  truncate: (self: Writer, length: number) -> (),
-  close: (self: Writer) -> file.VfsFile?,
-}
+export type Writer = public.Writer
 
 type WriterState = {
   handle: dream_fs_Writer?,

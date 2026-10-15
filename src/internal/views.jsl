@@ -5,8 +5,9 @@
 -- items`, and `items:toTable()` for a plain copy. Keys are a frozen array; every other view makes
 -- the row a script reads when it reads it, as the native views did, so listing a hundred thousand
 -- entries makes no table until one is touched.
+local public = require './public'
 
-export type View<T> = { [number]: T, toTable: (self: View<T>) -> { T } }
+export type View<T> = public.View<T>
 
 --- Every value that is a view, with what makes its rows, for `serialize`, which writes a view as
 --- them. The table holds a view weakly and Luau's weak tables are no ephemerons, so what makes the
