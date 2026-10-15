@@ -21,16 +21,24 @@ if not scratch then error('vfstool bench: a scratch folder is required', 0) end
 local Names = tonumber(wanted) or 20000
 local Looked = 50
 
-assert(fs.mkdir(scratch, { recursive = true }))
+local done, problem = fs.mkdir(scratch, { recursive = true })
+if not done then error(problem, 0) end
 
-local root = `{assert(fs.canonicalize(scratch))}/vfstool-crowded`
+local canonical, problem = fs.canonicalize(scratch)
+if not canonical then error(problem, 0) end
+local root = `{canonical}/vfstool-crowded`
 
-if fs.exists(root) then assert(fs.remove(root, { recursive = true })) end
+if fs.exists(root) then
+  local done, problem = fs.remove(root, { recursive = true })
+  if not done then error(problem, 0) end
+end
 
-assert(fs.mkdir(`{root}/Data`, { recursive = true }))
+local done, problem = fs.mkdir(`{root}/Data`, { recursive = true })
+if not done then error(problem, 0) end
 
 for index = 1, Names do
-  assert(fs.writeFile(`{root}/Data/Plugin {index}.esp`, ''))
+  local done, problem = fs.writeFile(`{root}/Data/Plugin {index}.esp`, '')
+  if not done then error(problem, 0) end
 end
 
 --- A configuration of the folder that names its last `count` plugins, each spelled another way
@@ -39,8 +47,10 @@ local function configuration(name: string, count: number): string
   local lines = [for index in range(Names - count + 1, Names) => `content=plugin {index}.ESP`]
 
   table.insert(lines, 1, `data="{root}/Data"`)
-  assert(fs.mkdir(`{root}/{name}`, { recursive = true }))
-  assert(fs.writeFile(`{root}/{name}/openmw.cfg`, table.concat(lines, '\n') .. '\n'))
+  local done, problem = fs.mkdir(`{root}/{name}`, { recursive = true })
+  if not done then error(problem, 0) end
+  local done, problem = fs.writeFile(`{root}/{name}/openmw.cfg`, table.concat(lines, '\n') .. '\n')
+  if not done then error(problem, 0) end
   return `{root}/{name}`
 end
 
@@ -53,7 +63,10 @@ local function workload(name: string, argv: { string }, reports: boolean)
   local samples = {}
 
   for sample = 0, 9 do
-    if fs.exists(report) then assert(fs.remove(report)) end
+    if fs.exists(report) then
+      local done, problem = fs.remove(report)
+      if not done then error(problem, 0) end
+    end
 
     jess.bench.collect()
 
@@ -87,7 +100,8 @@ workload(
   true
 )
 
-assert(fs.remove(root, { recursive = true }))
+local done, problem = fs.remove(root, { recursive = true })
+if not done then error(problem, 0) end
 
 for _, line in results do
   print(line)

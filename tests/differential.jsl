@@ -26,9 +26,11 @@ local function here(): string
   return string.match(path, '^(.*)/[^/]*$') or '.'
 end
 
-assert(fs.mkdir(scratch, { recursive = true }))
+local done, problem = fs.mkdir(scratch, { recursive = true })
+if not done then error(problem, 0) end
 
-local folder = assert(fs.canonicalize(scratch))
+local folder, problem = fs.canonicalize(scratch)
+if not folder then error(problem, 0) end
 local root = `{folder}/session`
 
 --- One build's session: what it printed, and where it wrote its steps.

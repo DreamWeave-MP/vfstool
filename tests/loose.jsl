@@ -44,7 +44,7 @@ end
 local function validated(root: string): (number, { string })
   local path = `{root}/validate.json`
   local code = vfstool.run { 'validate', '--config', root, '--format', 'json', '--output', path }
-  local report = json.decode(assert(fs.readFileString(path), 'no report')) :: { issues: { { [string]: { [string]: string } } } }
+  local report = json.decode((fs.readFileString(path) or error('no report', 0))) :: { issues: { { [string]: { [string]: string } } } }
   local issues = {}
 
   for _, issue in report.issues do

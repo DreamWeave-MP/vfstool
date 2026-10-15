@@ -4,6 +4,7 @@
 local fs = require '@dream/fs'
 local json = require '@jess/json'
 local layer = require '@vfs/layer'
+local toml = require '@jess/data/toml'
 local Null = json.null
 
 type Entry = layer.LockEntry
@@ -16,7 +17,7 @@ local function decode(path: string, source: string): (unknown?, string?)
   end
 
   if extension == 'toml' then
-    local value = jess.toml.decode(source)
+    local value = toml.decode(source)
     return value, nil
   end
 

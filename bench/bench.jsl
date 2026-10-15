@@ -190,11 +190,17 @@ local function keysWhere(accept: (key: string, folders: { number }) -> boolean):
   return #[for key in keyList if accept(key, providers[key]) => key]
 end
 
-assert(fs.mkdir(scratch, { recursive = true }))
+local done, problem = fs.mkdir(scratch, { recursive = true })
+if not done then error(problem, 0) end
 
-local root = `{assert(fs.canonicalize(scratch))}/vfstool-bench`
+local canonical, problem = fs.canonicalize(scratch)
+if not canonical then error(problem, 0) end
+local root = `{canonical}/vfstool-bench`
 
-if fs.exists(root) then assert(fs.remove(root, { recursive = true })) end
+if fs.exists(root) then
+  local done, problem = fs.remove(root, { recursive = true })
+  if not done then error(problem, 0) end
+end
 
 local function dirOf(folder: number): string return `{root}/mods/{folderName(folder)}` end
 
@@ -204,11 +210,13 @@ do
   local function write(path: string, contents: string)
     local parent = string.match(path, '^(.*)/[^/]*$')
     if parent and not made[parent] then
-      assert(fs.mkdir(parent, { recursive = true }))
+      local done, problem = fs.mkdir(parent, { recursive = true })
+      if not done then error(problem, 0) end
       made[parent] = true
     end
 
-    assert(fs.writeFile(path, contents))
+    local done, problem = fs.writeFile(path, contents)
+    if not done then error(problem, 0) end
   end
 
   for folder, chosen in picks do
@@ -249,7 +257,8 @@ do
 
   write(`{root}/openmw.cfg`, configuration(FolderCount))
   write(`{root}/earlier/openmw.cfg`, configuration(EarlierCount))
-  assert(fs.mkdir(`{root}/reports`, { recursive = true }))
+  local done, problem = fs.mkdir(`{root}/reports`, { recursive = true })
+  if not done then error(problem, 0) end
 end
 
 -- The commands -----------------------------------------------------------------------------------------

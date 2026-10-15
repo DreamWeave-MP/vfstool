@@ -22,7 +22,7 @@ local function here(): string
   return string.match(path, '^(.*)/[^/]*$') or '.'
 end
 
-local golden = transcript.parse(assert(jess.fs.read(`{here()}/golden/reports.txt`), 'no golden'))
+local golden = transcript.parse((fs.readFileString(`{here()}/golden/reports.txt`) or error('no golden', 0)))
 local recorded: { transcript.Step }?
 
 --- The commands' steps, run once for every case.
