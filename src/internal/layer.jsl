@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- `LayerIndex`: every provider of every key, low to high priority, by the path each source spells
 -- it with; and the analyses over it and a VFS: provenance, the lock manifest and its drift, and
@@ -136,6 +135,7 @@ end
 local function what(method: string): string return check.method('LayerIndex', method) end
 
 --- A string argument of `method`, at `position` after the receiver.
+@native
 local function stringArgument(method: string, value: unknown, position: number): string
   if type(value) == 'string' then return value end
 
@@ -145,6 +145,7 @@ end
 local function copySource({path, kind}: Source): Source return { path = path, kind = kind } end
 
 --- `LayerIndex::from_file_lists`: each source's files by the key their path normalizes to.
+@native
 local function build(rows: { { source: Source, files: { string } } }): Layer
   local layer: Layer = { sources = {}, toSources = {}, originals = {} }
 
@@ -180,6 +181,7 @@ local function build(rows: { { source: Source, files: { string } } }): Layer
   return layer
 end
 
+@native
 local function sortedKeys(layer: Layer): { string }
   local cached = layer.keys
   if cached then return cached end
@@ -195,6 +197,7 @@ local function sortedKeys(layer: Layer): { string }
 end
 
 --- `provider_chain`: every provider of the key `path` normalizes to, low to high priority.
+@native
 local function chain(layer: Layer, path: string): { LayerProvider }
   local key = paths.normalize(path)
   local sources = layer.toSources[key]
@@ -225,6 +228,7 @@ end
 
 --- The last row `chain` would list for `path`, and how many rows that is: a key's highest
 --- provider, without a row made for each one below it.
+@native
 local function highest(layer: Layer, path: string): (LayerProvider?, number)
   local key = paths.normalize(path)
   local sources = layer.toSources[key]
@@ -378,6 +382,7 @@ local function lockData(value: unknown): { schemaVersion: number, entries: { Loc
   return locks[value]
 end
 
+@native
 local function lockManifest(layer: Layer, state: State): { LockEntry }
   local entries: { LockEntry } = {}
 
@@ -537,6 +542,7 @@ function Methods.sourceById(self: LayerIndex, id: number): Source?
   return if source then copySource(source) else nil
 end
 
+@native
 function Methods.sourcesContaining(self: LayerIndex, path: string): { number }
   local layer = layerOf(self, 'sourcesContaining')
   local key = paths.normalize(stringArgument('sourcesContaining', path, 1))
@@ -554,17 +560,20 @@ function Methods.providerOriginalPath(self: LayerIndex, sourceIndex: number, pat
   return if spellings then spellings[1] else nil
 end
 
+@native
 function Methods.providerChain(self: LayerIndex, path: string): { LayerProvider }
   local layer = layerOf(self, 'providerChain')
   return chain(layer, stringArgument('providerChain', path, 1))
 end
 
+@native
 function Methods.duplicateKeys(self: LayerIndex): views.View<string>
   local layer = layerOf(self, 'duplicateKeys')
   return views.array([for key in sortedKeys(layer) if #layer.toSources[key] > 1 => key])
 end
 
 --- `source_contributions`: what each source provides, wins, overrides, and loses.
+@native
 local function contributions(layer: Layer): ContributionReport
   local rows: { Contribution } = {}
   for index, source in layer.sources do

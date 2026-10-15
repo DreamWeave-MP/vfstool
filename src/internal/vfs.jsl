@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- `VFS`: provider stacks low to high priority and the winner of every key. Built from data
 -- directories the way OpenMW builds its own (later directories win, every loose file beats every
@@ -198,6 +197,7 @@ end
 
 --- Every file below `root` (links followed, unreadable entries skipped), as keys and relative
 --- paths; nil when the walk itself can't start and `raise` is false.
+@native
 local function walkFiles(root: string, raise: boolean): ({ string }, { string })
   local walk, message =
     fs.walk(root, { followLinks = true, include = 'files', skipErrors = not raise })
@@ -229,6 +229,7 @@ type LooseSource = {
   order: { string },
 }
 
+@native
 local function looseSource(root: string): LooseSource
   local keys, rels = walkFiles(root, false)
   local byKey: { [string]: { Entry } } = {}
@@ -305,6 +306,7 @@ local function appendSource(vfs: State, source: Source, list: { { key: string, e
   end
 end
 
+@native
 local function appendLoose(vfs: State, loose: LooseSource)
   local index = state.pushSource(vfs, loose.source)
   for _, key in loose.order do
@@ -356,6 +358,7 @@ local function fromDirectories(dirs: { string }, archives: { string }?): State
 end
 
 --- `push_provider_batch`: one new source with every entry it can take; none taken, no source.
+@native
 local function pushBatch(
   vfs: State,
   source: Source,
@@ -397,11 +400,12 @@ end
 local function entriesView(keys: { string }, entries: { Entry }): views.View<EntryRow>
   return views.lazy(
     #keys,
-    function(index: number): EntryRow return { key = keys[index], file = file.new(entries[index]) } end
+    @native function(index: number): EntryRow return { key = keys[index], file = file.new(entries[index]) } end
   )
 end
 
 --- The entries `accept` takes, sorted by key.
+@native
 local function entriesWhere(vfs: State, accept: (key: string) -> boolean): views.View<EntryRow>
   local keys: { string } = {}
   for key in vfs.files do
@@ -413,6 +417,7 @@ local function entriesWhere(vfs: State, accept: (key: string) -> boolean): views
 end
 
 --- `provider_record_from_entry`.
+@native
 local function record(vfs: State, key: string, entry: Entry): ProviderRecord
   local source = vfs.sources[entry.source]
   local original = state.originalPath(vfs, key, entry)
@@ -428,6 +433,7 @@ local function record(vfs: State, key: string, entry: Entry): ProviderRecord
   }
 end
 
+@native
 local function records(vfs: State, key: string): { ProviderRecord }
   return [for entry in vfs.providers[key] or {} => record(vfs, key, entry)]
 end
@@ -491,6 +497,7 @@ end
 
 local function receiver(self: unknown, name: string): State return registry.receiver(self, name) end
 
+@native
 local function keyArgument(name: string, value: unknown, position: number?): string
   if type(value) == 'string' then return value end
 
@@ -517,6 +524,7 @@ function Methods.keys(self: VFS, limit: number?, descending: boolean?): views.Vi
   return views.array(keys[1:take])
 end
 
+@native
 function Methods.entries(self: VFS, limit: number?, descending: boolean?): views.View<EntryRow>
   local vfs = receiver(self, 'entries')
   local keys = sortedKeys(vfs)
@@ -547,6 +555,7 @@ function Methods.entries(self: VFS, limit: number?, descending: boolean?): views
   return entriesView(table.clone(keys), entries)
 end
 
+@native
 function Methods.getFile(self: VFS, path: string): VfsFile?
   local vfs = receiver(self, 'getFile')
   local token = keys.find(keyArgument('getFile', path))
@@ -554,6 +563,7 @@ function Methods.getFile(self: VFS, path: string): VfsFile?
   return if entry then file.new(entry) else nil
 end
 
+@native
 function Methods.contains(self: VFS, path: string): boolean
   local vfs = receiver(self, 'contains')
   local token = keys.find(keyArgument('contains', path))
@@ -569,7 +579,7 @@ function Methods.findByRegex(self: VFS, pattern: string, relative: boolean?): Tr
     tree.build(
       vfs,
       rel ~= false,
-      function(key: string): boolean return compiled:isMatch(paths.lossy(key)) end
+      @native function(key: string): boolean return compiled:isMatch(paths.lossy(key)) end
     )
   )
 end
@@ -617,7 +627,7 @@ function Methods.pathsMatching(self: VFS, substring: string): views.View<EntryRo
   local needle = paths.foldNeedle(keyArgument('pathsMatching', substring))
   return entriesWhere(
     vfs,
-    function(key: string): boolean return string.find(key, needle, 1, true) ~= nil end
+    @native function(key: string): boolean return string.find(key, needle, 1, true) ~= nil end
   )
 end
 
@@ -641,6 +651,7 @@ end
 --- Winners whose normalized key starts with the normalized byte prefix. Unlike `pathsWith`, this
 --- is not component-aware: `foo` also matches `foobar`. The optional page arguments let callers
 --- consume a tiny ordered slice without materializing the whole range.
+@native
 function Methods.pathsStartingWith(
   self: VFS,
   prefix: string,
@@ -699,9 +710,10 @@ function Methods.keysStartingWith(
     return views.lazy(count, function(index: number): string return sorted[last - index + 1] end)
   end
 
-  return views.lazy(count, function(index: number): string return sorted[first + index - 1] end)
+  return views.lazy(count, @native function(index: number): string return sorted[first + index - 1] end)
 end
 
+@native
 function Methods.pathsWith(self: VFS, prefix: string, limit: number?, descending: boolean?): views.View<EntryRow>
   local vfs = receiver(self, 'pathsWith')
   local normalized = paths.normalize(keyArgument('pathsWith', prefix))
@@ -793,7 +805,7 @@ function Methods.pushDirectory(self: VFS, root: string)
 
   table.sort(
     list,
-    function(left: { key: string, entry: Entry }, right: { key: string, entry: Entry }): boolean
+    @native function(left: { key: string, entry: Entry }, right: { key: string, entry: Entry }): boolean
       if left.key ~= right.key then return left.key < right.key end
 
       return paths.pathLess(left.entry.path, right.entry.path)
@@ -865,6 +877,7 @@ end
 
 --- `remove_matching_provider`: every provider `matches` takes, from every stack. A stack that
 --- loses none keeps the winner it had, so only the others are refreshed.
+@native
 local function removeMatching(
   vfs: State,
   matches: (key: string, entry: Entry) -> boolean
@@ -956,6 +969,7 @@ function Methods.removeProvider(self: VFS, key: string, sourcePath: string): { P
   return removed
 end
 
+@native
 function Methods.removeSource(self: VFS, sourcePath: string)
   local vfs = receiver(self, 'removeSource')
   local source = keyArgument('removeSource', sourcePath)
@@ -967,10 +981,11 @@ function Methods.removeSource(self: VFS, sourcePath: string)
 
   return removeMatching(
     vfs,
-    function(_: string, entry: Entry): boolean return named[entry.source] end
+    @native function(_: string, entry: Entry): boolean return named[entry.source] end
   )
 end
 
+@native
 function Methods.removeResolvedMatchingGlob(self: VFS, pattern: string)
   local vfs = receiver(self, 'removeResolvedMatchingGlob')
   local matcher = glob.compile(check.text(method 'removeResolvedMatchingGlob', pattern, 1, 2))
@@ -1047,6 +1062,7 @@ function Methods.extractFile(self: VFS, vfsPath: string, destDir: string): strin
   return materialize.extractFile(vfs, key, target)
 end
 
+@native
 function Methods.diffDirectory(self: VFS, dir: string): DirectoryDiff
   local vfs = receiver(self, 'diffDirectory')
   local root = keyArgument('diffDirectory', dir)
@@ -1100,6 +1116,7 @@ function Methods.providerRecordsFor(self: VFS, path: string): views.View<Provide
   end)
 end
 
+@native
 function Methods.explain(
   self: VFS,
   path: string
@@ -1113,6 +1130,7 @@ function Methods.explain(
   return { key = paths.keyPath(key), winner = winner, overridden = rows }
 end
 
+@native
 function Methods.providersFor(self: VFS, key: string): views.View<ProviderRow>?
   local vfs = receiver(self, 'providersFor')
   local token = keys.find(keyArgument('providersFor', key))
@@ -1126,6 +1144,7 @@ function Methods.providersFor(self: VFS, key: string): views.View<ProviderRow>?
   )
 end
 
+@native
 function Methods.duplicates(self: VFS, pattern: string?): DuplicateReport
   local vfs = receiver(self, 'duplicates')
   local wanted = check.optionalText(method 'duplicates', pattern, 1, 2)
@@ -1147,6 +1166,7 @@ function Methods.duplicates(self: VFS, pattern: string?): DuplicateReport
   return { entries = entries }
 end
 
+@native
 function Methods.archives(self: VFS): { ArchiveInfo }
   local vfs = receiver(self, 'archives')
   local counts: { [number]: { number } } = {}
@@ -1197,6 +1217,7 @@ function Methods.archives(self: VFS): { ArchiveInfo }
 end
 
 --- `archive_entries`: what every source at `path` (spelled any way) provides, and whether it wins.
+@native
 local function archiveRows(vfs: State, path: string): { ArchiveEntry }
   local wanted = paths.normalizeHost(path)
   local matching: { [number]: boolean } = {}
@@ -1223,7 +1244,7 @@ local function archiveRows(vfs: State, path: string): { ArchiveEntry }
 
   paths.sortByPath(
     rows,
-    function(row: ArchiveEntry): string return row.key end,
+    @native function(row: ArchiveEntry): string return row.key end,
     function(left: ArchiveEntry, right: ArchiveEntry): boolean
       local order = paths.comparePaths(left.archivePath, right.archivePath)
       if order ~= 0 then return order < 0 end
@@ -1243,6 +1264,7 @@ function Methods.archiveEntries(self: VFS, archivePath: string): { ArchiveEntry 
   return archiveRows(vfs, keyArgument('archiveEntries', archivePath))
 end
 
+@native
 function Methods.filesFromArchive(self: VFS, archivePath: string): views.View<string>
   local vfs = receiver(self, 'filesFromArchive')
   local rows = archiveRows(vfs, keyArgument('filesFromArchive', archivePath))

@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- `VfsFile`: a loose file on disk or an entry inside an archive, and `Reader`, the cursor a
 -- script parses one through. A file's positional reads copy from a backing it keeps after the
@@ -87,6 +86,7 @@ end
 local function isArchive(entry: Entry): boolean return entry.archive ~= nil end
 
 --- An archive entry's last component, as the crate's `last_component` finds it in the lossy name.
+@native
 local function lastComponent(entry: Entry): string?
   local name = paths.lossy(entry.path)
   local last = string.match(name, '[^/\\]*$') or name
@@ -148,6 +148,7 @@ local function backingOf(state: FileState): Backing
 end
 
 --- Copies up to `length` bytes from `offset` of the backing into `target` at `targetOffset`.
+@native
 local function copyFrom(
   backing: Backing,
   target: buffer,
@@ -206,6 +207,7 @@ local function exact(what: string, value: unknown, position: number, stack: numb
   return check.exact(what, value, position, stack)
 end
 
+@native
 local function optionalExact(what: string, value: unknown, position: number, stack: number): number?
   if value == nil then return nil end
 
@@ -229,6 +231,7 @@ local function withinFile(what: string, name: string, offset: number, size: numb
 end
 
 --- The window `(offset, length)` of `len` bytes, with the defaults (0, the space left).
+@native
 local function window(
   what: string,
   offsetName: string,
@@ -278,6 +281,7 @@ local function newReader(backing: Backing, name: string): Reader
   return check.handle(reader)
 end
 
+@native
 function ReaderMethods.read(self: Reader, length: number): buffer
   local state = readerState(self, 'read')
   local count = exact(Named.read, length, 1, 2)
@@ -288,6 +292,7 @@ function ReaderMethods.read(self: Reader, length: number): buffer
   return out
 end
 
+@native
 function ReaderMethods.readInto(
   self: Reader,
   target: buffer,
@@ -348,6 +353,7 @@ local FileMeta = {
   end,
 }
 
+@native
 local function new(entry: Entry): VfsFile
   local file = (setmetatable({}, FileMeta) :: unknown) :: VfsFile
   files[file] = { entry = entry }
@@ -443,6 +449,7 @@ function Methods.readInto(self: VfsFile, target: buffer, offset: number?): numbe
   return count
 end
 
+@native
 function Methods.readAt(
   self: VfsFile,
   target: buffer,
@@ -469,6 +476,7 @@ function Methods.readAt(
   return copyFrom(backingOf(state), into, at, offset, count)
 end
 
+@native
 function Methods.readRange(self: VfsFile, fileOffset: number, length: number): buffer
   local state = fileState(self, 'readRange')
   local what = Named.readRange

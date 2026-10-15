@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- Paths, as vfstool_lib and dream-path spell them. VFS keys are bytes normalized the dream-path
 -- way; host paths are bytes compared and split the way Rust's `std::path` does on Unix, by
@@ -12,6 +11,7 @@ local Folded, Folds = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ\\', 'abcdefghijklmnopqrstuvwxy
 --- dream-path's normalization: `\` is `/`, ASCII is lowercased, leading separators go and
 --- repeated ones collapse; a trailing one stays. A key already in that spelling costs one native
 --- scan, which returns it as it is.
+@native
 local function normalize(path: string): string
   local key = bytes.translate(path, Folded, Folds)
   if string.byte(key, 1) == 47 or string.find(key, '//', 1, true) then
@@ -29,10 +29,12 @@ end
 
 --- vfstool's `normalize_host_path`: `\` to `/` and ASCII lowercase, nothing else, so a textual
 --- comparison of host paths ignores case and separator spelling.
+@native
 local function normalizeHost(path: string): string return bytes.translate(path, Folded, Folds) end
 
 --- Whether a normalized key is one a VFS may hold: not empty, relative, no drive letter, no NUL,
 --- and no `.` or `..` component.
+@native
 local function isSafeNormalized(key: string): boolean
   if key == '' or string.byte(key, 1) == 47 or string.byte(key, 2) == 58 then return false end
 
@@ -51,6 +53,7 @@ end
 --- `normalized_safe_key_bytes`: a key spelled any way, or nil when it could leave the place it is
 --- materialized into. Folding moves none of the bytes these checks read (the first two, a NUL, the
 --- components), so the key they pass is one `isSafeNormalized` passes too.
+@native
 local function safeKeyBytes(raw: string): string?
   local first = string.byte(raw, 1)
   if not first or first == 47 or first == 92 or string.byte(raw, 2) == 58 then return nil end
@@ -70,6 +73,7 @@ end
 --- `.` components go, and a root, a drive letter or a `..` refuses it. The common case, a relative
 --- path with neither, is one lowercase. Either way what is left is a key as `normalize` spells
 --- one: folded, with no leading separator and no run of them.
+@native
 local function safeKeyFromHost(path: string): string?
   local folded = normalizeHost(path)
   if string.byte(folded, 2) == 58 or string.byte(folded, 1) == 47 then return nil end
@@ -101,6 +105,7 @@ local function foldNeedle(needle: string): string return normalizeHost(needle) e
 
 --- Whether `key` is `prefix` or under it, on component boundaries; trailing separators on the
 --- prefix name the same directory.
+@native
 local function atOrUnder(key: string, prefix: string): boolean
   while string.byte(prefix, -1) == 47 do
     prefix = string.sub(prefix, 1, -2)
@@ -113,6 +118,7 @@ local function atOrUnder(key: string, prefix: string): boolean
 end
 
 --- Bytes as UTF-8 with every invalid sequence replaced, as Rust's `to_string_lossy` writes them.
+@native
 local function lossy(text: string): string
   if utf8.len(text) then return text end
 
@@ -123,6 +129,7 @@ local function isUtf8(text: string): boolean return utf8.len(text) ~= nil end
 
 --- A key as the host path a report carries: the bytes, or the lossy spelling when a NUL makes them
 --- no path.
+@native
 local function keyPath(key: string): string
   if string.find(key, '\0', 1, true) then return lossy(key) end
 
@@ -165,6 +172,7 @@ end
 
 --- Whether `path` from `start` on is names joined by single separators: no empty component, none
 --- a dot starts (so none is `.` or `..`), and a name at each end.
+@native
 local function isNames(path: string, start: number): boolean
   local first = string.byte(path, start)
   return first ~= nil
@@ -178,6 +186,7 @@ end
 --- A path of names (after a root or not) with `/` made the lowest byte, so that comparing two of
 --- these is comparing their paths component by component; nil for any other path, and for one
 --- that holds a NUL of its own.
+@native
 local function flatten(path: string): string?
   local start = if string.byte(path, 1) == 47 then 2 else 1
   if not isNames(path, start) or string.find(path, '\0', 1, true) then return nil end
@@ -187,6 +196,7 @@ end
 
 --- Rust's `Path` ordering: component by component, a root before a `.` before a `..` before a name,
 --- names by their bytes.
+@native
 local function comparePaths(left: string, right: string): number
   if left == right then return 0 end
 
@@ -212,12 +222,14 @@ end
 
 local function pathLess(left: string, right: string): boolean return comparePaths(left, right) < 0 end
 
+@native
 local function samePath(left: string, right: string): boolean
   return left == right or comparePaths(left, right) == 0
 end
 
 --- A path as the string `sortPaths` orders it by: each component behind its rank, a NUL between
 --- them. A path of names, after a root or not, is spelled without being split.
+@native
 local function orderKey(path: string): string
   if isNames(path, 1) then return '\4' .. string.gsub(path, '/', '\0\4') end
 
@@ -231,6 +243,7 @@ end
 --- Sorts paths in Rust's `Path` order, each spelled as its order key once. While every key is
 --- one path's alone the keys sort as plain strings; two spellings of one path tie, and where
 --- they land is then left to the sort that compares paths through their keys, as it always was.
+@native
 local function sortPaths(paths: { string })
   if #paths < 2 then return end
 
@@ -269,6 +282,7 @@ end
 --- one row goes ahead of another whose path is the same. Row for row it is the sort a comparator
 --- over `comparePaths` makes: paths of names are flattened once and compared as strings (alone,
 --- when every row's path is its own), and a list holding any other path goes to that comparator.
+@native
 local function sortByPath<T>(
   rows: { T },
   pathOf: (row: T) -> string,
@@ -315,7 +329,7 @@ local function sortByPath<T>(
 
   local ranked = [for index, row in enumerate(rows) => { row = row, flat = flats[index] }]
 
-  table.sort(ranked, function(left: { row: T, flat: string }, right: { row: T, flat: string }): boolean
+  table.sort(ranked, @native function(left: { row: T, flat: string }, right: { row: T, flat: string }): boolean
     if left.flat ~= right.flat then return left.flat < right.flat end
 
     if not before then return false end
@@ -327,6 +341,7 @@ local function sortByPath<T>(
 end
 
 --- `PathBuf::push`: an absolute path replaces the base; otherwise one separator joins them.
+@native
 local function join(base: string, path: string): string
   if string.byte(path, 1) == 47 or base == '' then return path end
 
@@ -337,6 +352,7 @@ end
 
 --- `Path::file_name`: the last component when it is a name. What follows the last separator is
 --- that component unless it is empty or a dot one, which only the components can settle.
+@native
 local function fileName(path: string): string?
   local slash = bytes.rfind(path, '/')
   local tail = if slash then string.sub(path, slash + 2) else path
@@ -381,6 +397,7 @@ end
 
 --- `Path::parent`: the path without its last component, spelled as it was; nil for a root or an
 --- empty path.
+@native
 local function parent(path: string): string?
   local trimmed = path
   while #trimmed > 1 and string.byte(trimmed, -1) == 47 do

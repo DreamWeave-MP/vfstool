@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- The `host` table: files and directories on any host path, with no VFS in between, over
 -- `@dream/fs`; and `Writer`, the buffered writer `host.openWrite` and `vfs:openWrite` return.

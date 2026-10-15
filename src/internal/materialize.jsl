@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- Writing a VFS out: every winner dumped into a folder (linked or copied, archive entries
 -- extracted), collapsed into one folder (hard or symbolic links, archives skipped or extracted),

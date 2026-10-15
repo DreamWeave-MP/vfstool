@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- `ConflictIndex`: for each source of a load order, the files it overrides and the files that
 -- override it; which sources are wholly shadowed; and what two sources have in common.
@@ -63,6 +62,7 @@ end
 
 --- `ConflictIndex::from_layer_index`: each key's sources, one per source spelling (kind and folded
 --- path), and every conflict between them.
+@native
 local function fromLayerData(data: layer.Layer): Index
   local sources = data.sources
   local index: Index = {
@@ -180,6 +180,7 @@ function Methods.sourcesContaining(self: ConflictIndex, path: string): { number 
 end
 
 --- `report_path`: a key as a report shows it, relative or below its source.
+@native
 local function reportPath(index: Index, sourceIndex: number, key: string, relative: boolean): string
   if relative then return key end
 
@@ -190,6 +191,7 @@ local function reportPath(index: Index, sourceIndex: number, key: string, relati
   return paths.join(source.path, original)
 end
 
+@native
 local function reportList(
   index: Index,
   sourceIndex: number,
@@ -221,6 +223,7 @@ function Methods.conflictsReport(self: ConflictIndex, relative: boolean?)
   return { sources = sources }
 end
 
+@native
 function Methods.shadowedReport(self: ConflictIndex, relative: boolean?, listFiles: boolean?)
   local index = indexOf(self, 'shadowedReport')
   local what = 'dream.vfs.ConflictIndex.shadowedReport'
@@ -266,6 +269,7 @@ local function positions(index: Index, path: string): { number }
   return found
 end
 
+@native
 local function keysOf(index: Index, found: { number }, path: string): { [string]: boolean }
   local keys = {}
   if #found == 0 then
@@ -302,6 +306,7 @@ local function highest(found: { number }): number?
   return max[for position in found => position]
 end
 
+@native
 function Methods.diffReport(self: ConflictIndex, sourceA: string, sourceB: string)
   local index = indexOf(self, 'diffReport')
   local what = 'dream.vfs.ConflictIndex.diffReport'
