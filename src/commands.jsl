@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- vfstool's commands, each a function of its options returning the binary's exit code. Reports go
 -- where `output` names, or to standard output; messages to standard error, as the binary printed
@@ -42,6 +41,7 @@ type Listing = { [string]: { string } }
 --- data directories for each, and lists a folder the first time alone.
 type Listings = { [string]: Listing }
 
+@native
 local function listed(listings: Listings, dir: string): Listing
   local known = listings[dir]
   if known then return known end
@@ -95,6 +95,7 @@ end
 --- A command that looks for many files hands in the `listings` it keeps. One that looks for one
 --- hands in none: it reads each folder once either way, and a listing costs a table for every name
 --- in the folder.
+@native
 local function findLoose(listings: Listings?, dirs: { string }, path: string): string?
   local key = paths.safeKeyBytes(path)
   if not key then return nil end

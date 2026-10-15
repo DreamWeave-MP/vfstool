@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- Reads the lock formats accepted by the native vfstool CLI.
 local fs = require '@dream/fs'

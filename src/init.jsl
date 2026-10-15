@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- The vfstool CLI parser; reports and behavior stay in the command implementations.
 local cli = require '@self/cli'

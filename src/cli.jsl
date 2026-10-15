@@ -1,5 +1,4 @@
 --!strict
---!native
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- What every vfstool command shares: the openmw.cfg it reads, the VFS it builds from it, and the
 -- messages it prints. The reports are in `reports.jsl`.
