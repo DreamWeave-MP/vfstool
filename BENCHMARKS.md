@@ -208,3 +208,62 @@ protocol calls a change, and in the direction the table above predicts. A tool t
 and exits pays for a construct's lowering every time and never earns it back, so the payload
 stays plain Luau; `git revert 5864b68` brings all three conversions back if the syntax is wanted
 at that price. The benches and the suites use the dialect freely: nothing ships them.
+
+## Which modules are native, and why
+
+Jess compiles to machine code only what is marked (`--!native` on a module, `@native` on one
+function), and every load pays for what is marked. A module carries `--!native` when a row below
+spends its time there and the module is small (12 KB or less); a larger module carries `@native`
+on the functions the row spends its time in, and nothing else.
+
+Measured 2026-10-15 with `jess 0.1.0`, the verified release build of jess `07c38cb` on l3i
+2.0.3, on the i7-10870H, the one-minute load 1.07 and 1.20 at the start of the two
+sessions. In each session the bench ran alternately on this package and on a copy of it with
+every module marked, three fresh runs of `bench/bench.jsl` each, every run's row the median of
+its batches; a column is the median of the three, and a ratio is against the all-marked runs of
+the same session. Which functions a row spends its time in comes from `jess run --profile` of
+that row alone, unmarked. The load cost is a fresh `jess run --package <this package>
+--package-path jpk` of a script that only requires `@vfstool`, the two sides alternating, the
+median of five each after one warm-up.
+
+| Requiring `@vfstool` | All marked | This state |
+| --- | ---: | ---: |
+| Unmarked | 0.063 s | 0.054 s |
+| Final | 0.061 s | 0.055 s |
+
+| Row | All marked (ms) | Unmarked / all marked | Final (ms) | Final / all marked |
+| --- | ---: | ---: | ---: | ---: |
+| validate | 7.094 | **1.158×** | 7.197 | 1.014× |
+| validate --full | 105.2 | 1.026× | 104.8 | 0.997× |
+| find-file -s, a file nothing has | 113.4 | 1.023× | 112.7 | 0.993× |
+| explain | 106.5 | 1.030× | 102.5 | 0.963× |
+| archives | 104.8 | 1.013× | 103.2 | 0.984× |
+| find -r | 106.6 | 1.019× | 105.6 | 0.990× |
+| remaining -r | 138.9 | 1.015× | 135.3 | 0.974× |
+| duplicates | 233.4 | 1.024× | 224.2 | 0.961× |
+| archive-list | 129.2 | **1.080×** | 126.0 | 0.975× |
+| contributions | 116.1 | **1.065×** | 112.9 | 0.972× |
+| conflicts | 166.2 | **1.070×** | 161.9 | 0.974× |
+| conflicts -r | 138.2 | **1.072×** | 131.4 | 0.951× |
+| shadowed -l | 117.9 | **1.063×** | 115.5 | 0.980× |
+| diff | 119.5 | **1.056×** | 116.5 | 0.975× |
+| collapse --dry-run, json | 201.4 | **1.092×** | 199.3 | 0.990× |
+| collapse --dry-run, yaml | 496.8 | **1.074×** | 488.7 | 0.984× |
+| lock, json | 201.2 | **1.075×** | 192.1 | 0.955× |
+| lock, yaml | 538.0 | **1.089×** | 531.4 | 0.988× |
+| lock, toml | 255.7 | **1.084×** | 249.8 | 0.977× |
+| drift from a json lock, none | 195.4 | **1.072×** | 189.5 | 0.970× |
+| drift from a yaml lock, none | 398.7 | **1.079×** | 386.7 | 0.970× |
+| drift from a toml lock, none | 182.3 | **1.073×** | 175.7 | 0.964× |
+| drift from a json lock, forty folders added | 205.8 | **1.079×** | 200.2 | 0.973× |
+
+What carries the directive (every module and function here is one a row spends its time in,
+unmarked):
+
+- Whole: `reports`.
+- `commands`, by function: `listed`, `findLoose`.
+- Unmarked: `cli`, `init`, `lock`, `main`.
+
+Unmarked, 16 of the 23 rows ran more than 5% slower: the reports and the listings walk every
+file of a VFS. With these marked, none is, and requiring `@vfstool` costs 6 ms less than all
+marked; the VFS's own hot paths are `@vfs`'s to mark, and are (see its BENCHMARKS.md).
