@@ -6,6 +6,15 @@
 local bytes = require '@dream/bytes'
 local fs = require '@dream/fs'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 export type Random = (bound: number?) -> number
 
 --- A xorshift32 generator: `random(n)` is in `0..n-1`, `random()` a u32.
@@ -191,7 +200,7 @@ local function listing(root: string): string
     local kind = walk.kinds[index]
     local full = `{root}/{path}`
     if kind == 'file' then
-      table.insert(lines, `{path} file {digest(fs.readFileString(full))}`)
+      table.insert(lines, `{path} file {digest(readText(full))}`)
     elseif kind == 'symlink' then
       table.insert(lines, `{path} link {scrub(fs.readLink(full) or '?', root)}`)
     else

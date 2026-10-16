@@ -13,6 +13,15 @@ local fs = require '@dream/fs'
 local paths = require '@vfs/paths'
 local support = require './support'
 local test = require '@jess/test'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
 local vfstool: any = require '@vfs'
 local expect = test.expect
 local suite = test.new()
@@ -1019,7 +1028,7 @@ suite.describe('reports and layers', function()
       `a.txt looseDir 2 5 {bytes.blake3 'short'}`,
       `big.bin looseDir 1 {#long} {bytes.blake3(long)}`,
       `pack.bsa looseDir 1 {#fs.readFileString(`{dir}/Pack.bsa`)} {bytes.blake3(
-        fs.readFileString(`{dir}/Pack.bsa`)
+        readText(`{dir}/Pack.bsa`)
       )}`,
       `packed/only.dds archive 1 12 {bytes.blake3 'packed bytes'}`,
       `z/sub dir/c.txt looseDir 1 4 {bytes.blake3 'deep'}`,
@@ -1330,7 +1339,7 @@ suite.describe('materialization', function()
     local out = scratch 'dump-out'
     local written = vfs:dumpToDirectory(`{out}/copy`, false)
     expect(written).toBe(2)
-    expect(fs.readFileString(`{out}/copy/sub/deep/b.txt`)).toBe 'b'
+    expect(readText(`{out}/copy/sub/deep/b.txt`)).toBe 'b'
     expect(vfs:dumpToDirectory(`{out}/link`, true)).toBe(2)
     expect(fs.sameFile(`{out}/link/a.txt`, `{dir}/a.txt`)).toBe(true)
     expect(vfs:dumpToDirectory(`{out}/copy`, false)).toBe(2)
@@ -1362,7 +1371,7 @@ suite.describe('materialization', function()
     local out = scratch 'extract-out'
     expect(vfs:dumpToDirectory(out, false)).toBe(2)
     expect(fs.exists(`{out}/pack.bsa`)).toBe(true)
-    expect(fs.readFileString(`{out}/textures/a.dds`)).toBe 'member'
+    expect(readText(`{out}/textures/a.dds`)).toBe 'member'
   end)
 
   suite.it('runs setup and finalize around a merged folder', function()
@@ -1586,7 +1595,7 @@ suite.describe('writes', function()
     vfs:mkdir 'textures/made'
     vfs:rename('real.txt', 'textures/made/real.txt')
     assert(vfs:getFile('textures/made/real.txt'):readAll() == 'real')
-    expect(fs.readFileString(`{outside}/keep/victim.txt`)).toBe 'untouched'
+    expect(readText(`{outside}/keep/victim.txt`)).toBe 'untouched'
     expect(fs.exists(`{outside}/keep/new.txt`)).toBe(false)
     expect(fs.lstat(`{out}/textures/link`).isSymlink).toBe(true)
   end)
