@@ -246,7 +246,7 @@ local function tomlValue(source: string): string?
   if not isUtf8(source) then return nil end
 
   -- toml.decode throws for a document that isn't TOML.
-  local ok, value, layout = pcall(toml.decode, source)
+  local ok, value, layout = pcall(toml.decode, source, nil)
   if not ok then return nil end
 
   return tomlCanonical(value, false, (layout :: unknown) :: TomlLayout)

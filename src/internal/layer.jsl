@@ -354,7 +354,7 @@ local function drift(
   end
 
   local current = lockManifest(layer, state)
-  local expectedMap, currentMap = {}, {}
+  local expectedMap: { [string]: LockEntry }, currentMap: { [string]: LockEntry } = {}, {}
   for _, row in expected.entries do
     expectedMap[paths.lossy(row.key)] = row
   end

@@ -64,7 +64,8 @@ local function workload(name: string, expected: unknown, body: () -> unknown)
 
   local function verify(result: unknown)
     if type(expected) == 'function' then
-      if not expected(result) then error(`vfs bench: {name} failed its check`, 0) end
+      local accepts = expected :: (unknown) -> boolean
+      if not accepts(result) then error(`vfs bench: {name} failed its check`, 0) end
 
       return
     end
@@ -442,7 +443,8 @@ do
   for dir = 1, DirCount do
     dirs[dir] = `{treeRoot}/data{dir}`
 
-    for _, index in picks[dir][1:PerDir] do
+    local chosen = picks[dir][1:PerDir]
+    for _, index in chosen do
       local relative = spell(pool[index], (index + dir) % 2)
       local key = keyOf(relative)
       write(`{dirs[dir]}/{relative}`, relative)
@@ -453,7 +455,8 @@ do
   local builder = archive.bsa.tes3.Builder.new()
 
   for source = DirCount + 1, DirCount + 2 do
-    for _, index in picks[source][1:PerArchiveSource] do
+    local chosen = picks[source][1:PerArchiveSource]
+    for _, index in chosen do
       local name = string.lower((string.gsub(pool[index], '/', '\\')))
       if archived[keyOf(name)] then continue end
 

@@ -160,10 +160,9 @@ function describe(value: any, root: string?, depth: number?): string
     table.insert(keys, key)
   end
 
-  table.sort(keys, function(left, right)
-    if type(left) == type(right) and (type(left) == 'number' or type(left) == 'string') then
-      return left < right
-    end
+  table.sort(keys, function(left: unknown, right: unknown): boolean
+    if type(left) == 'number' and type(right) == 'number' then return left < right end
+    if type(left) == 'string' and type(right) == 'string' then return left < right end
 
     return tostring(left) < tostring(right)
   end)
@@ -194,7 +193,9 @@ end
 local function listing(root: string): string
   if not fs.exists(root) then return '<missing>' end
 
-  local walk = fs.walk(root, { sort = true })
+  local walk, problem = fs.walk(root, { sort = true })
+  if not walk then error(problem, 0) end
+
   local lines = {}
   for index, path in walk.paths do
     local kind = walk.kinds[index]

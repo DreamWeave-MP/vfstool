@@ -381,8 +381,10 @@ local function treeStream(built: tree.Tree): Tree
 end
 
 local function regex(pattern: string): Regex
+  local options: { caseInsensitive: boolean?, unicode: boolean?, multiLine: boolean?, dotAll: boolean? } =
+    { caseInsensitive = true }
   -- `bytes.regex` is a Rust binding that raises for a pattern it cannot compile.
-  local ok, compiled = pcall(bytes.regex, pattern, { caseInsensitive = true })
+  local ok, compiled = pcall(bytes.regex, pattern, options)
   if not ok then
     local message = string.gsub(tostring(compiled), '^jess%.regex%.new: ', '')
     check.vfs(`invalid regex: {message}`)
@@ -824,7 +826,7 @@ local function removeMatching(
   return removed
 end
 
-function Methods.removeProviderPrefix(self: VFS, prefix: string)
+function Methods.removeProviderPrefix(self: VFS, prefix: string): { { key: string, provider: ProviderRow } }
   local vfs = receiver(self, 'removeProviderPrefix')
   local normalized = paths.normalize(keyArgument('removeProviderPrefix', prefix))
   return removeMatching(
@@ -846,7 +848,7 @@ local function removeResolved(vfs: State, keys: { string }): { { key: string, fi
   return removed
 end
 
-function Methods.removeResolvedPrefix(self: VFS, prefix: string)
+function Methods.removeResolvedPrefix(self: VFS, prefix: string): { { key: string, file: VfsFile } }
   local vfs = receiver(self, 'removeResolvedPrefix')
   local normalized = paths.normalize(keyArgument('removeResolvedPrefix', prefix))
   local keys = {}
@@ -883,11 +885,12 @@ function Methods.removeProvider(self: VFS, key: string, sourcePath: string): { P
 end
 
 @native
-function Methods.removeSource(self: VFS, sourcePath: string)
+function Methods.removeSource(self: VFS, sourcePath: string): { { key: string, provider: ProviderRow } }
   local vfs = receiver(self, 'removeSource')
   local source = keyArgument('removeSource', sourcePath)
   local named = [for held in vfs.sources => paths.samePath(held.path, source)]
-  if not any[for same in named => same] then
+  local present = any[for same in named => same]
+  if not present then
     state.touched(vfs)
     return {}
   end
@@ -899,7 +902,7 @@ function Methods.removeSource(self: VFS, sourcePath: string)
 end
 
 @native
-function Methods.removeResolvedMatchingGlob(self: VFS, pattern: string)
+function Methods.removeResolvedMatchingGlob(self: VFS, pattern: string): { { key: string, file: VfsFile } }
   local vfs = receiver(self, 'removeResolvedMatchingGlob')
   local matcher = glob.compile(check.text(method 'removeResolvedMatchingGlob', pattern, 1, 2))
   local keys = {}

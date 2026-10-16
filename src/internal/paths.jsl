@@ -432,9 +432,8 @@ local function stripPrefix(path: string, base: string): string?
   local whole, head = components(path), components(base)
   if #head > #whole then return nil end
 
-  if not all[for index, component in enumerate(head) => whole[index] == component] then
-    return nil
-  end
+  local prefixed = all[for index, component in enumerate(head) => whole[index] == component]
+  if not prefixed then return nil end
 
   local rest = whole[#head + 1:#whole]
   if rest[1] == '/' then return nil end

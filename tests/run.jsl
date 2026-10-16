@@ -32,7 +32,12 @@ local base = rawget(globals, 'scratchRoot')
   or `{fs.cwd()}/vfs-suite`
 
 --- A fresh folder for one case, canonical, as a write root is kept.
-local function scratch(name: string): string return fs.canonicalize(support.fresh(`{base}/{name}`)) end
+local function scratch(name: string): string
+  local folder, problem = fs.canonicalize(support.fresh(`{base}/{name}`))
+  if not folder then error(problem, 0) end
+
+  return folder
+end
 
 --- `files` written below a fresh folder.
 local function tree(name: string, files: { [string]: string }): string
@@ -687,7 +692,7 @@ suite.describe('files', function()
         and string.find(err, 'a.bin is closed', 1, true),
       err
     )
-    assert(string.find(refused(reader.seek, reader, 0), 'is closed', 1, true))
+    assert((string.find(refused(reader.seek, reader, 0), 'is closed', 1, true)))
     assert(reader:tell() == 0 and reader:size() == 300, 'tell and size still answer')
     assert(buffer.readu8(other:read(1), 0) == 1, 'the other reader is unaffected')
     local walk = file:open()
@@ -894,7 +899,7 @@ suite.describe('semantic analysis', function()
     local vfs, layer = vfstool.VFS.fromDirectoriesWithLayerIndex { low, high }
     local report =
       layer:semanticConflicts(vfs, { includeSemanticDeltas = true, archiveHashMode = 'disabled' })
-    assert(#report.entries == 2, #report.entries)
+    assert(#report.entries == 2, `{#report.entries} entries`)
     local byKey = {}
     for _, entry in report.entries do
       byKey[entry.key] = entry
@@ -1027,7 +1032,7 @@ suite.describe('reports and layers', function()
       `a/b.txt looseDir 1 0 {bytes.blake3 ''}`,
       `a.txt looseDir 2 5 {bytes.blake3 'short'}`,
       `big.bin looseDir 1 {#long} {bytes.blake3(long)}`,
-      `pack.bsa looseDir 1 {#fs.readFileString(`{dir}/Pack.bsa`)} {bytes.blake3(
+      `pack.bsa looseDir 1 {#readText(`{dir}/Pack.bsa`)} {bytes.blake3(
         readText(`{dir}/Pack.bsa`)
       )}`,
       `packed/only.dds archive 1 12 {bytes.blake3 'packed bytes'}`,
@@ -1298,7 +1303,7 @@ suite.describe('mutation', function()
     expect(#vfs:removeSource(`{low}/nowhere`)).toBe(0)
     assert(vfs:revision() > before and vfs:len() == 3)
     local removed = vfs:removeSource(`{high}//`)
-    table.sort(removed, function(left, right) return left.key < right.key end)
+    table.sort(removed, function(left: { key: string }, right: { key: string }): boolean return left.key < right.key end)
     expect(table.concat([for row in removed => `{row.key}={row.provider.source.path == high}`], ' ')).toBe 'high.txt=true shared.txt=true'
     expect(table.concat(keysOf(vfs), ',')).toBe 'low.txt,shared.txt'
     expect(vfs:getFile('shared.txt'):readAll()).toBe 'low'
@@ -1341,7 +1346,7 @@ suite.describe('materialization', function()
     expect(written).toBe(2)
     expect(readText(`{out}/copy/sub/deep/b.txt`)).toBe 'b'
     expect(vfs:dumpToDirectory(`{out}/link`, true)).toBe(2)
-    expect(fs.sameFile(`{out}/link/a.txt`, `{dir}/a.txt`)).toBe(true)
+    expect((fs.sameFile(`{out}/link/a.txt`, `{dir}/a.txt`))).toBe(true)
     expect(vfs:dumpToDirectory(`{out}/copy`, false)).toBe(2)
   end)
 
@@ -1409,12 +1414,12 @@ suite.describe('writes', function()
     vfs:writeFile('textures/a.dds', 'Z', { append = true })
     assert(vfs:getFile('textures/a.dds'):readAll() == 'nXYZ', 'append')
     assert(
-      string.find(
+      (string.find(
         refused(vfs.writeFile, vfs, 'missing.txt', 'x', { create = false }),
         'dream.vfs: ',
         1,
         true
-      )
+      ))
     )
     local err = refused(vfs.writeFile, vfs, 'x.txt', 'x', { offset = 0, append = true })
     assert(string.find(err, 'vfs:writeFile: offset and append cannot be combined', 1, true), err)
@@ -1509,7 +1514,7 @@ suite.describe('writes', function()
     vfs:rename('d1', 'd2')
     assert(not vfs:contains 'd1/x.txt' and vfs:getFile('d2/x.txt'):path() == `{out}/d2/x.txt`)
     assert(vfs:getFile('d2/sub/y.txt'):readAll() == 'y')
-    expect(fs.stat(`{out}/made/dir`).isDir).toBe(true)
+    expect(assert((fs.stat(`{out}/made/dir`))).isDir).toBe(true)
     expect((fs.exists(`{out}/tmp`))).toBe(false)
   end)
 
@@ -1547,49 +1552,49 @@ suite.describe('writes', function()
       err
     )
     assert(
-      string.find(
+      (string.find(
         denied('writeFile', 'textures\\link\\deeper\\new.txt', 'x'),
         '\'textures/link\' is a symbolic link',
         1,
         true
-      )
+      ))
     )
     assert(
-      string.find(
+      (string.find(
         denied('writeFile', 'victim.txt', 'x'),
         '\'victim.txt\' is a symbolic link',
         1,
         true
-      )
+      ))
     )
-    assert(string.find(denied('openWrite', 'textures/link/new.txt'), 'is a symbolic link', 1, true))
-    assert(string.find(denied('mkdir', 'textures/link/dir'), 'is a symbolic link', 1, true))
-    assert(string.find(denied('remove', 'textures/link'), 'is a symbolic link', 1, true))
-    assert(string.find(denied('remove', 'textures/link/victim.txt'), 'is a symbolic link', 1, true))
+    assert((string.find(denied('openWrite', 'textures/link/new.txt'), 'is a symbolic link', 1, true)))
+    assert((string.find(denied('mkdir', 'textures/link/dir'), 'is a symbolic link', 1, true)))
+    assert((string.find(denied('remove', 'textures/link'), 'is a symbolic link', 1, true)))
+    assert((string.find(denied('remove', 'textures/link/victim.txt'), 'is a symbolic link', 1, true)))
     vfs:writeFile('real.txt', 'real')
     assert(
-      string.find(
+      (string.find(
         denied('rename', 'real.txt', 'textures/link/moved.txt'),
         'is a symbolic link',
         1,
         true
-      )
+      ))
     )
     assert(
-      string.find(
+      (string.find(
         denied('rename', 'victim.txt', 'elsewhere.txt'),
         'rename: \'victim.txt\' is a symbolic link',
         1,
         true
-      )
+      ))
     )
     assert(
-      string.find(
+      (string.find(
         denied('writeFile', 'inside/new.txt', 'x'),
         '\'inside\' is a symbolic link',
         1,
         true
-      )
+      ))
     )
     assert(vfs:writeFile('textures/plain.txt', 'plain'):path() == `{out}/textures/plain.txt`)
     vfs:mkdir 'textures/made'
@@ -1597,7 +1602,7 @@ suite.describe('writes', function()
     assert(vfs:getFile('textures/made/real.txt'):readAll() == 'real')
     expect(readText(`{outside}/keep/victim.txt`)).toBe 'untouched'
     expect((fs.exists(`{outside}/keep/new.txt`))).toBe(false)
-    expect(fs.lstat(`{out}/textures/link`).isSymlink).toBe(true)
+    expect(assert((fs.lstat(`{out}/textures/link`))).isSymlink).toBe(true)
   end)
 end)
 
@@ -1616,7 +1621,7 @@ suite.describe('the host table', function()
       string.find(err, 'dream.vfs: host.readAt: offset 1001 past the end (size 1000)', 1, true),
       err
     )
-    assert(string.find(refused(host.readFile, `{dir}/nope.bin`), 'dream.vfs: ', 1, true))
+    assert((string.find(refused(host.readFile, `{dir}/nope.bin`), 'dream.vfs: ', 1, true)))
     local reader = host.open(`{dir}/in/big.bin`)
     assert(reader:size() == 1000)
     reader:seek(500)
