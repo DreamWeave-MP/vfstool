@@ -7,6 +7,15 @@ local support = require './support'
 local test = require '@jess/test'
 local vfstool = require '@vfstool'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 local globals = _G :: { [string]: unknown }
@@ -21,7 +30,7 @@ suite.describe('vfstool CLI', function()
 
     local output = `{root}/vfs.lock.json`
     expect(vfstool.run({ 'lock', '--config', root, '--format', 'json', '--output', output })).toBe(0)
-    expect(fs.readFileString(output)).toBe('{"schema_version":1,"entries":[]}')
+    expect(readText(output)).toBe('{"schema_version":1,"entries":[]}')
     fs.writeFile(`{data}/Morrowind.esm`, '')
     expect(vfstool.run({ 'find-file', '-s', '--config', root, 'Morrowind.esm' })).toBe(0)
 

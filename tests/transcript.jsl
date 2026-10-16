@@ -8,6 +8,15 @@ local archive = require '@dream-archive'
 local fs = require '@dream/fs'
 local vfstool = require '@vfstool'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 export type Step = { group: string, name: string, text: string }
 
 local Formats = { 'yaml', 'json', 'toml' }
@@ -214,7 +223,7 @@ local function record(root: string): { Step }
     if fs.exists(path) then fs.remove(path) end
 
     local code = vfstool.run(with(argv, { '--config', root, '--format', 'json', '--output', path }))
-    step(name, `exit {code}\n{scrubTree(fs.readFileString(path) or '<no report>', root)}`)
+    step(name, `exit {code}\n{scrubTree(readText(path) or '<no report>', root)}`)
   end
 
   status('no arguments', {}, '')

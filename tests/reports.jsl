@@ -8,6 +8,15 @@ local support = require './support'
 local test = require '@jess/test'
 local transcript = require './transcript'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 local globals = _G :: { [string]: unknown }
@@ -22,7 +31,7 @@ local function here(): string
   return string.match(path, '^(.*)/[^/]*$') or '.'
 end
 
-local golden = transcript.parse((fs.readFileString(`{here()}/golden/reports.txt`) or error('no golden', 0)))
+local golden = transcript.parse((readText(`{here()}/golden/reports.txt`) or error('no golden', 0)))
 local recorded: { transcript.Step }?
 
 --- The commands' steps, run once for every case.

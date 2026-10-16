@@ -13,6 +13,15 @@ local support = require './support'
 local test = require '@jess/test'
 local vfstool = require '@vfstool'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local expect = test.expect
 local suite = test.new()
 local globals = _G :: { [string]: unknown }
@@ -44,7 +53,7 @@ end
 local function validated(root: string): (number, { string })
   local path = `{root}/validate.json`
   local code = vfstool.run { 'validate', '--config', root, '--format', 'json', '--output', path }
-  local report = json.decode((fs.readFileString(path) or error('no report', 0))) :: { issues: { { [string]: { [string]: string } } } }
+  local report = json.decode((readText(path) or error('no report', 0))) :: { issues: { { [string]: { [string]: string } } } }
   local issues = {}
 
   for _, issue in report.issues do

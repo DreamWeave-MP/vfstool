@@ -11,6 +11,15 @@
 local fs = require '@dream/fs'
 local process = require '@dream/process'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local jessPath: string?, packagePath: string?, scratch: string?, base: string?, head: string? = ...
 
 if not (jessPath and packagePath and scratch and base and head) then
@@ -63,7 +72,7 @@ local function session(build: string, label: string): (dream_process_Result, str
 
   if not result then error(`{jessPath} did not start: {message}`, 0) end
 
-  return result, fs.readFileString(written) or '<no transcript>'
+  return result, readText(written) or '<no transcript>'
 end
 
 --- Where two texts first differ, with what is around it in each.

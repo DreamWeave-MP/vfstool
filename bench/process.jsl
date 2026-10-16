@@ -14,6 +14,15 @@
 local fs = require '@dream/fs'
 local process = require '@dream/process'
 
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
 local jessPath: string?, packagePath: string?, scratch: string?, roundCount: string? = ...
 local packages: { string } = { select(5, ...) }
 local rounds = tonumber(roundCount)
@@ -138,7 +147,7 @@ local function run(folder: string, command: Command, output: string?): number
   end
 
   local check = command.check
-  if check and not output and not check(fs.readFileString(report) or '') then
+  if check and not output and not check(readText(report) or '') then
     error(`vfstool bench: {folder}: {command.name} wrote a report that fails its check`, 0)
   end
 

@@ -76,6 +76,15 @@ end
 
 local started = os.clock()
 local vfstool = require '@vfstool'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
 local required = os.clock() - started
 
 local validated, locked, drifted = `{root}/validate.json`, `{root}/lock.json`, `{root}/drift.json`
@@ -92,7 +101,7 @@ local lockCode, firstLock = first { 'lock', '--config', root, '--format', 'json'
 local driftCode, firstDrift = first { 'drift', locked, '--config', root, '--format', 'json', '--output', drifted }
 
 local keys = Folders * (PerFolder // 2 + 1) + PerFolder // 2
-local entries = select(2, string.gsub(fs.readFileString(locked) or '', '"provider_count":', ''))
+local entries = select(2, string.gsub(readText(locked) or '', '"provider_count":', ''))
 
 if
   validateCode ~= 0
