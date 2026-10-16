@@ -23,7 +23,7 @@ local scratchRoot = globals.scratchRoot or support.settings.scratchRoot or `{fs.
 
 suite.describe('vfstool CLI', function()
   suite.it('reads YAML, JSON, and TOML lock manifests through drift', function()
-    local root = fs.canonicalize(support.fresh(`{scratchRoot}/vfstool-locks`))
+    local root = support.fresh(`{scratchRoot}/vfstool-locks`)
     local data = `{root}/Data Files`
     fs.mkdir(data, { recursive = true })
     fs.writeFile(`{root}/openmw.cfg`, `data = "{data}"\n`)

@@ -39,7 +39,7 @@ local function steps(): { transcript.Step }
   local kept = recorded
   if kept then return kept end
 
-  local made = transcript.record(fs.canonicalize(support.fresh(`{scratchRoot}/vfstool-reports`)))
+  local made = transcript.record(support.fresh(`{scratchRoot}/vfstool-reports`))
   recorded = made
   return made
 end

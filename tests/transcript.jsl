@@ -81,7 +81,9 @@ end
 local function listing(dir: string): string
   if not fs.exists(dir) then return '<missing>' end
 
-  local walk = fs.walk(dir, { sort = true })
+  local walk, problem = fs.walk(dir, { sort = true })
+  if not walk then error(problem, 0) end
+
   local lines = {}
   for index, path in walk.paths do
     local kind = walk.kinds[index]

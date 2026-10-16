@@ -73,7 +73,7 @@ end
 
 suite.describe('vfstool loose files', function()
   suite.it('finds each name in the last folder that has it, a folder listed once for them all', function()
-    local root = fs.canonicalize(support.fresh(`{scratchRoot}/vfstool-loose`))
+    local root = support.fresh(`{scratchRoot}/vfstool-loose`)
 
     writeTree(`{root}/First`, {
       { 'Plugin.esp', 'first plugin' },
@@ -166,7 +166,7 @@ suite.describe('vfstool loose files', function()
   end)
 
   suite.it('walks every name that spells a key, where the file system tells them apart', function()
-    local root = fs.canonicalize(support.fresh(`{scratchRoot}/vfstool-twins`))
+    local root = support.fresh(`{scratchRoot}/vfstool-twins`)
 
     fs.writeFile(`{root}/probe`, 'lower')
 

@@ -53,25 +53,19 @@ end
 local done, problem = fs.writeFile(`{root}/openmw.cfg`, table.concat(lines, '\n') .. '\n')
 if not done then error(problem, 0) end
 
---- Every module of another package that one of vfstool's requires.
-local Others = {
-  '@dream/fs',
-  '@dream/process',
-  '@openmw-config',
-  '@jess/data/value',
-  '@jess/json',
-  '@jess/yaml',
-  '@vfs',
-  '@vfs/paths',
-  '@vfs/layer',
-  '@vfs/encode',
-  '@vfs/core',
-}
-
+-- Every module of another package that one of vfstool's requires.
 if mode == 'own' then
-  for _, name in Others do
-    require(name)
-  end
+  require '@dream/fs'
+  require '@dream/process'
+  require '@openmw-config'
+  require '@jess/data/value'
+  require '@jess/json'
+  require '@jess/yaml'
+  require '@vfs'
+  require '@vfs/paths'
+  require '@vfs/layer'
+  require '@vfs/encode'
+  require '@vfs/core'
 end
 
 local started = os.clock()

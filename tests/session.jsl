@@ -17,14 +17,18 @@ if fs.exists(scratch) then fs.remove(scratch, { recursive = true }) end
 
 fs.mkdir(scratch, { recursive = true })
 
-local root = fs.canonicalize(scratch)
+local root, unresolved = fs.canonicalize(scratch)
+if not root then error(unresolved, 0) end
+
 local parts = { transcript.render(transcript.record(root)) }
 
 --- Every file and folder below `dir`, a file with what it holds.
 local function listing(dir: string): string
   if not fs.exists(dir) then return '<missing>' end
 
-  local walk = fs.walk(dir, { sort = true })
+  local walk, problem = fs.walk(dir, { sort = true })
+  if not walk then error(problem, 0) end
+
   local lines = {}
   for index, path in walk.paths do
     local kind = walk.kinds[index]
@@ -64,7 +68,7 @@ run('run --copy --keep-merged --output', {
   Again,
   '{}',
 })
-table.insert(parts, `captured: {listing(`{root}/captured`)}\nmerged kept: {tostring(fs.exists(merged))}\n`)
+table.insert(parts, `captured: {listing(`{root}/captured`)}\nmerged kept: {tostring((fs.exists(merged)))}\n`)
 fs.remove(merged, { recursive = true })
 run('run, nothing changed', { 'run', '--config', root, merged, 'true' })
 run('run, the child fails', { 'run', '--config', root, merged, '--', 'sh', '-c', 'exit 3' })
