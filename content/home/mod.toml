@@ -1,0 +1,19 @@
+# DreamWeave VFS as a DreamWeave project: a Jess package. The repository root is its Package Source;
+# jess.toml names the package and its version, and each release tag `vfs-<version>` is one
+# version of the package, packed by CI with `jess pack`.
+id = "2eb18c13-854d-4f1a-af65-ef40705e77f8"
+slug = "vfs"
+type = "library"
+status = "active"
+
+[[maintainers]]
+name = "DreamWeave"
+url = "https://github.com/DreamWeave-MP"
+
+[package]
+format = "jpk"
+
+[[releases]]
+version = "0.1.0"
+date = 2026-10-19
+summary = "First release published as a DreamWeave project."
