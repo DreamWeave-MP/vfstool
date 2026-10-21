@@ -2,7 +2,7 @@ manifest_version = 1
 
 [package]
 id = "org.dreamweave.vfstool"
-version = "0.1.0"
+version = "2.0.0"
 jess_api = "1"
 default_target = "vfstool"
 include = ["src", "tests"]
@@ -10,7 +10,7 @@ tests = ["tests/run.jsl", "tests/reports.jsl", "tests/loose.jsl", "tests/style.j
 
 [dependencies]
 "org.dreamweave.openmw-config" = "4"
-"org.dreamweave.vfs" = "0.1"
+"org.dreamweave.vfs" = "2"
 
 # The suites and the bench pack their fixture archives with it.
 [dev-dependencies]
