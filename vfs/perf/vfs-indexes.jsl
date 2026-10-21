@@ -1,0 +1,59 @@
+--!strict
+-- The VFS's ordered indexes, checked on a handful of winners: a byte prefix and a component prefix
+-- find different ranges, a page comes off either end, and a mutation moves the revision so the
+-- next page sees it. Run by `jess run --capability filesystem.read --capability filesystem.write
+-- --package jpk/vfs --package-path jpk jpk/vfs/perf/vfs-indexes.jsl`.
+local module = require '@vfs'
+
+--- A view's rows as keys: an entry row by its key, a key as it is.
+local function collect(view: any): { string }
+  local out = {}
+
+  for _, value in view do
+    out[#out + 1] = if type(value) == 'table' and value.key then value.key else value
+  end
+
+  return out
+end
+
+--- Raises unless `actual` is `expected`, key for key.
+local function equal(actual: { string }, expected: { string }, label: string)
+  if #actual ~= #expected then error(`{label}: length {#actual} ~= {#expected}`, 0) end
+
+  for index, value in expected do
+    if actual[index] ~= value then
+      error(`{label}: [{index}] {tostring(actual[index])} ~= {value}`, 0)
+    end
+  end
+end
+
+local vfs = module.VFS.new()
+local initial = vfs:revision()
+vfs:setWinnerFile('foo/a.nif', module.VfsFile.from '/tmp/foo/a.nif')
+vfs:setWinnerFile('foo/bar.nif', module.VfsFile.from '/tmp/foo/bar.nif')
+vfs:setWinnerFile('foobar.nif', module.VfsFile.from '/tmp/foobar.nif')
+vfs:setWinnerFile('meshes/a.nif', module.VfsFile.from '/tmp/meshes/a.nif')
+vfs:setWinnerFile('meshes/b.nif', module.VfsFile.from '/tmp/meshes/b.nif')
+assert(vfs:revision() > initial, 'revision did not advance')
+equal(
+  collect(vfs:keysStartingWith 'foo'),
+  { 'foo/a.nif', 'foo/bar.nif', 'foobar.nif' },
+  'raw prefix'
+)
+equal(collect(vfs:pathsWith 'foo'), { 'foo/a.nif', 'foo/bar.nif' }, 'component prefix')
+equal(
+  collect(vfs:keysStartingWith('meshes/', 1, true)),
+  { 'meshes/b.nif' },
+  'descending prefix page'
+)
+equal(collect(vfs:keys(2, true)), { 'meshes/b.nif', 'meshes/a.nif' }, 'descending key page')
+
+local before = vfs:revision()
+vfs:setWinnerFile('meshes/c.nif', module.VfsFile.from '/tmp/meshes/c.nif')
+assert(vfs:revision() > before, 'revision did not invalidate after mutation')
+equal(
+  collect(vfs:keysStartingWith('meshes/', 2, true)),
+  { 'meshes/c.nif', 'meshes/b.nif' },
+  'prefix page after mutation'
+)
+print 'vfs perf-index tests: ok'

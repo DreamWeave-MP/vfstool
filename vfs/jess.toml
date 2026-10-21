@@ -1,0 +1,29 @@
+manifest_version = 1
+
+[package]
+id = "org.dreamweave.vfs"
+version = "0.1.0"
+jess_api = "1"
+include = ["src", "tests"]
+tests = ["tests/run.jsl", "tests/style.jsl"]
+
+[dependencies]
+"org.dreamweave.dream-archive" = "2"
+
+[modules]
+"@vfs" = "src/init.jsl"
+# The public types alone, for a module that names a VFS before it needs one.
+"@vfs/types" = "src/internal/public.jsl"
+# Exported for vfstool, whose command line is built from these four; they are not the VFS API.
+"@vfs/paths" = "src/internal/paths.jsl"
+"@vfs/layer" = "src/internal/layer.jsl"
+"@vfs/encode" = "src/internal/encode.jsl"
+"@vfs/core" = "src/internal/vfs.jsl"
+
+# Every module here is inert API: it does nothing until something requires it, and runs with the
+# authority of whatever calls it.
+
+[[layer]]
+id = "vfs.core"
+requires = ["dream-archive.core"]
+exports = ["@vfs", "@vfs/types", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]

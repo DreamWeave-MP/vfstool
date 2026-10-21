@@ -1,0 +1,824 @@
+--!strict
+-- The VFS port, timed from Luau: path normalization and ordering, layer and conflict indexes over
+-- a synthetic load order, semantic comparison, and a VFS over loose folders and an archive written
+-- under a scratch folder: built, looked up, listed, reported on and locked. Run on a release build
+-- by `jess run --capability filesystem.read --capability filesystem.write --package jpk/vfs
+-- --package-path jpk jpk/vfs/bench/bench.jsl <scratch> [filter]`. Prints one line per workload:
+-- its name, a tab, and the seconds one call takes. Every workload answers what its inputs say it
+-- must (a count, a length, a kind), worked out here without the port, so a path that stopped doing
+-- the work fails instead of posting a time.
+local archive = require '@dream-archive'
+local fs = require '@dream/fs'
+local json = require '@jess/json'
+local paths = require '@vfs/paths'
+local port = require '@vfs'
+
+-- A build without the verified toolchain runs Luau slower than a release does, so a number from
+-- one says nothing about what ships.
+if not jess.bench.verified then
+  error('vfs bench: this jess was built without the verified toolchain: measure on a release build', 0)
+end
+
+--- The arguments: a folder to write the fixture trees into, and a filter on the workload names.
+local scratch: string?, filter: string? = ...
+local only = if filter and filter ~= '' then filter else nil
+
+if not scratch then error('vfs bench: a scratch folder is required', 0) end
+
+local function median(samples: { number }): number
+  table.sort(samples)
+  return samples[(#samples + 1) // 2]
+end
+
+--- Seconds per call of `body`: warmed up, then the median of seven batches of a size that takes
+--- about a tenth of a second, a full collection before each. `verify` is given the result of the
+--- first call and of one more after the last batch, outside the time.
+local function measure(body: () -> unknown, verify: (result: unknown) -> ()): number
+  jess.bench.collect()
+  verify(body())
+  local start = os.clock()
+  body()
+  local once = math.max(os.clock() - start, 1e-7)
+  local iterations = math.max(1, math.floor(0.1 / once))
+  local samples = {}
+
+  for batch = 1, 7 do
+    jess.bench.collect()
+    start = os.clock()
+
+    for _ = 1, iterations do
+      body()
+    end
+
+    samples[batch] = (os.clock() - start) / iterations
+  end
+
+  verify(body())
+  return median(samples)
+end
+
+--- Times `body`, whose every call must return `expected`, or a value `expected` accepts when it
+--- is a function.
+local function workload(name: string, expected: unknown, body: () -> unknown)
+  if only and not string.find(name, only, 1, true) then return end
+
+  local function verify(result: unknown)
+    if type(expected) == 'function' then
+      local accepts = expected :: (unknown) -> boolean
+      if not accepts(result) then error(`vfs bench: {name} failed its check`, 0) end
+
+      return
+    end
+
+    if result ~= expected then
+      error(`vfs bench: {name} returned {tostring(result)}, not {tostring(expected)}`, 0)
+    end
+  end
+
+  print(`{name}\t{string.format('%.9f', measure(body, verify))}`)
+end
+
+-- The load order -------------------------------------------------------------------------------------
+
+local random = 0x2545f491
+
+local function nextRandom(): number
+  random = bit32.bxor(random, bit32.lshift(random, 13))
+  random = bit32.bxor(random, bit32.rshift(random, 17))
+  random = bit32.bxor(random, bit32.lshift(random, 5))
+  return random
+end
+
+local function pick(list: { string }): string return list[nextRandom() % #list + 1] end
+
+local PoolSize, SourceCount, PerSource, ShadowedCount = 12000, 8, 2500, 400
+
+--- One stride through the pool per source, each coprime to the pool's size, so a source never
+--- picks a file twice.
+local Strides = { 7, 11, 13, 17, 19, 23, 29, 31 }
+
+local Tops = { 'Meshes', 'Textures', 'Icons', 'Sound', 'Music', 'BookArt', 'Scripts', 'Splash' }
+
+local Folders = {
+  'x',
+  'm',
+  'a',
+  'Actors',
+  'Clutter',
+  'Fx',
+  'Menus',
+  'Architecture/Hlaalu',
+  'Landscape/Grass',
+  'Creatures/Kwama/Forager',
+}
+
+local Stems = {
+  'Ex_Hlaalu_Door',
+  'In_Velothi_Wall',
+  'Tx_Rock_Brown',
+  'Furn_De_Table',
+  'Misc_Com_Bottle',
+  'Terrain_Ashland',
+  'Act_Banner',
+  'Light_Lantern',
+}
+
+local Extensions = { 'NIF', 'dds', 'tga', 'wav', 'kf', 'lua' }
+
+--- Every file any source can provide, as a mod author spelled it.
+local pool = [for index in range(1, PoolSize) =>
+  `{pick(Tops)}/{pick(Folders)}/{pick(Stems)}_{string.format('%05d', index)}.{pick(Extensions)}`]
+
+--- The key a path has, worked out without the port.
+local function keyOf(path: string): string return string.lower((string.gsub(path, '\\', '/'))) end
+
+--- A path as one of three installers left it: as written, lowered, or raised with `\`.
+local function spell(path: string, style: number): string
+  if style == 0 then return path end
+
+  if style == 1 then return string.lower(path) end
+
+  return string.upper((string.gsub(path, '/', '\\')))
+end
+
+--- Which pool files each source provides.
+local picks: { { number } } = {}
+
+for source = 1, SourceCount do
+  local start = nextRandom() % PoolSize
+
+  picks[source] = [for offset in range(0, PerSource - 1) =>
+    (start + Strides[source] * offset) % PoolSize + 1]
+end
+
+type Source = { name: string, files: { string } }
+
+--- The sources, low to high priority. The first provides only files the second also does, so
+--- every file it has is overridden.
+local sources: { Source } = {
+  {
+    name = '/mods/Shadowed',
+    files = [for index in picks[1][1:ShadowedCount] => string.lower(pool[index])],
+  },
+}
+
+for source, chosen in picks do
+  table.insert(sources, {
+    name = `/mods/Mod {source}`,
+    files = [for index in chosen => spell(pool[index], (index + source) % 3)],
+  })
+end
+
+--- Every path of every source, each key in first-seen order, and how many sources provide it.
+local spellings: { string }, keyList: { string } = {}, {}
+local providerCounts: { [string]: number } = {}
+
+for _, source in sources do
+  for _, path in source.files do
+    local key = keyOf(path)
+    local count = providerCounts[key]
+    if not count then table.insert(keyList, key) end
+
+    providerCounts[key] = (count or 0) + 1
+    table.insert(spellings, path)
+  end
+end
+
+local duplicated = #[for key in keyList if providerCounts[key] > 1 => key]
+local overrides = sum[for key in keyList => providerCounts[key] - 1]
+local sample = keyList[1:2000]
+
+--- A path with `/` below every other byte, which sorts plain paths the way Rust's `Path` does.
+local function flat(path: string): string return (string.gsub(path, '/', '\0')) end
+
+--- `list` in `Path` order, by a sort the port has no part in.
+local function ordered(list: { string }): { string }
+  local flattened: { [string]: string } = {}
+
+  for _, path in list do
+    flattened[path] = flat(path)
+  end
+
+  local out = table.clone(list)
+  table.sort(out, function(left: string, right: string) return flattened[left] < flattened[right] end)
+  return out
+end
+
+--- How many places of `actual` hold what `expected` holds there.
+local function agreeing(actual: { string }, expected: { string }): number
+  return #[for index, path in enumerate(actual) if path == expected[index] => path]
+end
+
+-- Paths -----------------------------------------------------------------------------------------------
+
+do
+  local expectedKeys = [for path in spellings => keyOf(path)]
+
+  workload('paths.normalize', #spellings, function(): number
+    local matched = 0
+
+    for index, path in spellings do
+      if paths.normalize(path) == expectedKeys[index] then
+        matched += 1
+      end
+    end
+
+    return matched
+  end)
+
+  workload('paths.safeKeyFromHost', #spellings, function(): number
+    local matched = 0
+
+    for index, path in spellings do
+      if paths.safeKeyFromHost(path) == expectedKeys[index] then
+        matched += 1
+      end
+    end
+
+    return matched
+  end)
+
+  local absolute = [for index, key in enumerate(keyList) => `/mods/Mod {index % SourceCount + 1}/{key}`]
+  local sortedKeys, sortedAbsolute = ordered(keyList), ordered(absolute)
+
+  workload('paths.sortPaths keys', #keyList, function(): number
+    local list = table.clone(keyList)
+    paths.sortPaths(list)
+    return agreeing(list, sortedKeys)
+  end)
+
+  workload('paths.sortPaths absolute', #absolute, function(): number
+    local list = table.clone(absolute)
+    paths.sortPaths(list)
+    return agreeing(list, sortedAbsolute)
+  end)
+
+  local ranks: { [string]: number } = {}
+
+  for index, key in sortedKeys do
+    ranks[key] = index
+  end
+
+  local expectedOrder = 0
+
+  for index = 2, #keyList do
+    local left, right = ranks[keyList[index - 1]], ranks[keyList[index]]
+    expectedOrder += if left < right then -1 else 1
+  end
+
+  workload('paths.comparePaths', expectedOrder, function(): number
+    local total = 0
+
+    for index = 2, #keyList do
+      total += paths.comparePaths(keyList[index - 1], keyList[index])
+    end
+
+    return total
+  end)
+end
+
+-- Layer and conflict indexes --------------------------------------------------------------------------
+
+do
+  local layerRows = [for source in sources =>
+    { source = { path = source.name, kind = 'looseDir' }, files = source.files }]
+
+  workload('layer.fromFileLists', #keyList, function(): number
+    return #port.LayerIndex.fromFileLists(layerRows):keys()
+  end)
+
+  local index = port.LayerIndex.fromFileLists(layerRows)
+
+  workload('layer.duplicateKeys', duplicated, function(): number return #index:duplicateKeys() end)
+
+  workload('layer.sourceContributions', #keyList, function(): number
+    return sum[for row in index:sourceContributions().sources => row.winningFiles]
+  end)
+
+  workload(
+    'layer.providerChain',
+    sum[for key in sample => providerCounts[key]],
+    function(): number return sum[for key in sample => #index:providerChain(key)] end
+  )
+
+  workload(
+    'layer.sourcesContaining',
+    sum[for path in spellings => providerCounts[keyOf(path)]],
+    function(): number return sum[for path in spellings => #index:sourcesContaining(path)] end
+  )
+
+  local conflictRows = [for source in sources => { source = source.name, files = source.files }]
+  local probe = keyList[1]
+
+  workload('conflict.fromFileLists', #sources, function(): number
+    local built = port.ConflictIndex.fromFileLists(conflictRows)
+    return #built:sources() + #built:sourcesContaining(probe) - providerCounts[probe]
+  end)
+
+  local conflicts = port.ConflictIndex.fromFileLists(conflictRows)
+
+  local function overridden(relative: boolean): number
+    return sum[for row in conflicts:conflictsReport(relative).sources => #row.overrides]
+  end
+
+  workload('conflict.conflictsReport relative', overrides, function(): number return overridden(true) end)
+  workload('conflict.conflictsReport absolute', overrides, function(): number return overridden(false) end)
+
+  workload('conflict.shadowedReport', ShadowedCount, function(): number
+    local report = conflicts:shadowedReport(true, true)
+    return #report.sources - 1 + #report.sources[1].shadowedFiles
+  end)
+
+  local inSecond: { [string]: boolean } = {}
+
+  for _, path in sources[3].files do
+    inSecond[keyOf(path)] = true
+  end
+
+  local shared = #[for path in sources[2].files if inSecond[keyOf(path)] => path]
+
+  workload('conflict.diffReport', 2 * PerSource - shared, function(): number
+    local report = conflicts:diffReport(sources[2].name, sources[3].name)
+    return #report.shared + #report.onlyInA + #report.onlyInB
+  end)
+end
+
+-- Semantic comparison -----------------------------------------------------------------------------------
+
+do
+  local plain, spaced = {}, {}
+
+  for line = 1, 2000 do
+    local text = `{pick(Stems)} is at {nextRandom()} in {pick(Folders)}`
+    plain[line] = text
+    spaced[line] = `  {text}\t\r`
+  end
+
+  local settings, respelled = {}, {}
+
+  for line = 1, 2000 do
+    if line % 50 == 1 then
+      settings[line] = `[Section {line}]`
+      respelled[line] = `[ SECTION {line} ]`
+      continue
+    end
+
+    local key, value = `{pick(Stems)}{line}`, tostring(nextRandom())
+    settings[line] = `{key}={value}`
+    respelled[line] = `  {string.upper(key)} = {value}  `
+  end
+
+  local compact, loose = {}, {}
+
+  for item = 1, 500 do
+    local name, top, weight = pick(Stems), pick(Tops), nextRandom() % 1000
+    compact[item] = `\{"name":"{name}","index":{item},"weight":{weight}.5,"tags":["{top}",true,null]\}`
+    loose[item] =
+      `\{ "tags" : [ "{top}", true, null ],\n  "weight" : {weight}.5, "index" : {item}, "name" : "{name}" \}`
+  end
+
+  local cases: { { string } } = {
+    { 'semantic.text', 'docs/readme.txt', table.concat(plain, '\n'), table.concat(spaced, '\n') },
+    { 'semantic.ini', 'settings.ini', table.concat(settings, '\n'), table.concat(respelled, '\n') },
+    {
+      'semantic.json',
+      'data/list.json',
+      `[{table.concat(compact, ',')}]`,
+      `[\n{table.concat(loose, ',\n')}\n]`,
+    },
+  }
+
+  for _, case in cases do
+    local name, path, left, right = case[1], case[2], case[3], case[4]
+
+    workload(name, 'cosmeticOnly', function(): string
+      return port.analyzePair(path, left, right).delta.kind
+    end)
+  end
+end
+
+-- A VFS over folders and an archive on disk ---------------------------------------------------------
+
+local DirCount, PerDir, PerArchiveSource = 4, 1500, 2000
+
+--- A file to read from in pieces, once loose and once packed: `BlobSize` bytes, each fixed by its
+--- offset.
+local BlobSize = 65536
+
+local function blobByte(offset: number): number return (offset * 7 + 3) % 256 end
+
+local blob = buffer.create(BlobSize)
+
+into(blob, 'u8')[for offset in range(0, BlobSize - 1) => blobByte(offset)]
+
+local done, problem = fs.mkdir(scratch, { recursive = true })
+if not done then error(problem, 0) end
+
+local canonical, problem = fs.canonicalize(scratch)
+if not canonical then error(problem, 0) end
+local treeRoot = `{canonical}/tree`
+
+if fs.exists(treeRoot) then fs.remove(treeRoot, { recursive = true }) end
+
+local dirs: { string } = {}
+
+--- How many folders provide each key, and whether the archive does.
+local looseCounts: { [string]: number }, archived: { [string]: boolean } = {}, {}
+
+do
+  local made: { [string]: boolean } = {}
+
+  local function write(path: string, contents: string)
+    local parent = string.match(path, '^(.*)/[^/]*$')
+    if parent and not made[parent] then
+      local done, problem = fs.mkdir(parent, { recursive = true })
+      if not done then error(problem, 0) end
+      made[parent] = true
+    end
+
+    local done, problem = fs.writeFile(path, contents)
+    if not done then error(problem, 0) end
+  end
+
+  for dir = 1, DirCount do
+    dirs[dir] = `{treeRoot}/data{dir}`
+
+    local chosen = picks[dir][1:PerDir]
+    for _, index in chosen do
+      local relative = spell(pool[index], (index + dir) % 2)
+      local key = keyOf(relative)
+      write(`{dirs[dir]}/{relative}`, relative)
+      looseCounts[key] = (looseCounts[key] or 0) + 1
+    end
+  end
+
+  local builder = archive.bsa.tes3.Builder.new()
+
+  for source = DirCount + 1, DirCount + 2 do
+    local chosen = picks[source][1:PerArchiveSource]
+    for _, index in chosen do
+      local name = string.lower((string.gsub(pool[index], '/', '\\')))
+      if archived[keyOf(name)] then continue end
+
+      archived[keyOf(name)] = true
+      builder:addBytes(name, name)
+    end
+  end
+
+  builder:addBytes('bench\\packed.bin', buffer.tostring(blob))
+  archived['bench/packed.bin'] = true
+  write(`{dirs[1]}/Bench.bsa`, builder:toBytes())
+  write(`{dirs[1]}/Bench/Loose.bin`, buffer.tostring(blob))
+  looseCounts['bench.bsa'], looseCounts['bench/loose.bin'] = 1, 1
+end
+
+local ArchivePath = `{dirs[1]}/Bench.bsa`
+
+--- Every key the VFS holds, with how many providers it has.
+local stackSizes: { [string]: number } = table.clone(looseCounts)
+local looseTotal, archiveTotal, total = 0, 0, 0
+
+for _ in looseCounts do
+  looseTotal += 1
+end
+
+for key in archived do
+  archiveTotal += 1
+  stackSizes[key] = (stackSizes[key] or 0) + 1
+end
+
+for _ in stackSizes do
+  total += 1
+end
+
+--- How many of the VFS's keys `accept` takes.
+local function keysWhere(accept: (key: string) -> boolean): number
+  local count = 0
+
+  for key in stackSizes do
+    if accept(key) then
+      count += 1
+    end
+  end
+
+  return count
+end
+
+local Options = { archives = { 'Bench.bsa' } }
+
+workload('vfs.fromDirectories loose', looseTotal, function(): number
+  return port.VFS.fromDirectories(dirs):len()
+end)
+
+workload('vfs.fromDirectories with archive', total, function(): number
+  return port.VFS.fromDirectories(dirs, Options):len()
+end)
+
+workload('vfs.pushDirectory', PerDir, function(): number
+  local fresh = port.VFS.new()
+  fresh:pushDirectory(dirs[2])
+  return fresh:len()
+end)
+
+workload('vfs.pushArchive', archiveTotal, function(): number
+  local fresh = port.VFS.new()
+  fresh:pushArchive(ArchivePath)
+  return fresh:len()
+end)
+
+local built = port.VFS.fromDirectories(dirs, Options)
+local held = #[for path in spellings if stackSizes[keyOf(path)] => path]
+
+workload('vfs.getFile', held, function(): number
+  local found = 0
+
+  for _, path in spellings do
+    if built:getFile(path) then
+      found += 1
+    end
+  end
+
+  return found
+end)
+
+workload('vfs.contains', held, function(): number
+  local found = 0
+
+  for _, path in spellings do
+    if built:contains(path) then
+      found += 1
+    end
+  end
+
+  return found
+end)
+
+workload('vfs.providersFor', sum[for key in sample => stackSizes[key] or 0], function(): number
+  local providers = 0
+
+  for _, key in sample do
+    local view = built:providersFor(key)
+    if view then
+      providers += #view
+    end
+  end
+
+  return providers
+end)
+
+workload('vfs.explain', sum[for key in sample => stackSizes[key] or 0], function(): number
+  local providers = 0
+
+  for _, key in sample do
+    local explained = built:explain(key)
+    if explained then
+      providers += 1 + #explained.overridden
+    end
+  end
+
+  return providers
+end)
+
+--- Reads, the way a parser makes them: many small ones, by position or through a reader.
+local Reads, Width = 4096, 16
+
+for _, name in { 'bench/loose.bin', 'bench/packed.bin' } do
+  local kind = if looseCounts[name] then 'loose' else 'packed'
+  local file = assert(built:getFile(name))
+  local target = buffer.create(Width)
+  local expected = Reads * Width + blobByte(Reads * Width - 1)
+
+  workload(`file.readAt {kind}`, expected, function(): number
+    local read = 0
+
+    for index = 0, Reads - 1 do
+      read += file:readAt(target, index * Width, Width)
+    end
+
+    return read + buffer.readu8(target, Width - 1)
+  end)
+
+  workload(`file.readRange {kind}`, expected, function(): number
+    local read, last = 0, target
+
+    for index = 0, Reads - 1 do
+      last = file:readRange(index * Width, Width)
+      read += buffer.len(last)
+    end
+
+    return read + buffer.readu8(last, Width - 1)
+  end)
+
+  workload(`reader.readInto {kind}`, expected, function(): number
+    local reader = file:open()
+    local read = 0
+
+    for _ = 1, Reads do
+      read += reader:readInto(target)
+    end
+
+    reader:close()
+    return read + buffer.readu8(target, Width - 1)
+  end)
+
+  workload(`reader.read {kind}`, expected, function(): number
+    local reader = file:open()
+    local read, last = 0, target
+
+    for _ = 1, Reads do
+      last = reader:read(Width)
+      read += buffer.len(last)
+    end
+
+    reader:close()
+    return read + buffer.readu8(last, Width - 1)
+  end)
+end
+
+workload('vfs.keys', total, function(): number return #built:keys() end)
+workload('vfs.entries', total, function(): number return #built:entries():toTable() end)
+
+workload(
+  'vfs.pathsWith',
+  keysWhere(function(key: string): boolean return string.sub(key, 1, 7) == 'meshes/' end),
+  function(): number return #built:pathsWith 'Meshes' end
+)
+
+workload(
+  'vfs.pathsStartingWith',
+  keysWhere(function(key: string): boolean return string.sub(key, 1, 3) == 'tex' end),
+  function(): number return #built:pathsStartingWith 'Tex' end
+)
+
+workload(
+  'vfs.keysStartingWith',
+  keysWhere(function(key: string): boolean return string.sub(key, 1, 6) == 'icons/' end),
+  function(): number return #built:keysStartingWith('Icons\\'):toTable() end
+)
+
+workload(
+  'vfs.pathsMatching',
+  keysWhere(function(key: string): boolean return string.find(key, 'door', 1, true) ~= nil end),
+  function(): number return #built:pathsMatching 'Door' end
+)
+
+workload(
+  'vfs.findByRegex',
+  keysWhere(function(key: string): boolean return string.sub(key, -4) == '.nif' end),
+  function(): number return built:findByRegex('\\.NIF$'):count() end
+)
+
+workload('vfs.tree', total, function(): number return built:tree():count() end)
+
+do
+  --- The folders of the listing: every folder a winner sits in, an archive's under its name.
+  local folders: { [string]: boolean } = {}
+
+  for key in stackSizes do
+    local path = if looseCounts[key] then key else `Bench.bsa/{key}`
+    local at = string.find(path, '/', 1, true)
+
+    while at do
+      folders[string.sub(path, 1, at - 1)] = true
+      at = string.find(path, '/', at + 1, true)
+    end
+  end
+
+  local lines = total + 1
+
+  for _ in folders do
+    lines += 1
+  end
+
+  workload('vfs.display', lines, function(): number
+    local _, count = string.gsub(built:display(), '\n', '')
+    return count
+  end)
+
+  local function names(value: unknown): number
+    if type(value) == 'string' then return 1 end
+
+    if type(value) ~= 'table' then return 0 end
+
+    local count = 0
+
+    for _, item in value :: { [unknown]: unknown } do
+      count += names(item)
+    end
+
+    return count
+  end
+
+  workload(
+    'vfs.serializeTree json',
+    function(text: string): boolean return names(json.decode(text)) == total end,
+    function(): string return built:serializeTree(true, 'json') end
+  )
+end
+
+local stacked = keysWhere(function(key: string): boolean return stackSizes[key] > 1 end)
+
+workload('vfs.duplicates', stacked, function(): number return #built:duplicates().entries end)
+
+do
+  local report = built:duplicates()
+  local rows = sum[for entry in report.entries => 1 + #entry.providers]
+
+  workload(
+    'vfs.serialize duplicates',
+    function(text: string): boolean
+      local _, count = string.gsub(text, '"key"', '')
+      return count == rows
+    end,
+    function(): string return port.serialize(report, 'json') end
+  )
+end
+
+workload('vfs.archives', archiveTotal, function(): number return built:archives()[1].entryCount end)
+
+workload('vfs.archiveEntries', archiveTotal, function(): number
+  return #built:archiveEntries(ArchivePath)
+end)
+
+workload('vfs.filesFromArchive', archiveTotal, function(): number
+  return #built:filesFromArchive(ArchivePath)
+end)
+
+workload('vfs.diffDirectory', PerDir, function(): number
+  local diff = built:diffDirectory(dirs[3])
+  return #diff.conflicts + #diff.additions + #diff.unreadable
+end)
+
+workload('vfs.removeResolvedMatchingGlob none', total, function(): number
+  built:removeResolvedMatchingGlob 'nothing/**/*.esp'
+  return built:len()
+end)
+
+workload('vfs.removeSource none', total, function(): number
+  built:removeSource '/no/such/source'
+  return built:len()
+end)
+
+do
+  -- A VFS of its own: every call leaves it one unused source longer.
+  local reloaded = port.VFS.fromDirectories(dirs, Options)
+
+  workload('vfs.removeSource and pushDirectory', total, function(): number
+    reloaded:removeSource(dirs[DirCount])
+    reloaded:pushDirectory(dirs[DirCount])
+    return reloaded:len()
+  end)
+end
+
+workload('vfs.layerIndex rebuilt', total, function(): number
+  built:removeSource '/no/such/source'
+  return sum[for row in built:layerIndex():sourceContributions().sources => row.winningFiles]
+end)
+
+workload('vfs.lockManifest', total, function(): number
+  return #built:layerIndex():lockManifest(built):entries()
+end)
+
+workload('run.snapshotDirectory', PerDir, function(): number
+  return port.snapshotDirectory(dirs[2]):len()
+end)
+
+workload('run.snapshotDirectoryMetadata', PerDir, function(): number
+  return port.snapshotDirectoryMetadata(dirs[2]):len()
+end)
+
+do
+  local snapshot = port.snapshotDirectory(dirs[2])
+
+  workload('run.changedFiles', 0, function(): number return #port.changedFiles(dirs[2], snapshot) end)
+end
+
+do
+  local earlier = port.VFS.fromDirectories { dirs[1], dirs[2] }
+  local lock = earlier:layerIndex():lockManifest(earlier)
+  local added = total - earlier:len()
+
+  workload(
+    'vfs.diffAgainstLock',
+    function(report: { entries: { unknown }, counts: { [string]: number } }): boolean
+      local counted = 0
+
+      for _, count in report.counts do
+        counted += count
+      end
+
+      return report.counts.added == added and counted == #report.entries
+    end,
+    function() return built:layerIndex():diffAgainstLock(built, lock) end
+  )
+end
+
+do
+  local matching = #[for key in sample if string.sub(key, 1, 7) == 'meshes/' and string.sub(key, -4) == '.nif' => key]
+
+  workload('glob.pathGlobMatches', matching, function(): number
+    return #[for key in sample if port.pathGlobMatches('Meshes/**/*.nif', key) => key]
+  end)
+end
+
+fs.remove(treeRoot, { recursive = true })
