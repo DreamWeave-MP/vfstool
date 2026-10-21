@@ -27,8 +27,3 @@ tests = ["tests/run.jsl", "tests/style.jsl"]
 id = "vfs.core"
 requires = ["dream-archive.core"]
 exports = ["@vfs", "@vfs/types", "@vfs/paths", "@vfs/layer", "@vfs/encode", "@vfs/core"]
-
-# The Mod Template builds this repository's site and releases; `jess workspace run --trusted
-# dreamweave-build` runs it over this folder from the lock, as a site built from the template does.
-[dev-dependencies]
-"org.dreamweave.mod-template" = "0.3"
