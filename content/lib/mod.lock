@@ -1,5 +1,5 @@
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "document": "lock",
   "project": "b5412bc5-4c2c-49d6-b488-dd772a1046fa",
   "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
@@ -401,6 +401,49 @@
           "size": 216746,
           "digests": {
             "sha256": "db40ecfedfb73886364eeecf08f09124a888426636616e03d73137c12ecaeff0"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool_lib",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "2.0.0",
+      "locked_from": "7050b6f37bd793ef0a08539ef46245688cd0e47e",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.vfs-2.0.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 121894,
+          "digests": {
+            "sha256": "66df02c8b706cc1a2579bb956521d4cfca970d4b9216a23028f51a6a20018401"
+          },
+          "jess": {
+            "package": "org.dreamweave.vfs",
+            "jess_api": "1",
+            "content_digest": "b501db857f2b619c32963763173330348ea57602f1e53303a487fa6025994fab",
+            "dependencies": {
+              "org.dreamweave.dream-archive": "2"
+            }
           }
         }
       ],
