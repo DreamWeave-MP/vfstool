@@ -1,3 +1,0 @@
-[workspace]
-members = ["vfstool", "vfstool_lib"]
-resolver = "2"

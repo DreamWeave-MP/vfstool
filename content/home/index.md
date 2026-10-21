@@ -3,7 +3,7 @@ title = "vfstool"
 description = "OpenMW's virtual file system from the command line: find any file your load order provides, see why it wins, lock the result, and collapse it into one folder."
 
 [taxonomies]
-tags = ["OpenMW", "Morrowind", "Rust", "VFS", "Command line"]
+tags = ["OpenMW", "Morrowind", "Jess", "Luau", "VFS", "Command line"]
 +++
 
 OpenMW does not read its files from one `Data Files` folder. It stacks every `data=` directory
@@ -15,7 +15,7 @@ loads has one right answer and no easy way to see it.
 vfstool builds the same VFS from the same `openmw.cfg`, and answers:
 
 ```sh
-$ vfstool find-file -s textures/tx_wood_01.dds
+$ jess workspace run --trusted vfstool -- find-file -s textures/tx_wood_01.dds
 /tmp/mw/mods/Crisp Textures/Textures/Tx_Wood_01.dds
 ```
 
@@ -35,9 +35,8 @@ or TOML, and changes nothing on disk unless writing is the command's job.
 
 ## Documentation
 
-- **[Start here](@/docs/start-here.md)**: download it, point it at your `openmw.cfg`, and ask it
-  where a file comes from.
-- **[How files resolve](@/docs/resolution.md)**: keys, data directory order, archives, and the
-  providers behind each file.
-- **[Command line](@/docs/cli.md)**: every command and option, and the exit codes.
-- **[vfstool_lib](@/lib/index.md)**: the same VFS as a Rust library and a Luau module.
+vfstool is a Jess package, `org.dreamweave.vfstool`, and runs through jess from any workspace that
+names it. Its commands are documented in `vfstool/src/main.jsl`, each where it is parsed; the guide
+that explained the Rust program lives with it on the `rust` branch, and the package's own guide is
+being written. The library underneath is [vfstool_lib](@/lib/index.md), the package
+`org.dreamweave.vfs`.

@@ -1,0 +1,10 @@
+# This repository as a jess workspace: two Package Sources, the library `vfs` and the tool
+# `vfstool`, and the DreamWeave Mod Template as the tool that builds the site and releases, pinned
+# exactly in jess.lock and run as `jess workspace run --trusted dreamweave-build`.
+manifest_version = 1
+
+[workspace]
+members = ["vfs", "vfstool"]
+
+[dev-dependencies]
+"org.dreamweave.mod-template" = "0.3"

@@ -1,12 +1,12 @@
 +++
 title = "vfstool_lib"
-description = "OpenMW's virtual file system as a Rust library: provider stacks, conflict and provenance reports, locks, materialization, and the @dream/vfs Luau module."
+description = "OpenMW's virtual file system as a Jess package in Luau: provider stacks, conflict and provenance reports, locks and materialization."
 
 [taxonomies]
-tags = ["OpenMW", "Rust", "Luau", "VFS"]
+tags = ["OpenMW", "Jess", "Luau", "VFS"]
 
 [extra]
-sections = ["overview", "install", "releases", "credits"]
+sections = ["overview", "releases", "credits"]
 +++
 
 vfstool_lib is the virtual file system [vfstool](@/home/index.md) runs on, as a crate. Give it
@@ -15,30 +15,15 @@ normalized key per file, later directories over earlier ones, loose files over a
 every provider of every key, not only the winner, so it can say why a file resolves the way it
 does, what a mod overrides, and what would change if the load order did.
 
-```rust
-use std::fs;
+```lua
+local vfs = require '@vfs'
 
-use vfstool_lib::VFS;
+-- Two data directories, the second winning: OpenMW's order.
+local stack = vfs.VFS.fromDirectories { base, patch }
 
-fn main() -> std::io::Result<()> {
-    let root = std::env::temp_dir().join("vfstool-lib-overview");
-    let base = root.join("Data Files");
-    let patch = root.join("Patch");
-    fs::create_dir_all(base.join("Textures"))?;
-    fs::create_dir_all(patch.join("textures"))?;
-    fs::write(base.join("Textures/Tx_Wood_01.dds"), b"base")?;
-    fs::write(patch.join("textures/tx_wood_01.dds"), b"patch")?;
-
-    let vfs = VFS::from_directories([&base, &patch], None);
-
-    let wood = vfs.get_file(r"Textures\TX_WOOD_01.DDS").expect("in the VFS");
-    assert_eq!(wood.path(), patch.join("textures/tx_wood_01.dds"));
-
-    let report = vfs.explain("textures/tx_wood_01.dds").expect("in the VFS");
-    assert_eq!(report.overridden.len(), 1);
-
-    fs::remove_dir_all(root)
-}
+assert(stack:getFile [[Textures\TX_WOOD_01.DDS]])        -- any spelling of the path
+local report = stack:explain 'textures/tx_wood_01.dds'
+print(report.key, #report.overridden)                    -- the winner, and every copy it hides
 ```
 
 - **Lookups** by any spelling of a path, prefix and substring searches, and trees for display or
@@ -51,15 +36,13 @@ fn main() -> std::io::Result<()> {
   of what changed since.
 - **Materialization**: the VFS as one folder, with hardlinks, symbolic links, copies or extracted
   archives, and a plan of what that would do.
-- **Luau**: the same API as the l3i extension `@dream/vfs`, for hosts that run scripts.
 
-BSA and BA2 archives are behind the `beth-archives` feature, ZIP, PK3 and JPK behind `zip`, JSON, YAML
-and TOML behind `serialize`, and Luau behind `lua`. With none of them, the crate reads loose files.
+BSA and BA2 archives are read through [dream_archive](https://dreamweave-mp.github.io/dream_archive/),
+the package `org.dreamweave.dream-archive`.
 
 ## Documentation
 
-- **[Rust API](@/docs/api/_index.md)**: every public type and function, page by page.
-- **[Luau API](@/docs/luau/_index.md)** and **[Embedding Luau](@/docs/luau-hosts.md)**: the
-  `@dream/vfs` module, and giving it to scripts.
-- **[How files resolve](@/docs/resolution.md)**: the rules the library implements, shared with
-  the command line.
+The package's reference is `vfs/src/init.jsl` and the modules beside it: every function is
+documented where it is written, and `jess luau-types` prints the module's types. The guide that
+explained the Rust crate lives with it on the `rust` branch; the Luau package's own guide is being
+written. [vfstool](@/home/index.md) is the command line over this library.

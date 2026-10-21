@@ -15,24 +15,23 @@ name = "DreamWeave"
 url = "https://github.com/DreamWeave-MP"
 
 [links]
-documentation = "@/docs/api/_index.md"
 donate = "https://ko-fi.com/magicaldave"
 
-# A Rust library. The program and the library share their bare version tags: StroggForge's
-# workflow (.github/workflows/release.yaml) publishes vfstool_lib to crates.io, then vfstool, and
-# records the library's version from crates.io in mod.lock beside this file.
+# A Jess package: `jess` names the Package Source this project publishes, the workspace member
+# `vfs/`. Each release tag `vfstool_lib-<version>` is one version of the package, packed by the Mod
+# Template from that tag; every push to main packs a development build. Versions 1.0.0 and below are
+# the Rust crate, which lives on the `rust` branch and stays on crates.io.
 [package]
-format = "crate"
-crate = "vfstool_lib"
+format = "jpk"
+jess = "org.dreamweave.vfs"
 
 [[credits]]
 name = "OpenMW"
 role = "The virtual file system vfstool_lib reimplements"
 url = "https://openmw.org"
 
-# Every version on crates.io, oldest first, each dated the day it was published there. To release,
-# add the next one here and in content/home/mod.toml with the day you publish it, set the same
-# version in both Cargo.toml files, commit, and push its tag: git tag 1.0.0.
+# Every version, oldest first. To release, add the next one here with the day you publish it, set
+# the same version in vfs/jess.toml, commit, and push its tag: git tag vfstool_lib-2.0.1.
 
 [[releases]]
 version = "0.1.0"
@@ -175,4 +174,12 @@ fixed = [
     "In Luau, an unknown source kind in `VfsProvider.new` reads `VfsProvider.new.kind: unknown source kind 'zip' (...)`, without a second `dream.vfs:` inside it.",
     "`lua::KeyBlob` is exported, so a host can fill the `lua::Keys(pub KeyBlob)` view it could only build empty.",
     "Every `PathBuf` in a report serializes as a string, with U+FFFD in place of bytes that are not UTF-8, instead of failing with `path contains invalid UTF-8 characters`; `diff_against_lock` compares keys and sources as that text, so a lock read back from a file does not drift.",
+]
+
+[[releases]]
+version = "2.0.0"
+date = 2026-10-21
+summary = "vfstool_lib is the Jess package org.dreamweave.vfs, written in Luau; the Rust crate continues on the rust branch at 1.0.0."
+breaking = [
+    "The library is the Jess package `org.dreamweave.vfs`, module `@vfs`, installed with jess rather than Cargo. The Rust crate `vfstool_lib` stays at 1.0.0 on crates.io and on this repository's `rust` branch, and is no longer developed on main.",
 ]

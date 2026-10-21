@@ -16,39 +16,21 @@ name = "DreamWeave"
 url = "https://github.com/DreamWeave-MP"
 
 [links]
-documentation = "@/docs/_index.md"
 donate = "https://ko-fi.com/magicaldave"
 
-# A program: StroggForge's Rust workflow (.github/workflows/release.yaml) builds it once per
-# [[platforms]] entry and publishes each release. It is also on crates.io, so the page offers
-# cargo install.
+# A Jess package: `jess` names the Package Source this project publishes, the workspace member
+# `vfstool/`. Each release tag `vfstool-<version>` is one version of the package, packed by the Mod
+# Template from that tag; every push to main packs a development build. Versions 1.0.1 and below are
+# the Rust program, which lives on the `rust` branch with its GitHub releases.
 [package]
-format = "binary"
-binary = "vfstool"
-crate = "vfstool"
-
-[[platforms]]
-os = "windows"
-arch = "x86_64"
-
-[[platforms]]
-os = "macos"
-arch = "aarch64"
-
-[[platforms]]
-os = "macos"
-arch = "x86_64"
-
-[[platforms]]
-os = "linux"
-arch = "x86_64"
+format = "jpk"
+jess = "org.dreamweave.vfstool"
 
 [install]
 notes = """
-Unzip the archive anywhere and run `vfstool` from a terminal. It reads the `openmw.cfg` in
-OpenMW's default location, or the one in the folder you name with `--config`.
-
-[Start here](@/docs/start-here.md) walks through the first commands.
+vfstool runs through jess. In a workspace that names it under `[dev-dependencies]`,
+`jess workspace run --trusted vfstool -- find-file -s textures/tx_wood_01.dds` reads the
+`openmw.cfg` in OpenMW's default location, or the one named with `--config`.
 """
 
 [[media]]
@@ -66,14 +48,8 @@ name = "Benjamin Winger"
 role = "Case-insensitive find"
 url = "https://github.com/benjaminwinger"
 
-# Every published version, oldest first: the GitHub releases, each dated the day it was published.
-# To release, add the next one here with the day you publish it, set the same version in both
-# Cargo.toml files, commit, and push its tag: git tag 1.0.0. StroggForge builds and publishes the
-# program and vfstool_lib, records this release in mod.lock beside this file, and records the
-# library's version in content/lib/mod.lock.
-#
-# Left out: 0.1.0, on crates.io since April 2025 with no tag and no GitHub release; v0.1.2 to
-# v0.1.6, GitHub drafts never published; and the tag 0.2.1, which released only vfstool_lib.
+# Every published version, oldest first. To release, add the next one here with the day you publish
+# it, set the same version in vfstool/jess.toml, commit, and push its tag: git tag vfstool-2.0.1.
 
 [[releases]]
 version = "0.1.7"
@@ -230,4 +206,12 @@ summary = "Built on l3i 1.1.0 and the MIT OR Apache-2.0 releases of dream-path a
 changed = [
     "vfstool_lib and vfstool are 1.0.1; l3i 1.1.0 comes from crates.io. No command, option or Luau function changed.",
     "Requires dream-path 1.1 and dream_archive 1.1, their first MIT OR Apache-2.0 releases; the GPL releases up to 1.0.0 are no longer admitted.",
+]
+
+[[releases]]
+version = "2.0.0"
+date = 2026-10-21
+summary = "vfstool is a Jess package, written in Luau; the Rust program continues on the rust branch at 1.0.1."
+breaking = [
+    "The tool is the Jess package `org.dreamweave.vfstool`, run through jess rather than as a downloaded binary. The Rust program stays at 1.0.1 on its GitHub releases, crates.io and this repository's `rust` branch, and is no longer developed on main.",
 ]

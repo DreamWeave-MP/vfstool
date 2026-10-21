@@ -5,7 +5,7 @@
 # value matters for local previews.
 base_url = "https://DreamWeave-MP.github.io/vfstool"
 title = "vfstool"
-description = "OpenMW's virtual file system, rebuilt in Rust: a command line to find, explain, lock and collapse your load order's files, and the library under it, for Rust and Luau."
+description = "OpenMW's virtual file system as Jess packages in Luau: a library, and a command line to find, explain, lock and collapse your load order's files."
 
 compile_sass = true
 build_search_index = true
@@ -50,10 +50,7 @@ font_override_titles_only = true
 menu_items = [
     { name = "vfstool", url = "@/home/index.md" },
     { name = "vfstool_lib", url = "@/lib/index.md" },
-    { name = "Guide", url = "@/docs/_index.md" },
-    { name = "Command line", url = "@/docs/cli.md" },
-    { name = "Rust API", url = "@/docs/api/_index.md" },
-    { name = "Luau API", url = "@/docs/luau/_index.md" },
+    { name = "Network", url = "@/network.md" },
 ]
 
 # DreamWeave's own page-view counter: this is DreamWeave's site.
