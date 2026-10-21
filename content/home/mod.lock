@@ -1,5 +1,5 @@
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "document": "lock",
   "project": "34fc442a-5060-4b77-8c64-ca5ea9861a10",
   "note": "Written by CI when a release tag is pushed: what each published release's archive contains. Do not edit.",
@@ -850,6 +850,50 @@
           "arch": "x86_64"
         }
       ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
+    },
+    {
+      "version": "2.0.0",
+      "locked_from": "7050b6f37bd793ef0a08539ef46245688cd0e47e",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.vfstool-2.0.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 61071,
+          "digests": {
+            "sha256": "4d8a14fffcbb1ab7dcc1c75afd3629ad28e86b75960453fb2f1286c9340f010b"
+          },
+          "jess": {
+            "package": "org.dreamweave.vfstool",
+            "jess_api": "1",
+            "content_digest": "76d49ff1220dbe340c28eeca9592017ec6e39ec3e42f57029cceb71169d2e95a",
+            "dependencies": {
+              "org.dreamweave.openmw-config": "4",
+              "org.dreamweave.vfs": "2"
+            }
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [],
       "provides": [],
       "relationships": [],
       "components": [
