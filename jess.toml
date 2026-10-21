@@ -8,7 +8,7 @@ include = ["src", "tests"]
 tests = ["tests/run.jsl", "tests/style.jsl"]
 
 [dependencies]
-"org.dreamweave.dream-archive" = "0.1"
+"org.dreamweave.dream-archive" = "2"
 
 [modules]
 "@vfs" = "src/init.jsl"
