@@ -1,0 +1,109 @@
+--!strict
+-- Two builds of the package, compared as command lines: `session.jsl` run by each in a process
+-- of its own, over the same scratch folder, and what each printed to standard output and to
+-- standard error, and the steps and exit codes each recorded, held byte for byte to the other's.
+-- The suites pin the reports and the exit codes; this is for the messages, the paths `find-file`
+-- prints, and `run`'s children, which a suite can't capture. It needs `sh` and a file system that
+-- tells names apart by case, so the manifest doesn't name it: run it by hand, by `jess run
+-- --capability filesystem.read --capability filesystem.write --capability process.spawn
+-- tests/differential.jsl <jess> <package path> <scratch> <one build> <another>`. Exits 1 when
+-- the two differ, and says where.
+local fs = require '@dream/fs'
+local process = require '@dream/process'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
+local jessPath: string?, packagePath: string?, scratch: string?, base: string?, head: string? = ...
+
+if not (jessPath and packagePath and scratch and base and head) then
+  error('usage: differential.jsl <jess> <package path> <scratch> <one build> <another>', 0)
+end
+
+--- Where this file is, from its chunk name: the folder the session is in.
+local function here(): string
+  local source = debug.info(1, 's')
+  local first = string.sub(source, 1, 1)
+  local path = if first == '@' or first == '=' then string.sub(source, 2) else source
+
+  return string.match(path, '^(.*)/[^/]*$') or '.'
+end
+
+local done, problem = fs.mkdir(scratch, { recursive = true })
+if not done then error(problem, 0) end
+
+local folder, problem = fs.canonicalize(scratch)
+if not folder then error(problem, 0) end
+local root = `{folder}/session`
+
+--- One build's session: what it printed, and where it wrote its steps.
+local function session(build: string, label: string): (dream_process_Result, string)
+  local written = `{folder}/session-{label}.txt`
+  local argv = {
+    'run',
+    '--package',
+    build,
+    '--package-path',
+    packagePath,
+    '--capability',
+    'filesystem.read',
+    '--capability',
+    'filesystem.write',
+    '--capability',
+    'process.environment',
+    '--capability',
+    'process.spawn',
+    `{here()}/session.jsl`,
+    root,
+    written,
+  }
+
+  local result, message = process.run(jessPath, argv, {
+    stdout = 'capture',
+    stderr = 'capture',
+    env = { OPENMW_CONFIG = root, NO_COLOR = '1' },
+  })
+
+  if not result then error(`{jessPath} did not start: {message}`, 0) end
+
+  return result, readText(written) or '<no transcript>'
+end
+
+--- Where two texts first differ, with what is around it in each.
+local function difference(left: string, right: string): string
+  for index = 1, math.min(#left, #right) do
+    if string.byte(left, index) == string.byte(right, index) then continue end
+
+    local from = math.max(1, index - 120)
+    return `they differ at byte {index}:\n  {string.format('%q', string.sub(left, from, index + 120))}\n  {string.format('%q', string.sub(right, from, index + 120))}`
+  end
+
+  return `one is the start of the other ({#left} and {#right} bytes)`
+end
+
+local first, firstSteps = session(base, 'one')
+local second, secondSteps = session(head, 'another')
+local differing = 0
+
+local function compare(name: string, left: string, right: string)
+  if left == right then
+    print(`{name}: the same {#left} bytes`)
+    return
+  end
+
+  differing += 1
+  print(`{name}: {difference(left, right)}`)
+end
+
+compare('exit codes', tostring(first.code), tostring(second.code))
+compare('standard output', first.stdout or '', second.stdout or '')
+compare('standard error', first.stderr or '', second.stderr or '')
+compare('steps', firstSteps, secondSteps)
+
+return if differing > 0 then 1 else 0

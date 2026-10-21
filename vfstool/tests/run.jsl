@@ -1,0 +1,72 @@
+--!strict
+--!native
+-- The vfstool CLI reads lock manifests through the public package module and a scratch OpenMW
+-- configuration. Every config and lock file stays under the test's temporary root.
+local fs = require '@dream/fs'
+local support = require './support'
+local test = require '@jess/test'
+local vfstool = require '@vfstool'
+
+--- The text of the file at `path`, raising the read's own message when there is none.
+local function readText(path: string): string
+  local text, problem = fs.readFileString(path)
+  if not text then error(problem, 0) end
+
+  return text
+end
+
+
+local expect = test.expect
+local suite = test.new()
+local globals = _G :: { [string]: unknown }
+local scratchRoot = globals.scratchRoot or support.settings.scratchRoot or `{fs.cwd()}/vfs-suite`
+
+suite.describe('vfstool CLI', function()
+  suite.it('reads YAML, JSON, and TOML lock manifests through drift', function()
+    local root = support.fresh(`{scratchRoot}/vfstool-locks`)
+    local data = `{root}/Data Files`
+    fs.mkdir(data, { recursive = true })
+    fs.writeFile(`{root}/openmw.cfg`, `data = "{data}"\n`)
+
+    local output = `{root}/vfs.lock.json`
+    expect(vfstool.run({ 'lock', '--config', root, '--format', 'json', '--output', output })).toBe(0)
+    expect(readText(output)).toBe('{"schema_version":1,"entries":[]}')
+    fs.writeFile(`{data}/Morrowind.esm`, '')
+    expect(vfstool.run({ 'find-file', '-s', '--config', root, 'Morrowind.esm' })).toBe(0)
+
+    local manifests = {
+      { extension = 'json', text = '{"schema_version":1,"entries":[]}' },
+      { extension = 'yaml', text = 'schema_version: 1\nentries: []\n' },
+      { extension = 'toml', text = 'schema_version = 1\nentries = []\n' },
+      {
+        extension = 'json',
+        text = '{"schema_version":1,"entries":[{"key":"missing.txt","winner_source":"Data Files","winner_kind":"loose_dir","winner_hash_blake3":null,"winner_size":null,"provider_count":1}]}',
+      },
+      {
+        extension = 'yaml',
+        text = 'schema_version: 1\nentries:\n  - key: missing.txt\n    winner_source: Data Files\n    winner_kind: loose_dir\n    winner_hash_blake3: null\n    winner_size: null\n    provider_count: 1\n',
+      },
+      {
+        extension = 'toml',
+        text = 'schema_version = 1\n[[entries]]\nkey = "missing.txt"\nwinner_source = "Data Files"\nwinner_kind = "loose_dir"\nprovider_count = 1\n',
+      },
+    }
+
+    for _, manifest in manifests do
+      local path = `{root}/empty.{manifest.extension}`
+      fs.writeFile(path, manifest.text)
+      expect(vfstool.run({ 'drift', '--config', root, path })).toBe(0)
+    end
+
+    local invalid = `{root}/invalid.json`
+    fs.writeFile(invalid, '{"schema_version":2,"entries":[]}')
+    expect(vfstool.run({ 'drift', '--config', root, invalid })).toBe(9)
+  end)
+
+  suite.it('returns the documented usage status for unknown commands', function()
+    expect(vfstool.run({})).toBe(8)
+    expect(vfstool.run({ 'not-a-command' })).toBe(8)
+  end)
+end)
+
+return suite

@@ -1,0 +1,29 @@
+--!strict
+--!native
+-- What the vfstool suite uses of the VFS suites' shared support: a fresh scratch folder, and the
+-- settings a runner can set before it requires the suite.
+local fs = require '@dream/fs'
+
+--- A fresh, empty folder at `path`, by its canonical path.
+local function fresh(path: string): string
+  if fs.exists(path) then
+    local removed, problem = fs.remove(path, { recursive = true })
+    if not removed then error(problem, 0) end
+  end
+
+  local made, problem = fs.mkdir(path, { recursive = true })
+  if not made then error(problem, 0) end
+
+  local canonical, unresolved = fs.canonicalize(path)
+  if not canonical then error(unresolved, 0) end
+
+  return canonical
+end
+
+--- What a runner sets before it requires a suite, for the cases the harness's globals set.
+local Settings: { [string]: unknown } = {}
+
+return table.freeze {
+  settings = Settings,
+  fresh = fresh,
+}

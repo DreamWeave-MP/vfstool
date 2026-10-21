@@ -1,0 +1,165 @@
+--!strict
+-- SPDX-License-Identifier: MIT OR Apache-2.0
+-- What every vfstool command shares: the openmw.cfg it reads, the VFS it builds from it, and the
+-- messages it prints. The reports are in `reports.jsl`.
+local fs = require '@dream/fs'
+local openmwConfig = require '@openmw-config'
+local paths = require '@vfs/paths'
+local process = require '@dream/process'
+
+--- `@vfs`, required the first time a command builds a VFS or an index over one: a command that
+--- reads the configuration and looks among loose files alone never compiles it.
+local function library(): typeof(require '@vfs') return require '@vfs' end
+
+export type VFS = typeof(library().VFS.new())
+export type ConflictIndex = typeof(library().ConflictIndex.fromFileLists({}))
+export type LayerIndex = typeof(library().LayerIndex.fromFileLists({}))
+
+--- A loaded archive, as a VFS lists one.
+export type ArchiveInfo = { sourceIndex: number, path: string, entryCount: number, winningEntryCount: number }
+
+export type Format = 'json' | 'yaml' | 'toml'
+
+--- Commands require a config file or its directory, or OPENMW_CONFIG. The kernel does not
+--- currently expose the platform facts needed for trustworthy default discovery.
+export type Options = {
+  config: string?,
+  tokens: openmwConfig.Tokens?,
+  relative: boolean?,
+  format: Format?,
+  output: string?,
+}
+
+--- The binary's exit codes.
+local Exit = table.freeze {
+  ok = 0,
+  findFailed = 1,
+  notLoose = 2,
+  drift = 4,
+  validation = 5,
+  badRegex = 6,
+  config = 7,
+  invalidInput = 8,
+  runtime = 9,
+}
+
+local Red, Green, Blue, Reset = '\27[31m', '\27[32m', '\27[34m', '\27[0m'
+
+--- Whether `stream` gets ANSI colors: a terminal, and `NO_COLOR` unset or empty.
+local function colors(stream: 'stdout' | 'stderr'): boolean
+  local noColor = process.env 'NO_COLOR'
+  return (noColor == nil or noColor == '') and process.isTerminal(stream)
+end
+
+local function paint(stream: 'stdout' | 'stderr', color: string, text: string): string
+  if colors(stream) then return `{color}{text}{Reset}` end
+
+  return text
+end
+
+local function out(text: string) process.write('stdout', `{text}\n`) end
+
+local function err(text: string) process.write('stderr', `{text}\n`) end
+
+local function errPrefix(): string return `{paint('stderr', Red, '[ ERROR ]')}: ` end
+
+local function successPrefix(): string return `{paint('stdout', Green, '[ SUCCESS ]')}: ` end
+
+local function blue(stream: 'stdout' | 'stderr', text: string): string
+  return paint(stream, Blue, text)
+end
+
+local function green(stream: 'stdout' | 'stderr', text: string): string
+  return paint(stream, Green, text)
+end
+
+--- The openmw.cfg in `dir`, found without regard to case, or nil with the message printed.
+local function configIn(dir: string): string?
+  local info, statError = fs.stat(dir)
+  if statError then
+    err(`{errPrefix()}Failed to inspect OpenMW config directory '{dir}': {statError}`)
+    return nil
+  end
+
+  if not info or not info.isDir then
+    err(`{errPrefix()}The requested openmw.cfg directory '{dir}' does not exist or is not a directory.`)
+    return nil
+  end
+
+  local names, listError = fs.list(dir)
+  if not names then
+    err(`{errPrefix()}Failed to list OpenMW config directory '{dir}': {listError}`)
+    return nil
+  end
+
+  for _, name in names do
+    if string.lower(name) == 'openmw.cfg' then return paths.join(dir, name) end
+  end
+
+  err(`{errPrefix()}No openmw.cfg found in '{dir}'.`)
+  return nil
+end
+
+--- Explicit paths only: --config or OPENMW_CONFIG, each a file or a directory holding it.
+local function resolveConfig(options: Options): string?
+  local selected = options.config or process.env 'OPENMW_CONFIG'
+  if not selected or selected == '' then
+    err(
+      `{errPrefix()}An explicit OpenMW config is required: pass --config or set OPENMW_CONFIG. Default discovery is unavailable.`
+    )
+    return nil
+  end
+
+  local info, message = fs.stat(selected)
+  if message then
+    err(`{errPrefix()}Failed to inspect OpenMW config '{selected}': {message}`)
+    return nil
+  end
+
+  if info and info.isFile then return selected end
+
+  if info and info.isDir then return configIn(selected) end
+
+  err(`{errPrefix()}The requested OpenMW config '{selected}' does not exist or is not a file or directory.`)
+  return nil
+end
+
+export type Load = {
+  path: string,
+  config: openmwConfig.Config,
+  dirs: { string },
+  archives: { string },
+}
+
+--- The config `options` name, loaded; nil and the binary's exit code when it can't be.
+local function load(options: Options): (Load?, number)
+  local path = resolveConfig(options)
+  if not path then return nil, Exit.config end
+
+  local loaded = openmwConfig.new(path, { tokens = options.tokens })
+  return {
+    path = path,
+    config = loaded,
+    dirs = loaded:dataDirectories(),
+    archives = loaded:values('fallback-archive'),
+  },
+    Exit.ok
+end
+
+--- The VFS the config describes: its data directories over its fallback archives.
+local function build(loaded: Load): VFS
+  return library().VFS.fromDirectories(loaded.dirs, { archives = loaded.archives })
+end
+
+return table.freeze {
+  Exit = Exit,
+  out = out,
+  err = err,
+  errPrefix = errPrefix,
+  successPrefix = successPrefix,
+  blue = blue,
+  green = green,
+  load = load,
+  library = library,
+  build = build,
+}

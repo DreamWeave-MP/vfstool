@@ -1,0 +1,4 @@
+# Packed output and local test/work data.
+*.jpk
+/target/
+/vfs-suite/

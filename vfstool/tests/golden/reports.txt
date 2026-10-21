@@ -1,0 +1,3590 @@
+### no arguments
+exit 8
+### help
+exit 0
+### --help
+exit 0
+### -h
+exit 0
+### an unknown command
+exit 8
+### an unknown option
+exit 8
+### --config without a path
+exit 8
+### -c without a path
+exit 8
+### --format without a value
+exit 8
+### --format xml
+exit 8
+### --output without a path
+exit 8
+### -o without a path
+exit 8
+### --source-index without a value
+exit 8
+### --working-dir without a value
+exit 8
+### collapse without a destination
+exit 8
+### extract without a source
+exit 8
+### extract without a destination
+exit 8
+### find-file without a path
+exit 8
+### find without a pattern
+exit 8
+### remaining without a folder
+exit 8
+### explain without a path
+exit 8
+### diff without folders
+exit 8
+### diff with one folder
+exit 8
+### drift without a lock file
+exit 8
+### run without a merged folder
+exit 8
+### run without a command
+exit 8
+### run with its command after --, none given
+exit 8
+### no configuration named
+exit 7
+### a configuration that is not there
+exit 7
+### a folder without a configuration
+exit 7
+### a configuration found without regard to case, yaml
+exit 0
+- source_index: 1
+  path: <root>/Base/Other.bsa
+  entry_count: 2
+  winning_entry_count: 2
+- source_index: 0
+  path: <root>/Base/Packed.bsa
+  entry_count: 4
+  winning_entry_count: 1
+
+### a configuration found without regard to case, json
+exit 0
+[{"source_index":1,"path":"<root>/Base/Other.bsa","entry_count":2,"winning_entry_count":2},{"source_index":0,"path":"<root>/Base/Packed.bsa","entry_count":4,"winning_entry_count":1}]
+### a configuration found without regard to case, toml
+exit 0
+[[archives]]
+source_index = 1
+path = "<root>/Base/Other.bsa"
+entry_count = 2
+winning_entry_count = 2
+
+[[archives]]
+source_index = 0
+path = "<root>/Base/Packed.bsa"
+entry_count = 4
+winning_entry_count = 1
+
+### a configuration named by its file, yaml
+exit 0
+- source_index: 1
+  path: <root>/Base/Other.bsa
+  entry_count: 2
+  winning_entry_count: 2
+- source_index: 0
+  path: <root>/Base/Packed.bsa
+  entry_count: 4
+  winning_entry_count: 1
+
+### a configuration named by its file, json
+exit 0
+[{"source_index":1,"path":"<root>/Base/Other.bsa","entry_count":2,"winning_entry_count":2},{"source_index":0,"path":"<root>/Base/Packed.bsa","entry_count":4,"winning_entry_count":1}]
+### a configuration named by its file, toml
+exit 0
+[[archives]]
+source_index = 1
+path = "<root>/Base/Other.bsa"
+entry_count = 2
+winning_entry_count = 2
+
+[[archives]]
+source_index = 0
+path = "<root>/Base/Packed.bsa"
+entry_count = 4
+winning_entry_count = 1
+
+### find-file, a loose file
+exit 0
+### find-file -s, a loose file
+exit 0
+### find-file --simple, a packed file
+exit 0
+### find-file, a packed file
+exit 0
+### find-file -p, a packed file
+exit 2
+### find-file --only_physical -s, a packed file
+exit 2
+### find-file, a missing file
+exit 1
+### find-file -s, a missing file
+exit 1
+### find-file, a folder
+exit 1
+### find-file, an unsafe path
+exit 1
+### find-file, no path at all
+exit 1
+### find
+exit 0
+<root>:{"Mod A":{"meshes":{"x":{".":["chair.nif"]}}},"Mod B":{"textures":{".":["rock.dds"]}}}
+### find, nothing matching
+exit 0
+{"/":{}}
+### find -r, yaml
+exit 0
+Data Files:
+  Other.bsa:
+    meshes:
+      .:
+      - door.nif
+  Packed.bsa:
+    sound:
+      .:
+      - packed.wav
+  meshes:
+    x:
+      .:
+      - chair.nif
+  sound:
+    .:
+    - Hit.wav
+
+### find -r, json
+exit 0
+{"Data Files":{"Other.bsa":{"meshes":{".":["door.nif"]}},"Packed.bsa":{"sound":{".":["packed.wav"]}},"meshes":{"x":{".":["chair.nif"]}},"sound":{".":["Hit.wav"]}}}
+### find -r, toml
+exit 0
+["Data Files"."Other.bsa".meshes]
+"." = ["door.nif"]
+
+["Data Files"."Packed.bsa".sound]
+"." = ["packed.wav"]
+
+["Data Files".meshes.x]
+"." = ["chair.nif"]
+
+["Data Files".sound]
+"." = ["Hit.wav"]
+
+### find --use-relative, nothing matching, yaml
+exit 0
+Data Files: {}
+
+### find --use-relative, nothing matching, json
+exit 0
+{"Data Files":{}}
+### find --use-relative, nothing matching, toml
+exit 0
+["Data Files"]
+
+### remaining
+exit 0
+<root>:{"Base":{".":["Morrowind.esm","Other.bsa","Packed.bsa"],"Icons":{".":["a.tga"]}}}
+### remaining --replacements-only
+exit 0
+<root>:{"Mod A":{"meshes":{"x":{".":["chair.nif"]}}},"Mod B":{"textures":{".":["rock.dds"]}}}
+### remaining, a folder spelled another way
+exit 0
+<root>:{"Base":{".":["Morrowind.esm","Other.bsa","Packed.bsa"],"Icons":{".":["a.tga"]}}}
+### remaining -r, yaml
+exit 0
+Data Files:
+  .:
+  - Patch.esp
+  meshes:
+    x:
+      .:
+      - chair.nif
+  sound:
+    .:
+    - Hit.wav
+  sub:
+    .:
+    - Other.bsa
+
+### remaining -r, json
+exit 0
+{"Data Files":{".":["Patch.esp"],"meshes":{"x":{".":["chair.nif"]}},"sound":{".":["Hit.wav"]},"sub":{".":["Other.bsa"]}}}
+### remaining -r, toml
+exit 0
+["Data Files"]
+"." = ["Patch.esp"]
+
+["Data Files".meshes.x]
+"." = ["chair.nif"]
+
+["Data Files".sound]
+"." = ["Hit.wav"]
+
+["Data Files".sub]
+"." = ["Other.bsa"]
+
+### remaining -r --replacements-only, yaml
+exit 0
+Data Files:
+  meshes:
+    x:
+      .:
+      - chair.nif
+  textures:
+    .:
+    - rock.dds
+
+### remaining -r --replacements-only, json
+exit 0
+{"Data Files":{"meshes":{"x":{".":["chair.nif"]}},"textures":{".":["rock.dds"]}}}
+### remaining -r --replacements-only, toml
+exit 0
+["Data Files".meshes.x]
+"." = ["chair.nif"]
+
+["Data Files".textures]
+"." = ["rock.dds"]
+
+### remaining, a folder not configured
+exit 8
+### explain, loose over packed, yaml
+exit 0
+key: textures/rock.dds
+winner:
+  source_index: 5
+  source:
+    path: <root>/Mod B
+    kind: loose_dir
+  key: textures/rock.dds
+  original_path: textures/rock.dds
+  resolved_path: <root>/Mod B/textures/rock.dds
+overridden:
+- source_index: 0
+  source:
+    path: <root>/Base/Packed.bsa
+    kind: archive
+  key: textures/rock.dds
+  original_path: textures\rock.dds
+  resolved_path: <root>/Base/Packed.bsa::textures\rock.dds
+- source_index: 2
+  source:
+    path: <root>/Base
+    kind: loose_dir
+  key: textures/rock.dds
+  original_path: Textures/Rock.dds
+  resolved_path: <root>/Base/Textures/Rock.dds
+- source_index: 3
+  source:
+    path: <root>/Shadowed
+    kind: loose_dir
+  key: textures/rock.dds
+  original_path: textures/rock.dds
+  resolved_path: <root>/Shadowed/textures/rock.dds
+- source_index: 4
+  source:
+    path: <root>/Mod A
+    kind: loose_dir
+  key: textures/rock.dds
+  original_path: Textures/rock.DDS
+  resolved_path: <root>/Mod A/Textures/rock.DDS
+
+### explain, loose over packed, json
+exit 0
+{"key":"textures/rock.dds","winner":{"source_index":5,"source":{"path":"<root>/Mod B","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"textures/rock.dds","resolved_path":"<root>/Mod B/textures/rock.dds"},"overridden":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"key":"textures/rock.dds","original_path":"textures\\rock.dds","resolved_path":"<root>/Base/Packed.bsa::textures\\rock.dds"},{"source_index":2,"source":{"path":"<root>/Base","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"Textures/Rock.dds","resolved_path":"<root>/Base/Textures/Rock.dds"},{"source_index":3,"source":{"path":"<root>/Shadowed","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"textures/rock.dds","resolved_path":"<root>/Shadowed/textures/rock.dds"},{"source_index":4,"source":{"path":"<root>/Mod A","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"Textures/rock.DDS","resolved_path":"<root>/Mod A/Textures/rock.DDS"}]}
+### explain, loose over packed, toml
+exit 0
+key = "textures/rock.dds"
+
+[winner]
+source_index = 5
+key = "textures/rock.dds"
+original_path = "textures/rock.dds"
+resolved_path = "<root>/Mod B/textures/rock.dds"
+
+[winner.source]
+path = "<root>/Mod B"
+kind = "loose_dir"
+
+[[overridden]]
+source_index = 0
+key = "textures/rock.dds"
+original_path = 'textures\rock.dds'
+resolved_path = '<root>/Base/Packed.bsa::textures\rock.dds'
+
+[overridden.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+[[overridden]]
+source_index = 2
+key = "textures/rock.dds"
+original_path = "Textures/Rock.dds"
+resolved_path = "<root>/Base/Textures/Rock.dds"
+
+[overridden.source]
+path = "<root>/Base"
+kind = "loose_dir"
+
+[[overridden]]
+source_index = 3
+key = "textures/rock.dds"
+original_path = "textures/rock.dds"
+resolved_path = "<root>/Shadowed/textures/rock.dds"
+
+[overridden.source]
+path = "<root>/Shadowed"
+kind = "loose_dir"
+
+[[overridden]]
+source_index = 4
+key = "textures/rock.dds"
+original_path = "Textures/rock.DDS"
+resolved_path = "<root>/Mod A/Textures/rock.DDS"
+
+[overridden.source]
+path = "<root>/Mod A"
+kind = "loose_dir"
+
+### explain, packed twice, yaml
+exit 0
+key: meshes/door.nif
+winner:
+  source_index: 1
+  source:
+    path: <root>/Base/Other.bsa
+    kind: archive
+  key: meshes/door.nif
+  original_path: meshes\door.nif
+  resolved_path: <root>/Base/Other.bsa::meshes\door.nif
+overridden:
+- source_index: 0
+  source:
+    path: <root>/Base/Packed.bsa
+    kind: archive
+  key: meshes/door.nif
+  original_path: meshes\door.nif
+  resolved_path: <root>/Base/Packed.bsa::meshes\door.nif
+
+### explain, packed twice, json
+exit 0
+{"key":"meshes/door.nif","winner":{"source_index":1,"source":{"path":"<root>/Base/Other.bsa","kind":"archive"},"key":"meshes/door.nif","original_path":"meshes\\door.nif","resolved_path":"<root>/Base/Other.bsa::meshes\\door.nif"},"overridden":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"key":"meshes/door.nif","original_path":"meshes\\door.nif","resolved_path":"<root>/Base/Packed.bsa::meshes\\door.nif"}]}
+### explain, packed twice, toml
+exit 0
+key = "meshes/door.nif"
+
+[winner]
+source_index = 1
+key = "meshes/door.nif"
+original_path = 'meshes\door.nif'
+resolved_path = '<root>/Base/Other.bsa::meshes\door.nif'
+
+[winner.source]
+path = "<root>/Base/Other.bsa"
+kind = "archive"
+
+[[overridden]]
+source_index = 0
+key = "meshes/door.nif"
+original_path = 'meshes\door.nif'
+resolved_path = '<root>/Base/Packed.bsa::meshes\door.nif'
+
+[overridden.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+### explain, one provider, yaml
+exit 0
+key: docs/readme.txt
+winner:
+  source_index: 5
+  source:
+    path: <root>/Mod B
+    kind: loose_dir
+  key: docs/readme.txt
+  original_path: docs/readme.txt
+  resolved_path: <root>/Mod B/docs/readme.txt
+overridden: []
+
+### explain, one provider, json
+exit 0
+{"key":"docs/readme.txt","winner":{"source_index":5,"source":{"path":"<root>/Mod B","kind":"loose_dir"},"key":"docs/readme.txt","original_path":"docs/readme.txt","resolved_path":"<root>/Mod B/docs/readme.txt"},"overridden":[]}
+### explain, one provider, toml
+exit 0
+key = "docs/readme.txt"
+overridden = []
+
+[winner]
+source_index = 5
+key = "docs/readme.txt"
+original_path = "docs/readme.txt"
+resolved_path = "<root>/Mod B/docs/readme.txt"
+
+[winner.source]
+path = "<root>/Mod B"
+kind = "loose_dir"
+
+### explain, a missing path
+exit 1
+### duplicates, yaml
+exit 0
+entries:
+- key: icons/a.tga
+  providers:
+  - source_index: 0
+    source:
+      path: <root>/Base/Packed.bsa
+      kind: archive
+    key: icons/a.tga
+    original_path: icons\a.tga
+    resolved_path: <root>/Base/Packed.bsa::icons\a.tga
+  - source_index: 2
+    source:
+      path: <root>/Base
+      kind: loose_dir
+    key: icons/a.tga
+    original_path: Icons/a.tga
+    resolved_path: <root>/Base/Icons/a.tga
+  winner_index: 1
+- key: meshes/door.nif
+  providers:
+  - source_index: 0
+    source:
+      path: <root>/Base/Packed.bsa
+      kind: archive
+    key: meshes/door.nif
+    original_path: meshes\door.nif
+    resolved_path: <root>/Base/Packed.bsa::meshes\door.nif
+  - source_index: 1
+    source:
+      path: <root>/Base/Other.bsa
+      kind: archive
+    key: meshes/door.nif
+    original_path: meshes\door.nif
+    resolved_path: <root>/Base/Other.bsa::meshes\door.nif
+  winner_index: 1
+- key: meshes/x/chair.nif
+  providers:
+  - source_index: 2
+    source:
+      path: <root>/Base
+      kind: loose_dir
+    key: meshes/x/chair.nif
+    original_path: Meshes/x/Chair.nif
+    resolved_path: <root>/Base/Meshes/x/Chair.nif
+  - source_index: 3
+    source:
+      path: <root>/Shadowed
+      kind: loose_dir
+    key: meshes/x/chair.nif
+    original_path: Meshes/X/chair.NIF
+    resolved_path: <root>/Shadowed/Meshes/X/chair.NIF
+  - source_index: 4
+    source:
+      path: <root>/Mod A
+      kind: loose_dir
+    key: meshes/x/chair.nif
+    original_path: meshes/x/chair.nif
+    resolved_path: <root>/Mod A/meshes/x/chair.nif
+  winner_index: 2
+- key: textures/rock.dds
+  providers:
+  - source_index: 0
+    source:
+      path: <root>/Base/Packed.bsa
+      kind: archive
+    key: textures/rock.dds
+    original_path: textures\rock.dds
+    resolved_path: <root>/Base/Packed.bsa::textures\rock.dds
+  - source_index: 2
+    source:
+      path: <root>/Base
+      kind: loose_dir
+    key: textures/rock.dds
+    original_path: Textures/Rock.dds
+    resolved_path: <root>/Base/Textures/Rock.dds
+  - source_index: 3
+    source:
+      path: <root>/Shadowed
+      kind: loose_dir
+    key: textures/rock.dds
+    original_path: textures/rock.dds
+    resolved_path: <root>/Shadowed/textures/rock.dds
+  - source_index: 4
+    source:
+      path: <root>/Mod A
+      kind: loose_dir
+    key: textures/rock.dds
+    original_path: Textures/rock.DDS
+    resolved_path: <root>/Mod A/Textures/rock.DDS
+  - source_index: 5
+    source:
+      path: <root>/Mod B
+      kind: loose_dir
+    key: textures/rock.dds
+    original_path: textures/rock.dds
+    resolved_path: <root>/Mod B/textures/rock.dds
+  winner_index: 4
+
+### duplicates, json
+exit 0
+{"entries":[{"key":"icons/a.tga","providers":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"key":"icons/a.tga","original_path":"icons\\a.tga","resolved_path":"<root>/Base/Packed.bsa::icons\\a.tga"},{"source_index":2,"source":{"path":"<root>/Base","kind":"loose_dir"},"key":"icons/a.tga","original_path":"Icons/a.tga","resolved_path":"<root>/Base/Icons/a.tga"}],"winner_index":1},{"key":"meshes/door.nif","providers":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"key":"meshes/door.nif","original_path":"meshes\\door.nif","resolved_path":"<root>/Base/Packed.bsa::meshes\\door.nif"},{"source_index":1,"source":{"path":"<root>/Base/Other.bsa","kind":"archive"},"key":"meshes/door.nif","original_path":"meshes\\door.nif","resolved_path":"<root>/Base/Other.bsa::meshes\\door.nif"}],"winner_index":1},{"key":"meshes/x/chair.nif","providers":[{"source_index":2,"source":{"path":"<root>/Base","kind":"loose_dir"},"key":"meshes/x/chair.nif","original_path":"Meshes/x/Chair.nif","resolved_path":"<root>/Base/Meshes/x/Chair.nif"},{"source_index":3,"source":{"path":"<root>/Shadowed","kind":"loose_dir"},"key":"meshes/x/chair.nif","original_path":"Meshes/X/chair.NIF","resolved_path":"<root>/Shadowed/Meshes/X/chair.NIF"},{"source_index":4,"source":{"path":"<root>/Mod A","kind":"loose_dir"},"key":"meshes/x/chair.nif","original_path":"meshes/x/chair.nif","resolved_path":"<root>/Mod A/meshes/x/chair.nif"}],"winner_index":2},{"key":"textures/rock.dds","providers":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"key":"textures/rock.dds","original_path":"textures\\rock.dds","resolved_path":"<root>/Base/Packed.bsa::textures\\rock.dds"},{"source_index":2,"source":{"path":"<root>/Base","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"Textures/Rock.dds","resolved_path":"<root>/Base/Textures/Rock.dds"},{"source_index":3,"source":{"path":"<root>/Shadowed","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"textures/rock.dds","resolved_path":"<root>/Shadowed/textures/rock.dds"},{"source_index":4,"source":{"path":"<root>/Mod A","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"Textures/rock.DDS","resolved_path":"<root>/Mod A/Textures/rock.DDS"},{"source_index":5,"source":{"path":"<root>/Mod B","kind":"loose_dir"},"key":"textures/rock.dds","original_path":"textures/rock.dds","resolved_path":"<root>/Mod B/textures/rock.dds"}],"winner_index":4}]}
+### duplicates, toml
+exit 0
+[[entries]]
+key = "icons/a.tga"
+winner_index = 1
+
+[[entries.providers]]
+source_index = 0
+key = "icons/a.tga"
+original_path = 'icons\a.tga'
+resolved_path = '<root>/Base/Packed.bsa::icons\a.tga'
+
+[entries.providers.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+[[entries.providers]]
+source_index = 2
+key = "icons/a.tga"
+original_path = "Icons/a.tga"
+resolved_path = "<root>/Base/Icons/a.tga"
+
+[entries.providers.source]
+path = "<root>/Base"
+kind = "loose_dir"
+
+[[entries]]
+key = "meshes/door.nif"
+winner_index = 1
+
+[[entries.providers]]
+source_index = 0
+key = "meshes/door.nif"
+original_path = 'meshes\door.nif'
+resolved_path = '<root>/Base/Packed.bsa::meshes\door.nif'
+
+[entries.providers.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+[[entries.providers]]
+source_index = 1
+key = "meshes/door.nif"
+original_path = 'meshes\door.nif'
+resolved_path = '<root>/Base/Other.bsa::meshes\door.nif'
+
+[entries.providers.source]
+path = "<root>/Base/Other.bsa"
+kind = "archive"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+winner_index = 2
+
+[[entries.providers]]
+source_index = 2
+key = "meshes/x/chair.nif"
+original_path = "Meshes/x/Chair.nif"
+resolved_path = "<root>/Base/Meshes/x/Chair.nif"
+
+[entries.providers.source]
+path = "<root>/Base"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 3
+key = "meshes/x/chair.nif"
+original_path = "Meshes/X/chair.NIF"
+resolved_path = "<root>/Shadowed/Meshes/X/chair.NIF"
+
+[entries.providers.source]
+path = "<root>/Shadowed"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 4
+key = "meshes/x/chair.nif"
+original_path = "meshes/x/chair.nif"
+resolved_path = "<root>/Mod A/meshes/x/chair.nif"
+
+[entries.providers.source]
+path = "<root>/Mod A"
+kind = "loose_dir"
+
+[[entries]]
+key = "textures/rock.dds"
+winner_index = 4
+
+[[entries.providers]]
+source_index = 0
+key = "textures/rock.dds"
+original_path = 'textures\rock.dds'
+resolved_path = '<root>/Base/Packed.bsa::textures\rock.dds'
+
+[entries.providers.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+[[entries.providers]]
+source_index = 2
+key = "textures/rock.dds"
+original_path = "Textures/Rock.dds"
+resolved_path = "<root>/Base/Textures/Rock.dds"
+
+[entries.providers.source]
+path = "<root>/Base"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 3
+key = "textures/rock.dds"
+original_path = "textures/rock.dds"
+resolved_path = "<root>/Shadowed/textures/rock.dds"
+
+[entries.providers.source]
+path = "<root>/Shadowed"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 4
+key = "textures/rock.dds"
+original_path = "Textures/rock.DDS"
+resolved_path = "<root>/Mod A/Textures/rock.DDS"
+
+[entries.providers.source]
+path = "<root>/Mod A"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 5
+key = "textures/rock.dds"
+original_path = "textures/rock.dds"
+resolved_path = "<root>/Mod B/textures/rock.dds"
+
+[entries.providers.source]
+path = "<root>/Mod B"
+kind = "loose_dir"
+
+### duplicates, a pattern, yaml
+exit 0
+entries:
+- key: meshes/door.nif
+  providers:
+  - source_index: 0
+    source:
+      path: <root>/Base/Packed.bsa
+      kind: archive
+    key: meshes/door.nif
+    original_path: meshes\door.nif
+    resolved_path: <root>/Base/Packed.bsa::meshes\door.nif
+  - source_index: 1
+    source:
+      path: <root>/Base/Other.bsa
+      kind: archive
+    key: meshes/door.nif
+    original_path: meshes\door.nif
+    resolved_path: <root>/Base/Other.bsa::meshes\door.nif
+  winner_index: 1
+- key: meshes/x/chair.nif
+  providers:
+  - source_index: 2
+    source:
+      path: <root>/Base
+      kind: loose_dir
+    key: meshes/x/chair.nif
+    original_path: Meshes/x/Chair.nif
+    resolved_path: <root>/Base/Meshes/x/Chair.nif
+  - source_index: 3
+    source:
+      path: <root>/Shadowed
+      kind: loose_dir
+    key: meshes/x/chair.nif
+    original_path: Meshes/X/chair.NIF
+    resolved_path: <root>/Shadowed/Meshes/X/chair.NIF
+  - source_index: 4
+    source:
+      path: <root>/Mod A
+      kind: loose_dir
+    key: meshes/x/chair.nif
+    original_path: meshes/x/chair.nif
+    resolved_path: <root>/Mod A/meshes/x/chair.nif
+  winner_index: 2
+
+### duplicates, a pattern, json
+exit 0
+{"entries":[{"key":"meshes/door.nif","providers":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"key":"meshes/door.nif","original_path":"meshes\\door.nif","resolved_path":"<root>/Base/Packed.bsa::meshes\\door.nif"},{"source_index":1,"source":{"path":"<root>/Base/Other.bsa","kind":"archive"},"key":"meshes/door.nif","original_path":"meshes\\door.nif","resolved_path":"<root>/Base/Other.bsa::meshes\\door.nif"}],"winner_index":1},{"key":"meshes/x/chair.nif","providers":[{"source_index":2,"source":{"path":"<root>/Base","kind":"loose_dir"},"key":"meshes/x/chair.nif","original_path":"Meshes/x/Chair.nif","resolved_path":"<root>/Base/Meshes/x/Chair.nif"},{"source_index":3,"source":{"path":"<root>/Shadowed","kind":"loose_dir"},"key":"meshes/x/chair.nif","original_path":"Meshes/X/chair.NIF","resolved_path":"<root>/Shadowed/Meshes/X/chair.NIF"},{"source_index":4,"source":{"path":"<root>/Mod A","kind":"loose_dir"},"key":"meshes/x/chair.nif","original_path":"meshes/x/chair.nif","resolved_path":"<root>/Mod A/meshes/x/chair.nif"}],"winner_index":2}]}
+### duplicates, a pattern, toml
+exit 0
+[[entries]]
+key = "meshes/door.nif"
+winner_index = 1
+
+[[entries.providers]]
+source_index = 0
+key = "meshes/door.nif"
+original_path = 'meshes\door.nif'
+resolved_path = '<root>/Base/Packed.bsa::meshes\door.nif'
+
+[entries.providers.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+[[entries.providers]]
+source_index = 1
+key = "meshes/door.nif"
+original_path = 'meshes\door.nif'
+resolved_path = '<root>/Base/Other.bsa::meshes\door.nif'
+
+[entries.providers.source]
+path = "<root>/Base/Other.bsa"
+kind = "archive"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+winner_index = 2
+
+[[entries.providers]]
+source_index = 2
+key = "meshes/x/chair.nif"
+original_path = "Meshes/x/Chair.nif"
+resolved_path = "<root>/Base/Meshes/x/Chair.nif"
+
+[entries.providers.source]
+path = "<root>/Base"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 3
+key = "meshes/x/chair.nif"
+original_path = "Meshes/X/chair.NIF"
+resolved_path = "<root>/Shadowed/Meshes/X/chair.NIF"
+
+[entries.providers.source]
+path = "<root>/Shadowed"
+kind = "loose_dir"
+
+[[entries.providers]]
+source_index = 4
+key = "meshes/x/chair.nif"
+original_path = "meshes/x/chair.nif"
+resolved_path = "<root>/Mod A/meshes/x/chair.nif"
+
+[entries.providers.source]
+path = "<root>/Mod A"
+kind = "loose_dir"
+
+### duplicates, a pattern nothing matches, yaml
+exit 0
+entries: []
+
+### duplicates, a pattern nothing matches, json
+exit 0
+{"entries":[]}
+### duplicates, a pattern nothing matches, toml
+exit 0
+entries = []
+
+### archives, yaml
+exit 0
+- source_index: 1
+  path: <root>/Base/Other.bsa
+  entry_count: 2
+  winning_entry_count: 2
+- source_index: 0
+  path: <root>/Base/Packed.bsa
+  entry_count: 4
+  winning_entry_count: 1
+
+### archives, json
+exit 0
+[{"source_index":1,"path":"<root>/Base/Other.bsa","entry_count":2,"winning_entry_count":2},{"source_index":0,"path":"<root>/Base/Packed.bsa","entry_count":4,"winning_entry_count":1}]
+### archives, toml
+exit 0
+[[archives]]
+source_index = 1
+path = "<root>/Base/Other.bsa"
+entry_count = 2
+winning_entry_count = 2
+
+[[archives]]
+source_index = 0
+path = "<root>/Base/Packed.bsa"
+entry_count = 4
+winning_entry_count = 1
+
+### archive-list, a name, yaml
+exit 0
+- key: icons/a.tga
+  archive_path: <root>/Base/Packed.bsa
+  original_path: icons\a.tga
+  wins: false
+- key: meshes/door.nif
+  archive_path: <root>/Base/Packed.bsa
+  original_path: meshes\door.nif
+  wins: false
+- key: sound/packed.wav
+  archive_path: <root>/Base/Packed.bsa
+  original_path: sound\packed.wav
+  wins: true
+- key: textures/rock.dds
+  archive_path: <root>/Base/Packed.bsa
+  original_path: textures\rock.dds
+  wins: false
+
+### archive-list, a name, json
+exit 0
+[{"key":"icons/a.tga","archive_path":"<root>/Base/Packed.bsa","original_path":"icons\\a.tga","wins":false},{"key":"meshes/door.nif","archive_path":"<root>/Base/Packed.bsa","original_path":"meshes\\door.nif","wins":false},{"key":"sound/packed.wav","archive_path":"<root>/Base/Packed.bsa","original_path":"sound\\packed.wav","wins":true},{"key":"textures/rock.dds","archive_path":"<root>/Base/Packed.bsa","original_path":"textures\\rock.dds","wins":false}]
+### archive-list, a name, toml
+exit 0
+[[entries]]
+key = "icons/a.tga"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'icons\a.tga'
+wins = false
+
+[[entries]]
+key = "meshes/door.nif"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'meshes\door.nif'
+wins = false
+
+[[entries]]
+key = "sound/packed.wav"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'sound\packed.wav'
+wins = true
+
+[[entries]]
+key = "textures/rock.dds"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'textures\rock.dds'
+wins = false
+
+### archive-list, a path suffix, yaml
+exit 0
+- key: bookart/page.dds
+  archive_path: <root>/Base/Other.bsa
+  original_path: bookart\page.dds
+  wins: true
+- key: meshes/door.nif
+  archive_path: <root>/Base/Other.bsa
+  original_path: meshes\door.nif
+  wins: true
+
+### archive-list, a path suffix, json
+exit 0
+[{"key":"bookart/page.dds","archive_path":"<root>/Base/Other.bsa","original_path":"bookart\\page.dds","wins":true},{"key":"meshes/door.nif","archive_path":"<root>/Base/Other.bsa","original_path":"meshes\\door.nif","wins":true}]
+### archive-list, a path suffix, toml
+exit 0
+[[entries]]
+key = "bookart/page.dds"
+archive_path = "<root>/Base/Other.bsa"
+original_path = 'bookart\page.dds'
+wins = true
+
+[[entries]]
+key = "meshes/door.nif"
+archive_path = "<root>/Base/Other.bsa"
+original_path = 'meshes\door.nif'
+wins = true
+
+### archive-list, a whole path, yaml
+exit 0
+- key: icons/a.tga
+  archive_path: <root>/Base/Packed.bsa
+  original_path: icons\a.tga
+  wins: false
+- key: meshes/door.nif
+  archive_path: <root>/Base/Packed.bsa
+  original_path: meshes\door.nif
+  wins: false
+- key: sound/packed.wav
+  archive_path: <root>/Base/Packed.bsa
+  original_path: sound\packed.wav
+  wins: true
+- key: textures/rock.dds
+  archive_path: <root>/Base/Packed.bsa
+  original_path: textures\rock.dds
+  wins: false
+
+### archive-list, a whole path, json
+exit 0
+[{"key":"icons/a.tga","archive_path":"<root>/Base/Packed.bsa","original_path":"icons\\a.tga","wins":false},{"key":"meshes/door.nif","archive_path":"<root>/Base/Packed.bsa","original_path":"meshes\\door.nif","wins":false},{"key":"sound/packed.wav","archive_path":"<root>/Base/Packed.bsa","original_path":"sound\\packed.wav","wins":true},{"key":"textures/rock.dds","archive_path":"<root>/Base/Packed.bsa","original_path":"textures\\rock.dds","wins":false}]
+### archive-list, a whole path, toml
+exit 0
+[[entries]]
+key = "icons/a.tga"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'icons\a.tga'
+wins = false
+
+[[entries]]
+key = "meshes/door.nif"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'meshes\door.nif'
+wins = false
+
+[[entries]]
+key = "sound/packed.wav"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'sound\packed.wav'
+wins = true
+
+[[entries]]
+key = "textures/rock.dds"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'textures\rock.dds'
+wins = false
+
+### archive-list --source-index 0, yaml
+exit 0
+- key: icons/a.tga
+  archive_path: <root>/Base/Packed.bsa
+  original_path: icons\a.tga
+  wins: false
+- key: meshes/door.nif
+  archive_path: <root>/Base/Packed.bsa
+  original_path: meshes\door.nif
+  wins: false
+- key: sound/packed.wav
+  archive_path: <root>/Base/Packed.bsa
+  original_path: sound\packed.wav
+  wins: true
+- key: textures/rock.dds
+  archive_path: <root>/Base/Packed.bsa
+  original_path: textures\rock.dds
+  wins: false
+
+### archive-list --source-index 0, json
+exit 0
+[{"key":"icons/a.tga","archive_path":"<root>/Base/Packed.bsa","original_path":"icons\\a.tga","wins":false},{"key":"meshes/door.nif","archive_path":"<root>/Base/Packed.bsa","original_path":"meshes\\door.nif","wins":false},{"key":"sound/packed.wav","archive_path":"<root>/Base/Packed.bsa","original_path":"sound\\packed.wav","wins":true},{"key":"textures/rock.dds","archive_path":"<root>/Base/Packed.bsa","original_path":"textures\\rock.dds","wins":false}]
+### archive-list --source-index 0, toml
+exit 0
+[[entries]]
+key = "icons/a.tga"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'icons\a.tga'
+wins = false
+
+[[entries]]
+key = "meshes/door.nif"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'meshes\door.nif'
+wins = false
+
+[[entries]]
+key = "sound/packed.wav"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'sound\packed.wav'
+wins = true
+
+[[entries]]
+key = "textures/rock.dds"
+archive_path = "<root>/Base/Packed.bsa"
+original_path = 'textures\rock.dds'
+wins = false
+
+### archive-list --source-index 1, yaml
+exit 0
+- key: bookart/page.dds
+  archive_path: <root>/Base/Other.bsa
+  original_path: bookart\page.dds
+  wins: true
+- key: meshes/door.nif
+  archive_path: <root>/Base/Other.bsa
+  original_path: meshes\door.nif
+  wins: true
+
+### archive-list --source-index 1, json
+exit 0
+[{"key":"bookart/page.dds","archive_path":"<root>/Base/Other.bsa","original_path":"bookart\\page.dds","wins":true},{"key":"meshes/door.nif","archive_path":"<root>/Base/Other.bsa","original_path":"meshes\\door.nif","wins":true}]
+### archive-list --source-index 1, toml
+exit 0
+[[entries]]
+key = "bookart/page.dds"
+archive_path = "<root>/Base/Other.bsa"
+original_path = 'bookart\page.dds'
+wins = true
+
+[[entries]]
+key = "meshes/door.nif"
+archive_path = "<root>/Base/Other.bsa"
+original_path = 'meshes\door.nif'
+wins = true
+
+### archive-list --source-index 7
+exit 8
+### archive-list --source-index, not a number
+exit 8
+### archive-list, no selector
+exit 8
+### archive-list, nothing matching
+exit 8
+### archive-list, half a name
+exit 8
+### archive-list, a name two archives have
+exit 8
+### contributions, yaml
+exit 0
+sources:
+- source_index: 0
+  source:
+    path: <root>/Base/Packed.bsa
+    kind: archive
+  winning_files: 1
+  overriding_files: 0
+  overridden_files: 3
+  unique_files: 1
+  duplicate_files: 3
+  loose_files: 0
+  archive_files: 4
+- source_index: 1
+  source:
+    path: <root>/Base/Other.bsa
+    kind: archive
+  winning_files: 2
+  overriding_files: 1
+  overridden_files: 0
+  unique_files: 1
+  duplicate_files: 1
+  loose_files: 0
+  archive_files: 2
+- source_index: 2
+  source:
+    path: <root>/Base
+    kind: loose_dir
+  winning_files: 4
+  overriding_files: 2
+  overridden_files: 2
+  unique_files: 3
+  duplicate_files: 3
+  loose_files: 6
+  archive_files: 0
+- source_index: 3
+  source:
+    path: <root>/Shadowed
+    kind: loose_dir
+  winning_files: 0
+  overriding_files: 2
+  overridden_files: 2
+  unique_files: 0
+  duplicate_files: 2
+  loose_files: 2
+  archive_files: 0
+- source_index: 4
+  source:
+    path: <root>/Mod A
+    kind: loose_dir
+  winning_files: 4
+  overriding_files: 2
+  overridden_files: 1
+  unique_files: 3
+  duplicate_files: 2
+  loose_files: 5
+  archive_files: 0
+- source_index: 5
+  source:
+    path: <root>/Mod B
+    kind: loose_dir
+  winning_files: 3
+  overriding_files: 1
+  overridden_files: 0
+  unique_files: 2
+  duplicate_files: 1
+  loose_files: 3
+  archive_files: 0
+- source_index: 6
+  source:
+    path: <root>/Empty
+    kind: loose_dir
+  winning_files: 0
+  overriding_files: 0
+  overridden_files: 0
+  unique_files: 0
+  duplicate_files: 0
+  loose_files: 0
+  archive_files: 0
+- source_index: 7
+  source:
+    path: <root>/Local
+    kind: loose_dir
+  winning_files: 0
+  overriding_files: 0
+  overridden_files: 0
+  unique_files: 0
+  duplicate_files: 0
+  loose_files: 0
+  archive_files: 0
+
+### contributions, json
+exit 0
+{"sources":[{"source_index":0,"source":{"path":"<root>/Base/Packed.bsa","kind":"archive"},"winning_files":1,"overriding_files":0,"overridden_files":3,"unique_files":1,"duplicate_files":3,"loose_files":0,"archive_files":4},{"source_index":1,"source":{"path":"<root>/Base/Other.bsa","kind":"archive"},"winning_files":2,"overriding_files":1,"overridden_files":0,"unique_files":1,"duplicate_files":1,"loose_files":0,"archive_files":2},{"source_index":2,"source":{"path":"<root>/Base","kind":"loose_dir"},"winning_files":4,"overriding_files":2,"overridden_files":2,"unique_files":3,"duplicate_files":3,"loose_files":6,"archive_files":0},{"source_index":3,"source":{"path":"<root>/Shadowed","kind":"loose_dir"},"winning_files":0,"overriding_files":2,"overridden_files":2,"unique_files":0,"duplicate_files":2,"loose_files":2,"archive_files":0},{"source_index":4,"source":{"path":"<root>/Mod A","kind":"loose_dir"},"winning_files":4,"overriding_files":2,"overridden_files":1,"unique_files":3,"duplicate_files":2,"loose_files":5,"archive_files":0},{"source_index":5,"source":{"path":"<root>/Mod B","kind":"loose_dir"},"winning_files":3,"overriding_files":1,"overridden_files":0,"unique_files":2,"duplicate_files":1,"loose_files":3,"archive_files":0},{"source_index":6,"source":{"path":"<root>/Empty","kind":"loose_dir"},"winning_files":0,"overriding_files":0,"overridden_files":0,"unique_files":0,"duplicate_files":0,"loose_files":0,"archive_files":0},{"source_index":7,"source":{"path":"<root>/Local","kind":"loose_dir"},"winning_files":0,"overriding_files":0,"overridden_files":0,"unique_files":0,"duplicate_files":0,"loose_files":0,"archive_files":0}]}
+### contributions, toml
+exit 0
+[[sources]]
+source_index = 0
+winning_files = 1
+overriding_files = 0
+overridden_files = 3
+unique_files = 1
+duplicate_files = 3
+loose_files = 0
+archive_files = 4
+
+[sources.source]
+path = "<root>/Base/Packed.bsa"
+kind = "archive"
+
+[[sources]]
+source_index = 1
+winning_files = 2
+overriding_files = 1
+overridden_files = 0
+unique_files = 1
+duplicate_files = 1
+loose_files = 0
+archive_files = 2
+
+[sources.source]
+path = "<root>/Base/Other.bsa"
+kind = "archive"
+
+[[sources]]
+source_index = 2
+winning_files = 4
+overriding_files = 2
+overridden_files = 2
+unique_files = 3
+duplicate_files = 3
+loose_files = 6
+archive_files = 0
+
+[sources.source]
+path = "<root>/Base"
+kind = "loose_dir"
+
+[[sources]]
+source_index = 3
+winning_files = 0
+overriding_files = 2
+overridden_files = 2
+unique_files = 0
+duplicate_files = 2
+loose_files = 2
+archive_files = 0
+
+[sources.source]
+path = "<root>/Shadowed"
+kind = "loose_dir"
+
+[[sources]]
+source_index = 4
+winning_files = 4
+overriding_files = 2
+overridden_files = 1
+unique_files = 3
+duplicate_files = 2
+loose_files = 5
+archive_files = 0
+
+[sources.source]
+path = "<root>/Mod A"
+kind = "loose_dir"
+
+[[sources]]
+source_index = 5
+winning_files = 3
+overriding_files = 1
+overridden_files = 0
+unique_files = 2
+duplicate_files = 1
+loose_files = 3
+archive_files = 0
+
+[sources.source]
+path = "<root>/Mod B"
+kind = "loose_dir"
+
+[[sources]]
+source_index = 6
+winning_files = 0
+overriding_files = 0
+overridden_files = 0
+unique_files = 0
+duplicate_files = 0
+loose_files = 0
+archive_files = 0
+
+[sources.source]
+path = "<root>/Empty"
+kind = "loose_dir"
+
+[[sources]]
+source_index = 7
+winning_files = 0
+overriding_files = 0
+overridden_files = 0
+unique_files = 0
+duplicate_files = 0
+loose_files = 0
+archive_files = 0
+
+[sources.source]
+path = "<root>/Local"
+kind = "loose_dir"
+
+### conflicts, yaml
+exit 0
+sources:
+- path: <root>/Base/Packed.bsa
+  overrides: []
+  overridden_by:
+  - <root>/Base/Packed.bsa::icons/a.tga
+  - <root>/Base/Packed.bsa::meshes/door.nif
+  - <root>/Base/Packed.bsa::textures/rock.dds
+- path: <root>/Base/Other.bsa
+  overrides:
+  - <root>/Base/Other.bsa::meshes/door.nif
+  overridden_by: []
+- path: <root>/Base
+  overrides:
+  - <root>/Base/Icons/a.tga
+  - <root>/Base/Textures/Rock.dds
+  overridden_by:
+  - <root>/Base/Meshes/x/Chair.nif
+  - <root>/Base/Textures/Rock.dds
+- path: <root>/Shadowed
+  overrides:
+  - <root>/Shadowed/Meshes/X/chair.NIF
+  - <root>/Shadowed/textures/rock.dds
+  overridden_by:
+  - <root>/Shadowed/Meshes/X/chair.NIF
+  - <root>/Shadowed/textures/rock.dds
+- path: <root>/Mod A
+  overrides:
+  - <root>/Mod A/Textures/rock.DDS
+  - <root>/Mod A/meshes/x/chair.nif
+  overridden_by:
+  - <root>/Mod A/Textures/rock.DDS
+- path: <root>/Mod B
+  overrides:
+  - <root>/Mod B/textures/rock.dds
+  overridden_by: []
+- path: <root>/Empty
+  overrides: []
+  overridden_by: []
+- path: <root>/Local
+  overrides: []
+  overridden_by: []
+
+### conflicts, json
+exit 0
+{"sources":[{"path":"<root>/Base/Packed.bsa","overrides":[],"overridden_by":["<root>/Base/Packed.bsa::icons/a.tga","<root>/Base/Packed.bsa::meshes/door.nif","<root>/Base/Packed.bsa::textures/rock.dds"]},{"path":"<root>/Base/Other.bsa","overrides":["<root>/Base/Other.bsa::meshes/door.nif"],"overridden_by":[]},{"path":"<root>/Base","overrides":["<root>/Base/Icons/a.tga","<root>/Base/Textures/Rock.dds"],"overridden_by":["<root>/Base/Meshes/x/Chair.nif","<root>/Base/Textures/Rock.dds"]},{"path":"<root>/Shadowed","overrides":["<root>/Shadowed/Meshes/X/chair.NIF","<root>/Shadowed/textures/rock.dds"],"overridden_by":["<root>/Shadowed/Meshes/X/chair.NIF","<root>/Shadowed/textures/rock.dds"]},{"path":"<root>/Mod A","overrides":["<root>/Mod A/Textures/rock.DDS","<root>/Mod A/meshes/x/chair.nif"],"overridden_by":["<root>/Mod A/Textures/rock.DDS"]},{"path":"<root>/Mod B","overrides":["<root>/Mod B/textures/rock.dds"],"overridden_by":[]},{"path":"<root>/Empty","overrides":[],"overridden_by":[]},{"path":"<root>/Local","overrides":[],"overridden_by":[]}]}
+### conflicts, toml
+exit 0
+[[sources]]
+path = "<root>/Base/Packed.bsa"
+overrides = []
+overridden_by = [
+    "<root>/Base/Packed.bsa::icons/a.tga",
+    "<root>/Base/Packed.bsa::meshes/door.nif",
+    "<root>/Base/Packed.bsa::textures/rock.dds",
+]
+
+[[sources]]
+path = "<root>/Base/Other.bsa"
+overrides = ["<root>/Base/Other.bsa::meshes/door.nif"]
+overridden_by = []
+
+[[sources]]
+path = "<root>/Base"
+overrides = [
+    "<root>/Base/Icons/a.tga",
+    "<root>/Base/Textures/Rock.dds",
+]
+overridden_by = [
+    "<root>/Base/Meshes/x/Chair.nif",
+    "<root>/Base/Textures/Rock.dds",
+]
+
+[[sources]]
+path = "<root>/Shadowed"
+overrides = [
+    "<root>/Shadowed/Meshes/X/chair.NIF",
+    "<root>/Shadowed/textures/rock.dds",
+]
+overridden_by = [
+    "<root>/Shadowed/Meshes/X/chair.NIF",
+    "<root>/Shadowed/textures/rock.dds",
+]
+
+[[sources]]
+path = "<root>/Mod A"
+overrides = [
+    "<root>/Mod A/Textures/rock.DDS",
+    "<root>/Mod A/meshes/x/chair.nif",
+]
+overridden_by = ["<root>/Mod A/Textures/rock.DDS"]
+
+[[sources]]
+path = "<root>/Mod B"
+overrides = ["<root>/Mod B/textures/rock.dds"]
+overridden_by = []
+
+[[sources]]
+path = "<root>/Empty"
+overrides = []
+overridden_by = []
+
+[[sources]]
+path = "<root>/Local"
+overrides = []
+overridden_by = []
+
+### conflicts -r, yaml
+exit 0
+sources:
+- path: <root>/Base/Packed.bsa
+  overrides: []
+  overridden_by:
+  - icons/a.tga
+  - meshes/door.nif
+  - textures/rock.dds
+- path: <root>/Base/Other.bsa
+  overrides:
+  - meshes/door.nif
+  overridden_by: []
+- path: <root>/Base
+  overrides:
+  - icons/a.tga
+  - textures/rock.dds
+  overridden_by:
+  - meshes/x/chair.nif
+  - textures/rock.dds
+- path: <root>/Shadowed
+  overrides:
+  - meshes/x/chair.nif
+  - textures/rock.dds
+  overridden_by:
+  - meshes/x/chair.nif
+  - textures/rock.dds
+- path: <root>/Mod A
+  overrides:
+  - meshes/x/chair.nif
+  - textures/rock.dds
+  overridden_by:
+  - textures/rock.dds
+- path: <root>/Mod B
+  overrides:
+  - textures/rock.dds
+  overridden_by: []
+- path: <root>/Empty
+  overrides: []
+  overridden_by: []
+- path: <root>/Local
+  overrides: []
+  overridden_by: []
+
+### conflicts -r, json
+exit 0
+{"sources":[{"path":"<root>/Base/Packed.bsa","overrides":[],"overridden_by":["icons/a.tga","meshes/door.nif","textures/rock.dds"]},{"path":"<root>/Base/Other.bsa","overrides":["meshes/door.nif"],"overridden_by":[]},{"path":"<root>/Base","overrides":["icons/a.tga","textures/rock.dds"],"overridden_by":["meshes/x/chair.nif","textures/rock.dds"]},{"path":"<root>/Shadowed","overrides":["meshes/x/chair.nif","textures/rock.dds"],"overridden_by":["meshes/x/chair.nif","textures/rock.dds"]},{"path":"<root>/Mod A","overrides":["meshes/x/chair.nif","textures/rock.dds"],"overridden_by":["textures/rock.dds"]},{"path":"<root>/Mod B","overrides":["textures/rock.dds"],"overridden_by":[]},{"path":"<root>/Empty","overrides":[],"overridden_by":[]},{"path":"<root>/Local","overrides":[],"overridden_by":[]}]}
+### conflicts -r, toml
+exit 0
+[[sources]]
+path = "<root>/Base/Packed.bsa"
+overrides = []
+overridden_by = [
+    "icons/a.tga",
+    "meshes/door.nif",
+    "textures/rock.dds",
+]
+
+[[sources]]
+path = "<root>/Base/Other.bsa"
+overrides = ["meshes/door.nif"]
+overridden_by = []
+
+[[sources]]
+path = "<root>/Base"
+overrides = [
+    "icons/a.tga",
+    "textures/rock.dds",
+]
+overridden_by = [
+    "meshes/x/chair.nif",
+    "textures/rock.dds",
+]
+
+[[sources]]
+path = "<root>/Shadowed"
+overrides = [
+    "meshes/x/chair.nif",
+    "textures/rock.dds",
+]
+overridden_by = [
+    "meshes/x/chair.nif",
+    "textures/rock.dds",
+]
+
+[[sources]]
+path = "<root>/Mod A"
+overrides = [
+    "meshes/x/chair.nif",
+    "textures/rock.dds",
+]
+overridden_by = ["textures/rock.dds"]
+
+[[sources]]
+path = "<root>/Mod B"
+overrides = ["textures/rock.dds"]
+overridden_by = []
+
+[[sources]]
+path = "<root>/Empty"
+overrides = []
+overridden_by = []
+
+[[sources]]
+path = "<root>/Local"
+overrides = []
+overridden_by = []
+
+### shadowed, yaml
+exit 0
+sources:
+- path: <root>/Shadowed
+
+### shadowed, json
+exit 0
+{"sources":[{"path":"<root>/Shadowed"}]}
+### shadowed, toml
+exit 0
+[[sources]]
+path = "<root>/Shadowed"
+
+### shadowed -l, yaml
+exit 0
+sources:
+- path: <root>/Shadowed
+  shadowed_files:
+  - <root>/Shadowed/Meshes/X/chair.NIF
+  - <root>/Shadowed/textures/rock.dds
+
+### shadowed -l, json
+exit 0
+{"sources":[{"path":"<root>/Shadowed","shadowed_files":["<root>/Shadowed/Meshes/X/chair.NIF","<root>/Shadowed/textures/rock.dds"]}]}
+### shadowed -l, toml
+exit 0
+[[sources]]
+path = "<root>/Shadowed"
+shadowed_files = [
+    "<root>/Shadowed/Meshes/X/chair.NIF",
+    "<root>/Shadowed/textures/rock.dds",
+]
+
+### shadowed --list-files -r, yaml
+exit 0
+sources:
+- path: <root>/Shadowed
+  shadowed_files:
+  - meshes/x/chair.nif
+  - textures/rock.dds
+
+### shadowed --list-files -r, json
+exit 0
+{"sources":[{"path":"<root>/Shadowed","shadowed_files":["meshes/x/chair.nif","textures/rock.dds"]}]}
+### shadowed --list-files -r, toml
+exit 0
+[[sources]]
+path = "<root>/Shadowed"
+shadowed_files = [
+    "meshes/x/chair.nif",
+    "textures/rock.dds",
+]
+
+### diff, yaml
+exit 0
+source_a: <root>/Mod A
+source_b: <root>/Mod B
+higher_priority: <root>/Mod B
+shared:
+- textures/rock.dds
+only_in_a:
+- meshes/x/chair.nif
+- patch.esp
+- sound/hit.wav
+- sub/other.bsa
+only_in_b:
+- docs/readme.txt
+- grass.esp
+
+### diff, json
+exit 0
+{"source_a":"<root>/Mod A","source_b":"<root>/Mod B","higher_priority":"<root>/Mod B","shared":["textures/rock.dds"],"only_in_a":["meshes/x/chair.nif","patch.esp","sound/hit.wav","sub/other.bsa"],"only_in_b":["docs/readme.txt","grass.esp"]}
+### diff, toml
+exit 0
+source_a = "<root>/Mod A"
+source_b = "<root>/Mod B"
+higher_priority = "<root>/Mod B"
+shared = ["textures/rock.dds"]
+only_in_a = [
+    "meshes/x/chair.nif",
+    "patch.esp",
+    "sound/hit.wav",
+    "sub/other.bsa",
+]
+only_in_b = [
+    "docs/readme.txt",
+    "grass.esp",
+]
+
+### diff, the higher folder first, yaml
+exit 0
+source_a: <root>/Mod B
+source_b: <root>/Base
+higher_priority: <root>/Mod B
+shared:
+- textures/rock.dds
+only_in_a:
+- docs/readme.txt
+- grass.esp
+only_in_b:
+- icons/a.tga
+- meshes/x/chair.nif
+- morrowind.esm
+- other.bsa
+- packed.bsa
+
+### diff, the higher folder first, json
+exit 0
+{"source_a":"<root>/Mod B","source_b":"<root>/Base","higher_priority":"<root>/Mod B","shared":["textures/rock.dds"],"only_in_a":["docs/readme.txt","grass.esp"],"only_in_b":["icons/a.tga","meshes/x/chair.nif","morrowind.esm","other.bsa","packed.bsa"]}
+### diff, the higher folder first, toml
+exit 0
+source_a = "<root>/Mod B"
+source_b = "<root>/Base"
+higher_priority = "<root>/Mod B"
+shared = ["textures/rock.dds"]
+only_in_a = [
+    "docs/readme.txt",
+    "grass.esp",
+]
+only_in_b = [
+    "icons/a.tga",
+    "meshes/x/chair.nif",
+    "morrowind.esm",
+    "other.bsa",
+    "packed.bsa",
+]
+
+### diff, a folder against itself, yaml
+exit 0
+source_a: <root>/Shadowed
+source_b: <root>/Shadowed
+higher_priority: <root>/Shadowed
+shared:
+- meshes/x/chair.nif
+- textures/rock.dds
+only_in_a: []
+only_in_b: []
+
+### diff, a folder against itself, json
+exit 0
+{"source_a":"<root>/Shadowed","source_b":"<root>/Shadowed","higher_priority":"<root>/Shadowed","shared":["meshes/x/chair.nif","textures/rock.dds"],"only_in_a":[],"only_in_b":[]}
+### diff, a folder against itself, toml
+exit 0
+source_a = "<root>/Shadowed"
+source_b = "<root>/Shadowed"
+higher_priority = "<root>/Shadowed"
+shared = [
+    "meshes/x/chair.nif",
+    "textures/rock.dds",
+]
+only_in_a = []
+only_in_b = []
+
+### diff, a folder not configured
+exit 8
+### validate, yaml
+exit 0
+issues: []
+
+### validate, json
+exit 0
+{"issues":[]}
+### validate, toml
+exit 0
+issues = []
+
+### validate --full, yaml
+exit 0
+issues: []
+
+### validate --full, json
+exit 0
+{"issues":[]}
+### validate --full, toml
+exit 0
+issues = []
+
+### validate, what is not there, yaml
+exit 5
+issues:
+- !MissingDataDirectory
+  path: <root>/Gone
+- !DataPathNotDirectory
+  path: <root>/Base/Morrowind.esm
+- !MissingFallbackArchive
+  name: Absent.bsa
+- !MissingContentFile
+  name: Absent.esp
+- !MissingGroundcoverFile
+  name: Absent Grass.esp
+
+### validate, what is not there, json
+exit 5
+{"issues":[{"MissingDataDirectory":{"path":"<root>/Gone"}},{"DataPathNotDirectory":{"path":"<root>/Base/Morrowind.esm"}},{"MissingFallbackArchive":{"name":"Absent.bsa"}},{"MissingContentFile":{"name":"Absent.esp"}},{"MissingGroundcoverFile":{"name":"Absent Grass.esp"}}]}
+### validate, what is not there, toml
+exit 5
+[[issues]]
+
+[issues.MissingDataDirectory]
+path = "<root>/Gone"
+
+[[issues]]
+
+[issues.DataPathNotDirectory]
+path = "<root>/Base/Morrowind.esm"
+
+[[issues]]
+
+[issues.MissingFallbackArchive]
+name = "Absent.bsa"
+
+[[issues]]
+
+[issues.MissingContentFile]
+name = "Absent.esp"
+
+[[issues]]
+
+[issues.MissingGroundcoverFile]
+name = "Absent Grass.esp"
+
+### validate --full, what is not there, yaml
+exit 5
+issues:
+- !MissingDataDirectory
+  path: <root>/Gone
+- !DataPathNotDirectory
+  path: <root>/Base/Morrowind.esm
+- !MissingFallbackArchive
+  name: Absent.bsa
+- !UnreadableFallbackArchive
+  name: Patch.esp
+  path: <root>/Mod A/Patch.esp
+- !MissingContentFile
+  name: Absent.esp
+- !MissingGroundcoverFile
+  name: Absent Grass.esp
+
+### validate --full, what is not there, json
+exit 5
+{"issues":[{"MissingDataDirectory":{"path":"<root>/Gone"}},{"DataPathNotDirectory":{"path":"<root>/Base/Morrowind.esm"}},{"MissingFallbackArchive":{"name":"Absent.bsa"}},{"UnreadableFallbackArchive":{"name":"Patch.esp","path":"<root>/Mod A/Patch.esp"}},{"MissingContentFile":{"name":"Absent.esp"}},{"MissingGroundcoverFile":{"name":"Absent Grass.esp"}}]}
+### validate --full, what is not there, toml
+exit 5
+[[issues]]
+
+[issues.MissingDataDirectory]
+path = "<root>/Gone"
+
+[[issues]]
+
+[issues.DataPathNotDirectory]
+path = "<root>/Base/Morrowind.esm"
+
+[[issues]]
+
+[issues.MissingFallbackArchive]
+name = "Absent.bsa"
+
+[[issues]]
+
+[issues.UnreadableFallbackArchive]
+name = "Patch.esp"
+path = "<root>/Mod A/Patch.esp"
+
+[[issues]]
+
+[issues.MissingContentFile]
+name = "Absent.esp"
+
+[[issues]]
+
+[issues.MissingGroundcoverFile]
+name = "Absent Grass.esp"
+
+### collapse --dry-run, yaml
+exit 0
+actions:
+- !skip_archive_file
+  key: bookart/page.dds
+  archive: <root>/Base/Other.bsa
+- !hardlink
+  key: docs/readme.txt
+  source: <root>/Mod B/docs/readme.txt
+  dest: <root>/out/collapsed/docs/readme.txt
+- !hardlink
+  key: grass.esp
+  source: <root>/Mod B/Grass.esp
+  dest: <root>/out/collapsed/grass.esp
+- !hardlink
+  key: icons/a.tga
+  source: <root>/Base/Icons/a.tga
+  dest: <root>/out/collapsed/icons/a.tga
+- !skip_archive_file
+  key: meshes/door.nif
+  archive: <root>/Base/Other.bsa
+- !hardlink
+  key: meshes/x/chair.nif
+  source: <root>/Mod A/meshes/x/chair.nif
+  dest: <root>/out/collapsed/meshes/x/chair.nif
+- !hardlink
+  key: morrowind.esm
+  source: <root>/Base/Morrowind.esm
+  dest: <root>/out/collapsed/morrowind.esm
+- !hardlink
+  key: other.bsa
+  source: <root>/Base/Other.bsa
+  dest: <root>/out/collapsed/other.bsa
+- !hardlink
+  key: packed.bsa
+  source: <root>/Base/Packed.bsa
+  dest: <root>/out/collapsed/packed.bsa
+- !hardlink
+  key: patch.esp
+  source: <root>/Mod A/Patch.esp
+  dest: <root>/out/collapsed/patch.esp
+- !hardlink
+  key: sound/hit.wav
+  source: <root>/Mod A/Sound/Hit.wav
+  dest: <root>/out/collapsed/sound/hit.wav
+- !skip_archive_file
+  key: sound/packed.wav
+  archive: <root>/Base/Packed.bsa
+- !hardlink
+  key: sub/other.bsa
+  source: <root>/Mod A/Sub/Other.bsa
+  dest: <root>/out/collapsed/sub/other.bsa
+- !hardlink
+  key: textures/rock.dds
+  source: <root>/Mod B/textures/rock.dds
+  dest: <root>/out/collapsed/textures/rock.dds
+issues: []
+
+### collapse --dry-run, json
+exit 0
+{"actions":[{"skip_archive_file":{"key":"bookart/page.dds","archive":"<root>/Base/Other.bsa"}},{"hardlink":{"key":"docs/readme.txt","source":"<root>/Mod B/docs/readme.txt","dest":"<root>/out/collapsed/docs/readme.txt"}},{"hardlink":{"key":"grass.esp","source":"<root>/Mod B/Grass.esp","dest":"<root>/out/collapsed/grass.esp"}},{"hardlink":{"key":"icons/a.tga","source":"<root>/Base/Icons/a.tga","dest":"<root>/out/collapsed/icons/a.tga"}},{"skip_archive_file":{"key":"meshes/door.nif","archive":"<root>/Base/Other.bsa"}},{"hardlink":{"key":"meshes/x/chair.nif","source":"<root>/Mod A/meshes/x/chair.nif","dest":"<root>/out/collapsed/meshes/x/chair.nif"}},{"hardlink":{"key":"morrowind.esm","source":"<root>/Base/Morrowind.esm","dest":"<root>/out/collapsed/morrowind.esm"}},{"hardlink":{"key":"other.bsa","source":"<root>/Base/Other.bsa","dest":"<root>/out/collapsed/other.bsa"}},{"hardlink":{"key":"packed.bsa","source":"<root>/Base/Packed.bsa","dest":"<root>/out/collapsed/packed.bsa"}},{"hardlink":{"key":"patch.esp","source":"<root>/Mod A/Patch.esp","dest":"<root>/out/collapsed/patch.esp"}},{"hardlink":{"key":"sound/hit.wav","source":"<root>/Mod A/Sound/Hit.wav","dest":"<root>/out/collapsed/sound/hit.wav"}},{"skip_archive_file":{"key":"sound/packed.wav","archive":"<root>/Base/Packed.bsa"}},{"hardlink":{"key":"sub/other.bsa","source":"<root>/Mod A/Sub/Other.bsa","dest":"<root>/out/collapsed/sub/other.bsa"}},{"hardlink":{"key":"textures/rock.dds","source":"<root>/Mod B/textures/rock.dds","dest":"<root>/out/collapsed/textures/rock.dds"}}],"issues":[]}
+### collapse --dry-run, toml
+exit 0
+issues = []
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "bookart/page.dds"
+archive = "<root>/Base/Other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "docs/readme.txt"
+source = "<root>/Mod B/docs/readme.txt"
+dest = "<root>/out/collapsed/docs/readme.txt"
+
+[[actions]]
+
+[actions.hardlink]
+key = "grass.esp"
+source = "<root>/Mod B/Grass.esp"
+dest = "<root>/out/collapsed/grass.esp"
+
+[[actions]]
+
+[actions.hardlink]
+key = "icons/a.tga"
+source = "<root>/Base/Icons/a.tga"
+dest = "<root>/out/collapsed/icons/a.tga"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "meshes/door.nif"
+archive = "<root>/Base/Other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "meshes/x/chair.nif"
+source = "<root>/Mod A/meshes/x/chair.nif"
+dest = "<root>/out/collapsed/meshes/x/chair.nif"
+
+[[actions]]
+
+[actions.hardlink]
+key = "morrowind.esm"
+source = "<root>/Base/Morrowind.esm"
+dest = "<root>/out/collapsed/morrowind.esm"
+
+[[actions]]
+
+[actions.hardlink]
+key = "other.bsa"
+source = "<root>/Base/Other.bsa"
+dest = "<root>/out/collapsed/other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "packed.bsa"
+source = "<root>/Base/Packed.bsa"
+dest = "<root>/out/collapsed/packed.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "patch.esp"
+source = "<root>/Mod A/Patch.esp"
+dest = "<root>/out/collapsed/patch.esp"
+
+[[actions]]
+
+[actions.hardlink]
+key = "sound/hit.wav"
+source = "<root>/Mod A/Sound/Hit.wav"
+dest = "<root>/out/collapsed/sound/hit.wav"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "sound/packed.wav"
+archive = "<root>/Base/Packed.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "sub/other.bsa"
+source = "<root>/Mod A/Sub/Other.bsa"
+dest = "<root>/out/collapsed/sub/other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "textures/rock.dds"
+source = "<root>/Mod B/textures/rock.dds"
+dest = "<root>/out/collapsed/textures/rock.dds"
+
+### collapse --dry-run -a, yaml
+exit 0
+actions:
+- !skip_archive_file
+  key: bookart/page.dds
+  archive: <root>/Base/Other.bsa
+- !hardlink
+  key: docs/readme.txt
+  source: <root>/Mod B/docs/readme.txt
+  dest: <root>/out/collapsed/docs/readme.txt
+- !hardlink
+  key: grass.esp
+  source: <root>/Mod B/Grass.esp
+  dest: <root>/out/collapsed/grass.esp
+- !hardlink
+  key: icons/a.tga
+  source: <root>/Base/Icons/a.tga
+  dest: <root>/out/collapsed/icons/a.tga
+- !skip_archive_file
+  key: meshes/door.nif
+  archive: <root>/Base/Other.bsa
+- !hardlink
+  key: meshes/x/chair.nif
+  source: <root>/Mod A/meshes/x/chair.nif
+  dest: <root>/out/collapsed/meshes/x/chair.nif
+- !hardlink
+  key: morrowind.esm
+  source: <root>/Base/Morrowind.esm
+  dest: <root>/out/collapsed/morrowind.esm
+- !hardlink
+  key: other.bsa
+  source: <root>/Base/Other.bsa
+  dest: <root>/out/collapsed/other.bsa
+- !hardlink
+  key: packed.bsa
+  source: <root>/Base/Packed.bsa
+  dest: <root>/out/collapsed/packed.bsa
+- !hardlink
+  key: patch.esp
+  source: <root>/Mod A/Patch.esp
+  dest: <root>/out/collapsed/patch.esp
+- !hardlink
+  key: sound/hit.wav
+  source: <root>/Mod A/Sound/Hit.wav
+  dest: <root>/out/collapsed/sound/hit.wav
+- !skip_archive_file
+  key: sound/packed.wav
+  archive: <root>/Base/Packed.bsa
+- !hardlink
+  key: sub/other.bsa
+  source: <root>/Mod A/Sub/Other.bsa
+  dest: <root>/out/collapsed/sub/other.bsa
+- !hardlink
+  key: textures/rock.dds
+  source: <root>/Mod B/textures/rock.dds
+  dest: <root>/out/collapsed/textures/rock.dds
+issues: []
+
+### collapse --dry-run -a, json
+exit 0
+{"actions":[{"skip_archive_file":{"key":"bookart/page.dds","archive":"<root>/Base/Other.bsa"}},{"hardlink":{"key":"docs/readme.txt","source":"<root>/Mod B/docs/readme.txt","dest":"<root>/out/collapsed/docs/readme.txt"}},{"hardlink":{"key":"grass.esp","source":"<root>/Mod B/Grass.esp","dest":"<root>/out/collapsed/grass.esp"}},{"hardlink":{"key":"icons/a.tga","source":"<root>/Base/Icons/a.tga","dest":"<root>/out/collapsed/icons/a.tga"}},{"skip_archive_file":{"key":"meshes/door.nif","archive":"<root>/Base/Other.bsa"}},{"hardlink":{"key":"meshes/x/chair.nif","source":"<root>/Mod A/meshes/x/chair.nif","dest":"<root>/out/collapsed/meshes/x/chair.nif"}},{"hardlink":{"key":"morrowind.esm","source":"<root>/Base/Morrowind.esm","dest":"<root>/out/collapsed/morrowind.esm"}},{"hardlink":{"key":"other.bsa","source":"<root>/Base/Other.bsa","dest":"<root>/out/collapsed/other.bsa"}},{"hardlink":{"key":"packed.bsa","source":"<root>/Base/Packed.bsa","dest":"<root>/out/collapsed/packed.bsa"}},{"hardlink":{"key":"patch.esp","source":"<root>/Mod A/Patch.esp","dest":"<root>/out/collapsed/patch.esp"}},{"hardlink":{"key":"sound/hit.wav","source":"<root>/Mod A/Sound/Hit.wav","dest":"<root>/out/collapsed/sound/hit.wav"}},{"skip_archive_file":{"key":"sound/packed.wav","archive":"<root>/Base/Packed.bsa"}},{"hardlink":{"key":"sub/other.bsa","source":"<root>/Mod A/Sub/Other.bsa","dest":"<root>/out/collapsed/sub/other.bsa"}},{"hardlink":{"key":"textures/rock.dds","source":"<root>/Mod B/textures/rock.dds","dest":"<root>/out/collapsed/textures/rock.dds"}}],"issues":[]}
+### collapse --dry-run -a, toml
+exit 0
+issues = []
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "bookart/page.dds"
+archive = "<root>/Base/Other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "docs/readme.txt"
+source = "<root>/Mod B/docs/readme.txt"
+dest = "<root>/out/collapsed/docs/readme.txt"
+
+[[actions]]
+
+[actions.hardlink]
+key = "grass.esp"
+source = "<root>/Mod B/Grass.esp"
+dest = "<root>/out/collapsed/grass.esp"
+
+[[actions]]
+
+[actions.hardlink]
+key = "icons/a.tga"
+source = "<root>/Base/Icons/a.tga"
+dest = "<root>/out/collapsed/icons/a.tga"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "meshes/door.nif"
+archive = "<root>/Base/Other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "meshes/x/chair.nif"
+source = "<root>/Mod A/meshes/x/chair.nif"
+dest = "<root>/out/collapsed/meshes/x/chair.nif"
+
+[[actions]]
+
+[actions.hardlink]
+key = "morrowind.esm"
+source = "<root>/Base/Morrowind.esm"
+dest = "<root>/out/collapsed/morrowind.esm"
+
+[[actions]]
+
+[actions.hardlink]
+key = "other.bsa"
+source = "<root>/Base/Other.bsa"
+dest = "<root>/out/collapsed/other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "packed.bsa"
+source = "<root>/Base/Packed.bsa"
+dest = "<root>/out/collapsed/packed.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "patch.esp"
+source = "<root>/Mod A/Patch.esp"
+dest = "<root>/out/collapsed/patch.esp"
+
+[[actions]]
+
+[actions.hardlink]
+key = "sound/hit.wav"
+source = "<root>/Mod A/Sound/Hit.wav"
+dest = "<root>/out/collapsed/sound/hit.wav"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "sound/packed.wav"
+archive = "<root>/Base/Packed.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "sub/other.bsa"
+source = "<root>/Mod A/Sub/Other.bsa"
+dest = "<root>/out/collapsed/sub/other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "textures/rock.dds"
+source = "<root>/Mod B/textures/rock.dds"
+dest = "<root>/out/collapsed/textures/rock.dds"
+
+### collapse --dry-run -e, yaml
+exit 0
+actions:
+- !extract_archive
+  key: bookart/page.dds
+  archive: <root>/Base/Other.bsa
+  dest: <root>/out/collapsed/bookart/page.dds
+- !hardlink
+  key: docs/readme.txt
+  source: <root>/Mod B/docs/readme.txt
+  dest: <root>/out/collapsed/docs/readme.txt
+- !hardlink
+  key: grass.esp
+  source: <root>/Mod B/Grass.esp
+  dest: <root>/out/collapsed/grass.esp
+- !hardlink
+  key: icons/a.tga
+  source: <root>/Base/Icons/a.tga
+  dest: <root>/out/collapsed/icons/a.tga
+- !extract_archive
+  key: meshes/door.nif
+  archive: <root>/Base/Other.bsa
+  dest: <root>/out/collapsed/meshes/door.nif
+- !hardlink
+  key: meshes/x/chair.nif
+  source: <root>/Mod A/meshes/x/chair.nif
+  dest: <root>/out/collapsed/meshes/x/chair.nif
+- !hardlink
+  key: morrowind.esm
+  source: <root>/Base/Morrowind.esm
+  dest: <root>/out/collapsed/morrowind.esm
+- !skip_archive_file
+  key: other.bsa
+  archive: <root>/Base/Other.bsa
+- !skip_archive_file
+  key: packed.bsa
+  archive: <root>/Base/Packed.bsa
+- !hardlink
+  key: patch.esp
+  source: <root>/Mod A/Patch.esp
+  dest: <root>/out/collapsed/patch.esp
+- !hardlink
+  key: sound/hit.wav
+  source: <root>/Mod A/Sound/Hit.wav
+  dest: <root>/out/collapsed/sound/hit.wav
+- !extract_archive
+  key: sound/packed.wav
+  archive: <root>/Base/Packed.bsa
+  dest: <root>/out/collapsed/sound/packed.wav
+- !skip_archive_file
+  key: sub/other.bsa
+  archive: <root>/Mod A/Sub/Other.bsa
+- !hardlink
+  key: textures/rock.dds
+  source: <root>/Mod B/textures/rock.dds
+  dest: <root>/out/collapsed/textures/rock.dds
+issues: []
+
+### collapse --dry-run -e, json
+exit 0
+{"actions":[{"extract_archive":{"key":"bookart/page.dds","archive":"<root>/Base/Other.bsa","dest":"<root>/out/collapsed/bookart/page.dds"}},{"hardlink":{"key":"docs/readme.txt","source":"<root>/Mod B/docs/readme.txt","dest":"<root>/out/collapsed/docs/readme.txt"}},{"hardlink":{"key":"grass.esp","source":"<root>/Mod B/Grass.esp","dest":"<root>/out/collapsed/grass.esp"}},{"hardlink":{"key":"icons/a.tga","source":"<root>/Base/Icons/a.tga","dest":"<root>/out/collapsed/icons/a.tga"}},{"extract_archive":{"key":"meshes/door.nif","archive":"<root>/Base/Other.bsa","dest":"<root>/out/collapsed/meshes/door.nif"}},{"hardlink":{"key":"meshes/x/chair.nif","source":"<root>/Mod A/meshes/x/chair.nif","dest":"<root>/out/collapsed/meshes/x/chair.nif"}},{"hardlink":{"key":"morrowind.esm","source":"<root>/Base/Morrowind.esm","dest":"<root>/out/collapsed/morrowind.esm"}},{"skip_archive_file":{"key":"other.bsa","archive":"<root>/Base/Other.bsa"}},{"skip_archive_file":{"key":"packed.bsa","archive":"<root>/Base/Packed.bsa"}},{"hardlink":{"key":"patch.esp","source":"<root>/Mod A/Patch.esp","dest":"<root>/out/collapsed/patch.esp"}},{"hardlink":{"key":"sound/hit.wav","source":"<root>/Mod A/Sound/Hit.wav","dest":"<root>/out/collapsed/sound/hit.wav"}},{"extract_archive":{"key":"sound/packed.wav","archive":"<root>/Base/Packed.bsa","dest":"<root>/out/collapsed/sound/packed.wav"}},{"skip_archive_file":{"key":"sub/other.bsa","archive":"<root>/Mod A/Sub/Other.bsa"}},{"hardlink":{"key":"textures/rock.dds","source":"<root>/Mod B/textures/rock.dds","dest":"<root>/out/collapsed/textures/rock.dds"}}],"issues":[]}
+### collapse --dry-run -e, toml
+exit 0
+issues = []
+
+[[actions]]
+
+[actions.extract_archive]
+key = "bookart/page.dds"
+archive = "<root>/Base/Other.bsa"
+dest = "<root>/out/collapsed/bookart/page.dds"
+
+[[actions]]
+
+[actions.hardlink]
+key = "docs/readme.txt"
+source = "<root>/Mod B/docs/readme.txt"
+dest = "<root>/out/collapsed/docs/readme.txt"
+
+[[actions]]
+
+[actions.hardlink]
+key = "grass.esp"
+source = "<root>/Mod B/Grass.esp"
+dest = "<root>/out/collapsed/grass.esp"
+
+[[actions]]
+
+[actions.hardlink]
+key = "icons/a.tga"
+source = "<root>/Base/Icons/a.tga"
+dest = "<root>/out/collapsed/icons/a.tga"
+
+[[actions]]
+
+[actions.extract_archive]
+key = "meshes/door.nif"
+archive = "<root>/Base/Other.bsa"
+dest = "<root>/out/collapsed/meshes/door.nif"
+
+[[actions]]
+
+[actions.hardlink]
+key = "meshes/x/chair.nif"
+source = "<root>/Mod A/meshes/x/chair.nif"
+dest = "<root>/out/collapsed/meshes/x/chair.nif"
+
+[[actions]]
+
+[actions.hardlink]
+key = "morrowind.esm"
+source = "<root>/Base/Morrowind.esm"
+dest = "<root>/out/collapsed/morrowind.esm"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "other.bsa"
+archive = "<root>/Base/Other.bsa"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "packed.bsa"
+archive = "<root>/Base/Packed.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "patch.esp"
+source = "<root>/Mod A/Patch.esp"
+dest = "<root>/out/collapsed/patch.esp"
+
+[[actions]]
+
+[actions.hardlink]
+key = "sound/hit.wav"
+source = "<root>/Mod A/Sound/Hit.wav"
+dest = "<root>/out/collapsed/sound/hit.wav"
+
+[[actions]]
+
+[actions.extract_archive]
+key = "sound/packed.wav"
+archive = "<root>/Base/Packed.bsa"
+dest = "<root>/out/collapsed/sound/packed.wav"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "sub/other.bsa"
+archive = "<root>/Mod A/Sub/Other.bsa"
+
+[[actions]]
+
+[actions.hardlink]
+key = "textures/rock.dds"
+source = "<root>/Mod B/textures/rock.dds"
+dest = "<root>/out/collapsed/textures/rock.dds"
+
+### collapse --dry-run -s, yaml
+exit 0
+actions:
+- !extract_archive
+  key: bookart/page.dds
+  archive: <root>/Base/Other.bsa
+  dest: <root>/out/collapsed/bookart/page.dds
+- !symlink
+  key: docs/readme.txt
+  source: <root>/Mod B/docs/readme.txt
+  dest: <root>/out/collapsed/docs/readme.txt
+- !symlink
+  key: grass.esp
+  source: <root>/Mod B/Grass.esp
+  dest: <root>/out/collapsed/grass.esp
+- !symlink
+  key: icons/a.tga
+  source: <root>/Base/Icons/a.tga
+  dest: <root>/out/collapsed/icons/a.tga
+- !extract_archive
+  key: meshes/door.nif
+  archive: <root>/Base/Other.bsa
+  dest: <root>/out/collapsed/meshes/door.nif
+- !symlink
+  key: meshes/x/chair.nif
+  source: <root>/Mod A/meshes/x/chair.nif
+  dest: <root>/out/collapsed/meshes/x/chair.nif
+- !symlink
+  key: morrowind.esm
+  source: <root>/Base/Morrowind.esm
+  dest: <root>/out/collapsed/morrowind.esm
+- !skip_archive_file
+  key: other.bsa
+  archive: <root>/Base/Other.bsa
+- !skip_archive_file
+  key: packed.bsa
+  archive: <root>/Base/Packed.bsa
+- !symlink
+  key: patch.esp
+  source: <root>/Mod A/Patch.esp
+  dest: <root>/out/collapsed/patch.esp
+- !symlink
+  key: sound/hit.wav
+  source: <root>/Mod A/Sound/Hit.wav
+  dest: <root>/out/collapsed/sound/hit.wav
+- !extract_archive
+  key: sound/packed.wav
+  archive: <root>/Base/Packed.bsa
+  dest: <root>/out/collapsed/sound/packed.wav
+- !skip_archive_file
+  key: sub/other.bsa
+  archive: <root>/Mod A/Sub/Other.bsa
+- !symlink
+  key: textures/rock.dds
+  source: <root>/Mod B/textures/rock.dds
+  dest: <root>/out/collapsed/textures/rock.dds
+issues: []
+
+### collapse --dry-run -s, json
+exit 0
+{"actions":[{"extract_archive":{"key":"bookart/page.dds","archive":"<root>/Base/Other.bsa","dest":"<root>/out/collapsed/bookart/page.dds"}},{"symlink":{"key":"docs/readme.txt","source":"<root>/Mod B/docs/readme.txt","dest":"<root>/out/collapsed/docs/readme.txt"}},{"symlink":{"key":"grass.esp","source":"<root>/Mod B/Grass.esp","dest":"<root>/out/collapsed/grass.esp"}},{"symlink":{"key":"icons/a.tga","source":"<root>/Base/Icons/a.tga","dest":"<root>/out/collapsed/icons/a.tga"}},{"extract_archive":{"key":"meshes/door.nif","archive":"<root>/Base/Other.bsa","dest":"<root>/out/collapsed/meshes/door.nif"}},{"symlink":{"key":"meshes/x/chair.nif","source":"<root>/Mod A/meshes/x/chair.nif","dest":"<root>/out/collapsed/meshes/x/chair.nif"}},{"symlink":{"key":"morrowind.esm","source":"<root>/Base/Morrowind.esm","dest":"<root>/out/collapsed/morrowind.esm"}},{"skip_archive_file":{"key":"other.bsa","archive":"<root>/Base/Other.bsa"}},{"skip_archive_file":{"key":"packed.bsa","archive":"<root>/Base/Packed.bsa"}},{"symlink":{"key":"patch.esp","source":"<root>/Mod A/Patch.esp","dest":"<root>/out/collapsed/patch.esp"}},{"symlink":{"key":"sound/hit.wav","source":"<root>/Mod A/Sound/Hit.wav","dest":"<root>/out/collapsed/sound/hit.wav"}},{"extract_archive":{"key":"sound/packed.wav","archive":"<root>/Base/Packed.bsa","dest":"<root>/out/collapsed/sound/packed.wav"}},{"skip_archive_file":{"key":"sub/other.bsa","archive":"<root>/Mod A/Sub/Other.bsa"}},{"symlink":{"key":"textures/rock.dds","source":"<root>/Mod B/textures/rock.dds","dest":"<root>/out/collapsed/textures/rock.dds"}}],"issues":[]}
+### collapse --dry-run -s, toml
+exit 0
+issues = []
+
+[[actions]]
+
+[actions.extract_archive]
+key = "bookart/page.dds"
+archive = "<root>/Base/Other.bsa"
+dest = "<root>/out/collapsed/bookart/page.dds"
+
+[[actions]]
+
+[actions.symlink]
+key = "docs/readme.txt"
+source = "<root>/Mod B/docs/readme.txt"
+dest = "<root>/out/collapsed/docs/readme.txt"
+
+[[actions]]
+
+[actions.symlink]
+key = "grass.esp"
+source = "<root>/Mod B/Grass.esp"
+dest = "<root>/out/collapsed/grass.esp"
+
+[[actions]]
+
+[actions.symlink]
+key = "icons/a.tga"
+source = "<root>/Base/Icons/a.tga"
+dest = "<root>/out/collapsed/icons/a.tga"
+
+[[actions]]
+
+[actions.extract_archive]
+key = "meshes/door.nif"
+archive = "<root>/Base/Other.bsa"
+dest = "<root>/out/collapsed/meshes/door.nif"
+
+[[actions]]
+
+[actions.symlink]
+key = "meshes/x/chair.nif"
+source = "<root>/Mod A/meshes/x/chair.nif"
+dest = "<root>/out/collapsed/meshes/x/chair.nif"
+
+[[actions]]
+
+[actions.symlink]
+key = "morrowind.esm"
+source = "<root>/Base/Morrowind.esm"
+dest = "<root>/out/collapsed/morrowind.esm"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "other.bsa"
+archive = "<root>/Base/Other.bsa"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "packed.bsa"
+archive = "<root>/Base/Packed.bsa"
+
+[[actions]]
+
+[actions.symlink]
+key = "patch.esp"
+source = "<root>/Mod A/Patch.esp"
+dest = "<root>/out/collapsed/patch.esp"
+
+[[actions]]
+
+[actions.symlink]
+key = "sound/hit.wav"
+source = "<root>/Mod A/Sound/Hit.wav"
+dest = "<root>/out/collapsed/sound/hit.wav"
+
+[[actions]]
+
+[actions.extract_archive]
+key = "sound/packed.wav"
+archive = "<root>/Base/Packed.bsa"
+dest = "<root>/out/collapsed/sound/packed.wav"
+
+[[actions]]
+
+[actions.skip_archive_file]
+key = "sub/other.bsa"
+archive = "<root>/Mod A/Sub/Other.bsa"
+
+[[actions]]
+
+[actions.symlink]
+key = "textures/rock.dds"
+source = "<root>/Mod B/textures/rock.dds"
+dest = "<root>/out/collapsed/textures/rock.dds"
+
+### collapse -a
+exit 0
+### collapse -a, what it left
+bookart: <dir>
+docs: <dir>
+docs/readme.txt: b readme
+grass.esp: b grass
+icons: <dir>
+icons/a.tga: base icon
+meshes: <dir>
+meshes/x: <dir>
+meshes/x/chair.nif: a chair
+morrowind.esm: the master
+other.bsa: <99 bytes>
+packed.bsa: <200 bytes>
+patch.esp: a patch
+sound: <dir>
+sound/hit.wav: a hit
+sub: <dir>
+sub/other.bsa: <55 bytes>
+textures: <dir>
+textures/rock.dds: b rock
+### collapse -a -e
+exit 0
+### collapse -a -e, what it left
+bookart: <dir>
+bookart/page.dds: page
+docs: <dir>
+docs/readme.txt: b readme
+grass.esp: b grass
+icons: <dir>
+icons/a.tga: base icon
+meshes: <dir>
+meshes/door.nif: other door
+meshes/x: <dir>
+meshes/x/chair.nif: a chair
+morrowind.esm: the master
+patch.esp: a patch
+sound: <dir>
+sound/hit.wav: a hit
+sound/packed.wav: packed sound
+sub: <dir>
+textures: <dir>
+textures/rock.dds: b rock
+### extract, a loose file
+exit 0
+### extract, a packed file
+exit 0
+### extract, a missing file
+exit 1
+### extract, what it left
+chair.nif: a chair
+packed.wav: packed sound
+### run, a merged folder that holds files
+exit 8
+### run, no data-local and no output
+exit 8
+### lock, yaml
+exit 0
+schema_version: 1
+entries:
+- key: bookart/page.dds
+  winner_source: <root>/Base/Other.bsa
+  winner_kind: archive
+  winner_hash_blake3: cad079fe52fa1b162e375eceec083d82ed9ac94420e05934969828aee1702491
+  winner_size: 4
+  provider_count: 1
+- key: docs/readme.txt
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: 2480285bdddbcf71941624249cd2c6e91e14db55c5ed22bce06410c572fb5d57
+  winner_size: 8
+  provider_count: 1
+- key: grass.esp
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: 98521351de893e4c9624d1994fc3c5cc098bc99404b337971c5894f15c5fb029
+  winner_size: 7
+  provider_count: 1
+- key: icons/a.tga
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: 6aba61d35ca49125eec15ca3de694fbb03b956f11e6b925dbb0471b583660410
+  winner_size: 9
+  provider_count: 2
+- key: meshes/door.nif
+  winner_source: <root>/Base/Other.bsa
+  winner_kind: archive
+  winner_hash_blake3: 14e2dc5c054bc513001d5b9190bd162a8ae51a0ac8b4c2b26b703c8113c7d6a9
+  winner_size: 10
+  provider_count: 2
+- key: meshes/x/chair.nif
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: 5cc6c6774206225abf2c22ac761847f8998005c04bc0026fb522b7c2a54d6096
+  winner_size: 7
+  provider_count: 3
+- key: morrowind.esm
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: 1077462a637fe40a199f6ba8944c00a02dcb347f7a50233aa4ebfe9bc49f991f
+  winner_size: 10
+  provider_count: 1
+- key: other.bsa
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: b3e398b438910e9fe40a20a8c58d96b1f974edf33ef1219d14180d439c3b0d32
+  winner_size: 99
+  provider_count: 1
+- key: packed.bsa
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: 6f5a43eac1cf9349305de3cef35571b12ee129cc4dd4355b82e9111bd76c3d3b
+  winner_size: 200
+  provider_count: 1
+- key: patch.esp
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: c56915b68b7edd1c75dfdac1f2ef1cf1070792107ea7e6497cc6a43c60dcc305
+  winner_size: 7
+  provider_count: 1
+- key: sound/hit.wav
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: f24a49cf5d82635241eb6e64a500bdf76cb6cfe95ad617ceb7459e415f153d86
+  winner_size: 5
+  provider_count: 1
+- key: sound/packed.wav
+  winner_source: <root>/Base/Packed.bsa
+  winner_kind: archive
+  winner_hash_blake3: 3e0ee24f32fc4464c7d1bfe3d36f73e5f89fd4699bb4357fa438050bce871bc8
+  winner_size: 12
+  provider_count: 1
+- key: sub/other.bsa
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: ddaab1a8702511e7416dc55722f28b853d2c24e3bd56da3d502f60e8c4e3dcaf
+  winner_size: 55
+  provider_count: 1
+- key: textures/rock.dds
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: 9a9b04ef6b0ac89a6e9be0dc60113dd5a1152e396e47e2d2a6ca6fb193ce1819
+  winner_size: 6
+  provider_count: 5
+
+### lock, json
+exit 0
+{"schema_version":1,"entries":[{"key":"bookart/page.dds","winner_source":"<root>/Base/Other.bsa","winner_kind":"archive","winner_hash_blake3":"cad079fe52fa1b162e375eceec083d82ed9ac94420e05934969828aee1702491","winner_size":4,"provider_count":1},{"key":"docs/readme.txt","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"2480285bdddbcf71941624249cd2c6e91e14db55c5ed22bce06410c572fb5d57","winner_size":8,"provider_count":1},{"key":"grass.esp","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"98521351de893e4c9624d1994fc3c5cc098bc99404b337971c5894f15c5fb029","winner_size":7,"provider_count":1},{"key":"icons/a.tga","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"6aba61d35ca49125eec15ca3de694fbb03b956f11e6b925dbb0471b583660410","winner_size":9,"provider_count":2},{"key":"meshes/door.nif","winner_source":"<root>/Base/Other.bsa","winner_kind":"archive","winner_hash_blake3":"14e2dc5c054bc513001d5b9190bd162a8ae51a0ac8b4c2b26b703c8113c7d6a9","winner_size":10,"provider_count":2},{"key":"meshes/x/chair.nif","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"5cc6c6774206225abf2c22ac761847f8998005c04bc0026fb522b7c2a54d6096","winner_size":7,"provider_count":3},{"key":"morrowind.esm","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"1077462a637fe40a199f6ba8944c00a02dcb347f7a50233aa4ebfe9bc49f991f","winner_size":10,"provider_count":1},{"key":"other.bsa","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"b3e398b438910e9fe40a20a8c58d96b1f974edf33ef1219d14180d439c3b0d32","winner_size":99,"provider_count":1},{"key":"packed.bsa","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"6f5a43eac1cf9349305de3cef35571b12ee129cc4dd4355b82e9111bd76c3d3b","winner_size":200,"provider_count":1},{"key":"patch.esp","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"c56915b68b7edd1c75dfdac1f2ef1cf1070792107ea7e6497cc6a43c60dcc305","winner_size":7,"provider_count":1},{"key":"sound/hit.wav","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"f24a49cf5d82635241eb6e64a500bdf76cb6cfe95ad617ceb7459e415f153d86","winner_size":5,"provider_count":1},{"key":"sound/packed.wav","winner_source":"<root>/Base/Packed.bsa","winner_kind":"archive","winner_hash_blake3":"3e0ee24f32fc4464c7d1bfe3d36f73e5f89fd4699bb4357fa438050bce871bc8","winner_size":12,"provider_count":1},{"key":"sub/other.bsa","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"ddaab1a8702511e7416dc55722f28b853d2c24e3bd56da3d502f60e8c4e3dcaf","winner_size":55,"provider_count":1},{"key":"textures/rock.dds","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"9a9b04ef6b0ac89a6e9be0dc60113dd5a1152e396e47e2d2a6ca6fb193ce1819","winner_size":6,"provider_count":5}]}
+### lock, toml
+exit 0
+schema_version = 1
+
+[[entries]]
+key = "bookart/page.dds"
+winner_source = "<root>/Base/Other.bsa"
+winner_kind = "archive"
+winner_hash_blake3 = "cad079fe52fa1b162e375eceec083d82ed9ac94420e05934969828aee1702491"
+winner_size = 4
+provider_count = 1
+
+[[entries]]
+key = "docs/readme.txt"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "2480285bdddbcf71941624249cd2c6e91e14db55c5ed22bce06410c572fb5d57"
+winner_size = 8
+provider_count = 1
+
+[[entries]]
+key = "grass.esp"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "98521351de893e4c9624d1994fc3c5cc098bc99404b337971c5894f15c5fb029"
+winner_size = 7
+provider_count = 1
+
+[[entries]]
+key = "icons/a.tga"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "6aba61d35ca49125eec15ca3de694fbb03b956f11e6b925dbb0471b583660410"
+winner_size = 9
+provider_count = 2
+
+[[entries]]
+key = "meshes/door.nif"
+winner_source = "<root>/Base/Other.bsa"
+winner_kind = "archive"
+winner_hash_blake3 = "14e2dc5c054bc513001d5b9190bd162a8ae51a0ac8b4c2b26b703c8113c7d6a9"
+winner_size = 10
+provider_count = 2
+
+[[entries]]
+key = "meshes/x/chair.nif"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "5cc6c6774206225abf2c22ac761847f8998005c04bc0026fb522b7c2a54d6096"
+winner_size = 7
+provider_count = 3
+
+[[entries]]
+key = "morrowind.esm"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "1077462a637fe40a199f6ba8944c00a02dcb347f7a50233aa4ebfe9bc49f991f"
+winner_size = 10
+provider_count = 1
+
+[[entries]]
+key = "other.bsa"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "b3e398b438910e9fe40a20a8c58d96b1f974edf33ef1219d14180d439c3b0d32"
+winner_size = 99
+provider_count = 1
+
+[[entries]]
+key = "packed.bsa"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "6f5a43eac1cf9349305de3cef35571b12ee129cc4dd4355b82e9111bd76c3d3b"
+winner_size = 200
+provider_count = 1
+
+[[entries]]
+key = "patch.esp"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "c56915b68b7edd1c75dfdac1f2ef1cf1070792107ea7e6497cc6a43c60dcc305"
+winner_size = 7
+provider_count = 1
+
+[[entries]]
+key = "sound/hit.wav"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "f24a49cf5d82635241eb6e64a500bdf76cb6cfe95ad617ceb7459e415f153d86"
+winner_size = 5
+provider_count = 1
+
+[[entries]]
+key = "sound/packed.wav"
+winner_source = "<root>/Base/Packed.bsa"
+winner_kind = "archive"
+winner_hash_blake3 = "3e0ee24f32fc4464c7d1bfe3d36f73e5f89fd4699bb4357fa438050bce871bc8"
+winner_size = 12
+provider_count = 1
+
+[[entries]]
+key = "sub/other.bsa"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "ddaab1a8702511e7416dc55722f28b853d2c24e3bd56da3d502f60e8c4e3dcaf"
+winner_size = 55
+provider_count = 1
+
+[[entries]]
+key = "textures/rock.dds"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "9a9b04ef6b0ac89a6e9be0dc60113dd5a1152e396e47e2d2a6ca6fb193ce1819"
+winner_size = 6
+provider_count = 5
+
+### lock, kept as yaml
+exit 0
+### drift from a yaml lock, none, yaml
+exit 0
+entries: []
+counts: {}
+
+### drift from a yaml lock, none, json
+exit 0
+{"entries":[],"counts":{}}
+### drift from a yaml lock, none, toml
+exit 0
+entries = []
+
+[counts]
+
+### drift from a yaml lock, none, --fail-on-drift, yaml
+exit 0
+entries: []
+counts: {}
+
+### drift from a yaml lock, none, --fail-on-drift, json
+exit 0
+{"entries":[],"counts":{}}
+### drift from a yaml lock, none, --fail-on-drift, toml
+exit 0
+entries = []
+
+[counts]
+
+### lock, kept as json
+exit 0
+### drift from a json lock, none, yaml
+exit 0
+entries: []
+counts: {}
+
+### drift from a json lock, none, json
+exit 0
+{"entries":[],"counts":{}}
+### drift from a json lock, none, toml
+exit 0
+entries = []
+
+[counts]
+
+### drift from a json lock, none, --fail-on-drift, yaml
+exit 0
+entries: []
+counts: {}
+
+### drift from a json lock, none, --fail-on-drift, json
+exit 0
+{"entries":[],"counts":{}}
+### drift from a json lock, none, --fail-on-drift, toml
+exit 0
+entries = []
+
+[counts]
+
+### lock, kept as toml
+exit 0
+### drift from a toml lock, none, yaml
+exit 0
+entries: []
+counts: {}
+
+### drift from a toml lock, none, json
+exit 0
+{"entries":[],"counts":{}}
+### drift from a toml lock, none, toml
+exit 0
+entries = []
+
+[counts]
+
+### drift from a toml lock, none, --fail-on-drift, yaml
+exit 0
+entries: []
+counts: {}
+
+### drift from a toml lock, none, --fail-on-drift, json
+exit 0
+{"entries":[],"counts":{}}
+### drift from a toml lock, none, --fail-on-drift, toml
+exit 0
+entries = []
+
+[counts]
+
+### drift from a yaml lock, yaml
+exit 0
+entries:
+- key: docs/readme.txt
+  kind: removed
+- key: meshes/x/chair.nif
+  kind: winner_source_changed
+- key: meshes/x/chair.nif
+  kind: winner_hash_changed
+- key: meshes/x/chair.nif
+  kind: provider_count_changed
+- key: sound/hit.wav
+  kind: winner_hash_changed
+- key: textures/new.dds
+  kind: added
+counts:
+  added: 1
+  removed: 1
+  winner_source_changed: 1
+  winner_hash_changed: 2
+  provider_count_changed: 1
+
+### drift from a yaml lock, json
+exit 0
+{"entries":[{"key":"docs/readme.txt","kind":"removed"},{"key":"meshes/x/chair.nif","kind":"winner_source_changed"},{"key":"meshes/x/chair.nif","kind":"winner_hash_changed"},{"key":"meshes/x/chair.nif","kind":"provider_count_changed"},{"key":"sound/hit.wav","kind":"winner_hash_changed"},{"key":"textures/new.dds","kind":"added"}],"counts":{"added":1,"removed":1,"winner_source_changed":1,"winner_hash_changed":2,"provider_count_changed":1}}
+### drift from a yaml lock, toml
+exit 0
+[[entries]]
+key = "docs/readme.txt"
+kind = "removed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_source_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "provider_count_changed"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[counts]
+added = 1
+removed = 1
+winner_source_changed = 1
+winner_hash_changed = 2
+provider_count_changed = 1
+
+### drift from a yaml lock, --fail-on-drift, yaml
+exit 4
+entries:
+- key: docs/readme.txt
+  kind: removed
+- key: meshes/x/chair.nif
+  kind: winner_source_changed
+- key: meshes/x/chair.nif
+  kind: winner_hash_changed
+- key: meshes/x/chair.nif
+  kind: provider_count_changed
+- key: sound/hit.wav
+  kind: winner_hash_changed
+- key: textures/new.dds
+  kind: added
+counts:
+  added: 1
+  removed: 1
+  winner_source_changed: 1
+  winner_hash_changed: 2
+  provider_count_changed: 1
+
+### drift from a yaml lock, --fail-on-drift, json
+exit 4
+{"entries":[{"key":"docs/readme.txt","kind":"removed"},{"key":"meshes/x/chair.nif","kind":"winner_source_changed"},{"key":"meshes/x/chair.nif","kind":"winner_hash_changed"},{"key":"meshes/x/chair.nif","kind":"provider_count_changed"},{"key":"sound/hit.wav","kind":"winner_hash_changed"},{"key":"textures/new.dds","kind":"added"}],"counts":{"added":1,"removed":1,"winner_source_changed":1,"winner_hash_changed":2,"provider_count_changed":1}}
+### drift from a yaml lock, --fail-on-drift, toml
+exit 4
+[[entries]]
+key = "docs/readme.txt"
+kind = "removed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_source_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "provider_count_changed"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[counts]
+added = 1
+removed = 1
+winner_source_changed = 1
+winner_hash_changed = 2
+provider_count_changed = 1
+
+### drift from a json lock, yaml
+exit 0
+entries:
+- key: docs/readme.txt
+  kind: removed
+- key: meshes/x/chair.nif
+  kind: winner_source_changed
+- key: meshes/x/chair.nif
+  kind: winner_hash_changed
+- key: meshes/x/chair.nif
+  kind: provider_count_changed
+- key: sound/hit.wav
+  kind: winner_hash_changed
+- key: textures/new.dds
+  kind: added
+counts:
+  added: 1
+  removed: 1
+  winner_source_changed: 1
+  winner_hash_changed: 2
+  provider_count_changed: 1
+
+### drift from a json lock, json
+exit 0
+{"entries":[{"key":"docs/readme.txt","kind":"removed"},{"key":"meshes/x/chair.nif","kind":"winner_source_changed"},{"key":"meshes/x/chair.nif","kind":"winner_hash_changed"},{"key":"meshes/x/chair.nif","kind":"provider_count_changed"},{"key":"sound/hit.wav","kind":"winner_hash_changed"},{"key":"textures/new.dds","kind":"added"}],"counts":{"added":1,"removed":1,"winner_source_changed":1,"winner_hash_changed":2,"provider_count_changed":1}}
+### drift from a json lock, toml
+exit 0
+[[entries]]
+key = "docs/readme.txt"
+kind = "removed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_source_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "provider_count_changed"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[counts]
+added = 1
+removed = 1
+winner_source_changed = 1
+winner_hash_changed = 2
+provider_count_changed = 1
+
+### drift from a json lock, --fail-on-drift, yaml
+exit 4
+entries:
+- key: docs/readme.txt
+  kind: removed
+- key: meshes/x/chair.nif
+  kind: winner_source_changed
+- key: meshes/x/chair.nif
+  kind: winner_hash_changed
+- key: meshes/x/chair.nif
+  kind: provider_count_changed
+- key: sound/hit.wav
+  kind: winner_hash_changed
+- key: textures/new.dds
+  kind: added
+counts:
+  added: 1
+  removed: 1
+  winner_source_changed: 1
+  winner_hash_changed: 2
+  provider_count_changed: 1
+
+### drift from a json lock, --fail-on-drift, json
+exit 4
+{"entries":[{"key":"docs/readme.txt","kind":"removed"},{"key":"meshes/x/chair.nif","kind":"winner_source_changed"},{"key":"meshes/x/chair.nif","kind":"winner_hash_changed"},{"key":"meshes/x/chair.nif","kind":"provider_count_changed"},{"key":"sound/hit.wav","kind":"winner_hash_changed"},{"key":"textures/new.dds","kind":"added"}],"counts":{"added":1,"removed":1,"winner_source_changed":1,"winner_hash_changed":2,"provider_count_changed":1}}
+### drift from a json lock, --fail-on-drift, toml
+exit 4
+[[entries]]
+key = "docs/readme.txt"
+kind = "removed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_source_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "provider_count_changed"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[counts]
+added = 1
+removed = 1
+winner_source_changed = 1
+winner_hash_changed = 2
+provider_count_changed = 1
+
+### drift from a toml lock, yaml
+exit 0
+entries:
+- key: docs/readme.txt
+  kind: removed
+- key: meshes/x/chair.nif
+  kind: winner_source_changed
+- key: meshes/x/chair.nif
+  kind: winner_hash_changed
+- key: meshes/x/chair.nif
+  kind: provider_count_changed
+- key: sound/hit.wav
+  kind: winner_hash_changed
+- key: textures/new.dds
+  kind: added
+counts:
+  added: 1
+  removed: 1
+  winner_source_changed: 1
+  winner_hash_changed: 2
+  provider_count_changed: 1
+
+### drift from a toml lock, json
+exit 0
+{"entries":[{"key":"docs/readme.txt","kind":"removed"},{"key":"meshes/x/chair.nif","kind":"winner_source_changed"},{"key":"meshes/x/chair.nif","kind":"winner_hash_changed"},{"key":"meshes/x/chair.nif","kind":"provider_count_changed"},{"key":"sound/hit.wav","kind":"winner_hash_changed"},{"key":"textures/new.dds","kind":"added"}],"counts":{"added":1,"removed":1,"winner_source_changed":1,"winner_hash_changed":2,"provider_count_changed":1}}
+### drift from a toml lock, toml
+exit 0
+[[entries]]
+key = "docs/readme.txt"
+kind = "removed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_source_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "provider_count_changed"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[counts]
+added = 1
+removed = 1
+winner_source_changed = 1
+winner_hash_changed = 2
+provider_count_changed = 1
+
+### drift from a toml lock, --fail-on-drift, yaml
+exit 4
+entries:
+- key: docs/readme.txt
+  kind: removed
+- key: meshes/x/chair.nif
+  kind: winner_source_changed
+- key: meshes/x/chair.nif
+  kind: winner_hash_changed
+- key: meshes/x/chair.nif
+  kind: provider_count_changed
+- key: sound/hit.wav
+  kind: winner_hash_changed
+- key: textures/new.dds
+  kind: added
+counts:
+  added: 1
+  removed: 1
+  winner_source_changed: 1
+  winner_hash_changed: 2
+  provider_count_changed: 1
+
+### drift from a toml lock, --fail-on-drift, json
+exit 4
+{"entries":[{"key":"docs/readme.txt","kind":"removed"},{"key":"meshes/x/chair.nif","kind":"winner_source_changed"},{"key":"meshes/x/chair.nif","kind":"winner_hash_changed"},{"key":"meshes/x/chair.nif","kind":"provider_count_changed"},{"key":"sound/hit.wav","kind":"winner_hash_changed"},{"key":"textures/new.dds","kind":"added"}],"counts":{"added":1,"removed":1,"winner_source_changed":1,"winner_hash_changed":2,"provider_count_changed":1}}
+### drift from a toml lock, --fail-on-drift, toml
+exit 4
+[[entries]]
+key = "docs/readme.txt"
+kind = "removed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_source_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "provider_count_changed"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "winner_hash_changed"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[counts]
+added = 1
+removed = 1
+winner_source_changed = 1
+winner_hash_changed = 2
+provider_count_changed = 1
+
+### lock, after the change, yaml
+exit 0
+schema_version: 1
+entries:
+- key: bookart/page.dds
+  winner_source: <root>/Base/Other.bsa
+  winner_kind: archive
+  winner_hash_blake3: cad079fe52fa1b162e375eceec083d82ed9ac94420e05934969828aee1702491
+  winner_size: 4
+  provider_count: 1
+- key: grass.esp
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: 98521351de893e4c9624d1994fc3c5cc098bc99404b337971c5894f15c5fb029
+  winner_size: 7
+  provider_count: 1
+- key: icons/a.tga
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: 6aba61d35ca49125eec15ca3de694fbb03b956f11e6b925dbb0471b583660410
+  winner_size: 9
+  provider_count: 2
+- key: meshes/door.nif
+  winner_source: <root>/Base/Other.bsa
+  winner_kind: archive
+  winner_hash_blake3: 14e2dc5c054bc513001d5b9190bd162a8ae51a0ac8b4c2b26b703c8113c7d6a9
+  winner_size: 10
+  provider_count: 2
+- key: meshes/x/chair.nif
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: 3c198ac079068e73d4012beb5b291d2efc0a8ddf9b08be7837b4b781004f34db
+  winner_size: 7
+  provider_count: 4
+- key: morrowind.esm
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: 1077462a637fe40a199f6ba8944c00a02dcb347f7a50233aa4ebfe9bc49f991f
+  winner_size: 10
+  provider_count: 1
+- key: other.bsa
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: b3e398b438910e9fe40a20a8c58d96b1f974edf33ef1219d14180d439c3b0d32
+  winner_size: 99
+  provider_count: 1
+- key: packed.bsa
+  winner_source: <root>/Base
+  winner_kind: loose_dir
+  winner_hash_blake3: 6f5a43eac1cf9349305de3cef35571b12ee129cc4dd4355b82e9111bd76c3d3b
+  winner_size: 200
+  provider_count: 1
+- key: patch.esp
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: c56915b68b7edd1c75dfdac1f2ef1cf1070792107ea7e6497cc6a43c60dcc305
+  winner_size: 7
+  provider_count: 1
+- key: sound/hit.wav
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: 308d3107596f58b035878aeab5d9d2685f71a7bf42c71e615417a4c1036efbb3
+  winner_size: 12
+  provider_count: 1
+- key: sound/packed.wav
+  winner_source: <root>/Base/Packed.bsa
+  winner_kind: archive
+  winner_hash_blake3: 3e0ee24f32fc4464c7d1bfe3d36f73e5f89fd4699bb4357fa438050bce871bc8
+  winner_size: 12
+  provider_count: 1
+- key: sub/other.bsa
+  winner_source: <root>/Mod A
+  winner_kind: loose_dir
+  winner_hash_blake3: ddaab1a8702511e7416dc55722f28b853d2c24e3bd56da3d502f60e8c4e3dcaf
+  winner_size: 55
+  provider_count: 1
+- key: textures/new.dds
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: e5b121972a094c7ac872842907749b88026ec718fa5371d1954e8951b385a205
+  winner_size: 5
+  provider_count: 1
+- key: textures/rock.dds
+  winner_source: <root>/Mod B
+  winner_kind: loose_dir
+  winner_hash_blake3: 9a9b04ef6b0ac89a6e9be0dc60113dd5a1152e396e47e2d2a6ca6fb193ce1819
+  winner_size: 6
+  provider_count: 5
+
+### lock, after the change, json
+exit 0
+{"schema_version":1,"entries":[{"key":"bookart/page.dds","winner_source":"<root>/Base/Other.bsa","winner_kind":"archive","winner_hash_blake3":"cad079fe52fa1b162e375eceec083d82ed9ac94420e05934969828aee1702491","winner_size":4,"provider_count":1},{"key":"grass.esp","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"98521351de893e4c9624d1994fc3c5cc098bc99404b337971c5894f15c5fb029","winner_size":7,"provider_count":1},{"key":"icons/a.tga","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"6aba61d35ca49125eec15ca3de694fbb03b956f11e6b925dbb0471b583660410","winner_size":9,"provider_count":2},{"key":"meshes/door.nif","winner_source":"<root>/Base/Other.bsa","winner_kind":"archive","winner_hash_blake3":"14e2dc5c054bc513001d5b9190bd162a8ae51a0ac8b4c2b26b703c8113c7d6a9","winner_size":10,"provider_count":2},{"key":"meshes/x/chair.nif","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"3c198ac079068e73d4012beb5b291d2efc0a8ddf9b08be7837b4b781004f34db","winner_size":7,"provider_count":4},{"key":"morrowind.esm","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"1077462a637fe40a199f6ba8944c00a02dcb347f7a50233aa4ebfe9bc49f991f","winner_size":10,"provider_count":1},{"key":"other.bsa","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"b3e398b438910e9fe40a20a8c58d96b1f974edf33ef1219d14180d439c3b0d32","winner_size":99,"provider_count":1},{"key":"packed.bsa","winner_source":"<root>/Base","winner_kind":"loose_dir","winner_hash_blake3":"6f5a43eac1cf9349305de3cef35571b12ee129cc4dd4355b82e9111bd76c3d3b","winner_size":200,"provider_count":1},{"key":"patch.esp","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"c56915b68b7edd1c75dfdac1f2ef1cf1070792107ea7e6497cc6a43c60dcc305","winner_size":7,"provider_count":1},{"key":"sound/hit.wav","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"308d3107596f58b035878aeab5d9d2685f71a7bf42c71e615417a4c1036efbb3","winner_size":12,"provider_count":1},{"key":"sound/packed.wav","winner_source":"<root>/Base/Packed.bsa","winner_kind":"archive","winner_hash_blake3":"3e0ee24f32fc4464c7d1bfe3d36f73e5f89fd4699bb4357fa438050bce871bc8","winner_size":12,"provider_count":1},{"key":"sub/other.bsa","winner_source":"<root>/Mod A","winner_kind":"loose_dir","winner_hash_blake3":"ddaab1a8702511e7416dc55722f28b853d2c24e3bd56da3d502f60e8c4e3dcaf","winner_size":55,"provider_count":1},{"key":"textures/new.dds","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"e5b121972a094c7ac872842907749b88026ec718fa5371d1954e8951b385a205","winner_size":5,"provider_count":1},{"key":"textures/rock.dds","winner_source":"<root>/Mod B","winner_kind":"loose_dir","winner_hash_blake3":"9a9b04ef6b0ac89a6e9be0dc60113dd5a1152e396e47e2d2a6ca6fb193ce1819","winner_size":6,"provider_count":5}]}
+### lock, after the change, toml
+exit 0
+schema_version = 1
+
+[[entries]]
+key = "bookart/page.dds"
+winner_source = "<root>/Base/Other.bsa"
+winner_kind = "archive"
+winner_hash_blake3 = "cad079fe52fa1b162e375eceec083d82ed9ac94420e05934969828aee1702491"
+winner_size = 4
+provider_count = 1
+
+[[entries]]
+key = "grass.esp"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "98521351de893e4c9624d1994fc3c5cc098bc99404b337971c5894f15c5fb029"
+winner_size = 7
+provider_count = 1
+
+[[entries]]
+key = "icons/a.tga"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "6aba61d35ca49125eec15ca3de694fbb03b956f11e6b925dbb0471b583660410"
+winner_size = 9
+provider_count = 2
+
+[[entries]]
+key = "meshes/door.nif"
+winner_source = "<root>/Base/Other.bsa"
+winner_kind = "archive"
+winner_hash_blake3 = "14e2dc5c054bc513001d5b9190bd162a8ae51a0ac8b4c2b26b703c8113c7d6a9"
+winner_size = 10
+provider_count = 2
+
+[[entries]]
+key = "meshes/x/chair.nif"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "3c198ac079068e73d4012beb5b291d2efc0a8ddf9b08be7837b4b781004f34db"
+winner_size = 7
+provider_count = 4
+
+[[entries]]
+key = "morrowind.esm"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "1077462a637fe40a199f6ba8944c00a02dcb347f7a50233aa4ebfe9bc49f991f"
+winner_size = 10
+provider_count = 1
+
+[[entries]]
+key = "other.bsa"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "b3e398b438910e9fe40a20a8c58d96b1f974edf33ef1219d14180d439c3b0d32"
+winner_size = 99
+provider_count = 1
+
+[[entries]]
+key = "packed.bsa"
+winner_source = "<root>/Base"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "6f5a43eac1cf9349305de3cef35571b12ee129cc4dd4355b82e9111bd76c3d3b"
+winner_size = 200
+provider_count = 1
+
+[[entries]]
+key = "patch.esp"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "c56915b68b7edd1c75dfdac1f2ef1cf1070792107ea7e6497cc6a43c60dcc305"
+winner_size = 7
+provider_count = 1
+
+[[entries]]
+key = "sound/hit.wav"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "308d3107596f58b035878aeab5d9d2685f71a7bf42c71e615417a4c1036efbb3"
+winner_size = 12
+provider_count = 1
+
+[[entries]]
+key = "sound/packed.wav"
+winner_source = "<root>/Base/Packed.bsa"
+winner_kind = "archive"
+winner_hash_blake3 = "3e0ee24f32fc4464c7d1bfe3d36f73e5f89fd4699bb4357fa438050bce871bc8"
+winner_size = 12
+provider_count = 1
+
+[[entries]]
+key = "sub/other.bsa"
+winner_source = "<root>/Mod A"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "ddaab1a8702511e7416dc55722f28b853d2c24e3bd56da3d502f60e8c4e3dcaf"
+winner_size = 55
+provider_count = 1
+
+[[entries]]
+key = "textures/new.dds"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "e5b121972a094c7ac872842907749b88026ec718fa5371d1954e8951b385a205"
+winner_size = 5
+provider_count = 1
+
+[[entries]]
+key = "textures/rock.dds"
+winner_source = "<root>/Mod B"
+winner_kind = "loose_dir"
+winner_hash_blake3 = "9a9b04ef6b0ac89a6e9be0dc60113dd5a1152e396e47e2d2a6ca6fb193ce1819"
+winner_size = 6
+provider_count = 5
+
+### drift from not-a-table.json, yaml
+exit 9
+<no report>
+### drift from not-a-table.json, json
+exit 9
+<no report>
+### drift from not-a-table.json, toml
+exit 9
+<no report>
+### drift from no-entries.json, yaml
+exit 9
+<no report>
+### drift from no-entries.json, json
+exit 9
+<no report>
+### drift from no-entries.json, toml
+exit 9
+<no report>
+### drift from newer.json, yaml
+exit 9
+<no report>
+### drift from newer.json, json
+exit 9
+<no report>
+### drift from newer.json, toml
+exit 9
+<no report>
+### drift from entry-not-a-table.json, yaml
+exit 9
+<no report>
+### drift from entry-not-a-table.json, json
+exit 9
+<no report>
+### drift from entry-not-a-table.json, toml
+exit 9
+<no report>
+### drift from entry-without-a-key.yaml, yaml
+exit 9
+<no report>
+### drift from entry-without-a-key.yaml, json
+exit 9
+<no report>
+### drift from entry-without-a-key.yaml, toml
+exit 9
+<no report>
+### drift from entry-of-another-kind.toml, yaml
+exit 9
+<no report>
+### drift from entry-of-another-kind.toml, json
+exit 9
+<no report>
+### drift from entry-of-another-kind.toml, toml
+exit 9
+<no report>
+### drift from entry-with-a-numeric-hash.json, yaml
+exit 9
+<no report>
+### drift from entry-with-a-numeric-hash.json, json
+exit 9
+<no report>
+### drift from entry-with-a-numeric-hash.json, toml
+exit 9
+<no report>
+### drift from entry-with-a-textual-size.json, yaml
+exit 9
+<no report>
+### drift from entry-with-a-textual-size.json, json
+exit 9
+<no report>
+### drift from entry-with-a-textual-size.json, toml
+exit 9
+<no report>
+### drift from entry-without-a-count.json, yaml
+exit 9
+<no report>
+### drift from entry-without-a-count.json, json
+exit 9
+<no report>
+### drift from entry-without-a-count.json, toml
+exit 9
+<no report>
+### drift from second-entry-wrong.json, yaml
+exit 9
+<no report>
+### drift from second-entry-wrong.json, json
+exit 9
+<no report>
+### drift from second-entry-wrong.json, toml
+exit 9
+<no report>
+### drift from entry-with-nulls.json, yaml
+exit 0
+entries:
+- key: a
+  kind: removed
+- key: bookart/page.dds
+  kind: added
+- key: grass.esp
+  kind: added
+- key: icons/a.tga
+  kind: added
+- key: meshes/door.nif
+  kind: added
+- key: meshes/x/chair.nif
+  kind: added
+- key: morrowind.esm
+  kind: added
+- key: other.bsa
+  kind: added
+- key: packed.bsa
+  kind: added
+- key: patch.esp
+  kind: added
+- key: sound/hit.wav
+  kind: added
+- key: sound/packed.wav
+  kind: added
+- key: sub/other.bsa
+  kind: added
+- key: textures/new.dds
+  kind: added
+- key: textures/rock.dds
+  kind: added
+counts:
+  added: 14
+  removed: 1
+
+### drift from entry-with-nulls.json, json
+exit 0
+{"entries":[{"key":"a","kind":"removed"},{"key":"bookart/page.dds","kind":"added"},{"key":"grass.esp","kind":"added"},{"key":"icons/a.tga","kind":"added"},{"key":"meshes/door.nif","kind":"added"},{"key":"meshes/x/chair.nif","kind":"added"},{"key":"morrowind.esm","kind":"added"},{"key":"other.bsa","kind":"added"},{"key":"packed.bsa","kind":"added"},{"key":"patch.esp","kind":"added"},{"key":"sound/hit.wav","kind":"added"},{"key":"sound/packed.wav","kind":"added"},{"key":"sub/other.bsa","kind":"added"},{"key":"textures/new.dds","kind":"added"},{"key":"textures/rock.dds","kind":"added"}],"counts":{"added":14,"removed":1}}
+### drift from entry-with-nulls.json, toml
+exit 0
+[[entries]]
+key = "a"
+kind = "removed"
+
+[[entries]]
+key = "bookart/page.dds"
+kind = "added"
+
+[[entries]]
+key = "grass.esp"
+kind = "added"
+
+[[entries]]
+key = "icons/a.tga"
+kind = "added"
+
+[[entries]]
+key = "meshes/door.nif"
+kind = "added"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "added"
+
+[[entries]]
+key = "morrowind.esm"
+kind = "added"
+
+[[entries]]
+key = "other.bsa"
+kind = "added"
+
+[[entries]]
+key = "packed.bsa"
+kind = "added"
+
+[[entries]]
+key = "patch.esp"
+kind = "added"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "added"
+
+[[entries]]
+key = "sound/packed.wav"
+kind = "added"
+
+[[entries]]
+key = "sub/other.bsa"
+kind = "added"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[[entries]]
+key = "textures/rock.dds"
+kind = "added"
+
+[counts]
+added = 14
+removed = 1
+
+### drift from lock.txt, yaml
+exit 9
+<no report>
+### drift from lock.txt, json
+exit 9
+<no report>
+### drift from lock.txt, toml
+exit 9
+<no report>
+### drift from UPPER.YML, yaml
+exit 0
+entries:
+- key: bookart/page.dds
+  kind: added
+- key: grass.esp
+  kind: added
+- key: icons/a.tga
+  kind: added
+- key: meshes/door.nif
+  kind: added
+- key: meshes/x/chair.nif
+  kind: added
+- key: morrowind.esm
+  kind: added
+- key: other.bsa
+  kind: added
+- key: packed.bsa
+  kind: added
+- key: patch.esp
+  kind: added
+- key: sound/hit.wav
+  kind: added
+- key: sound/packed.wav
+  kind: added
+- key: sub/other.bsa
+  kind: added
+- key: textures/new.dds
+  kind: added
+- key: textures/rock.dds
+  kind: added
+counts:
+  added: 14
+
+### drift from UPPER.YML, json
+exit 0
+{"entries":[{"key":"bookart/page.dds","kind":"added"},{"key":"grass.esp","kind":"added"},{"key":"icons/a.tga","kind":"added"},{"key":"meshes/door.nif","kind":"added"},{"key":"meshes/x/chair.nif","kind":"added"},{"key":"morrowind.esm","kind":"added"},{"key":"other.bsa","kind":"added"},{"key":"packed.bsa","kind":"added"},{"key":"patch.esp","kind":"added"},{"key":"sound/hit.wav","kind":"added"},{"key":"sound/packed.wav","kind":"added"},{"key":"sub/other.bsa","kind":"added"},{"key":"textures/new.dds","kind":"added"},{"key":"textures/rock.dds","kind":"added"}],"counts":{"added":14}}
+### drift from UPPER.YML, toml
+exit 0
+[[entries]]
+key = "bookart/page.dds"
+kind = "added"
+
+[[entries]]
+key = "grass.esp"
+kind = "added"
+
+[[entries]]
+key = "icons/a.tga"
+kind = "added"
+
+[[entries]]
+key = "meshes/door.nif"
+kind = "added"
+
+[[entries]]
+key = "meshes/x/chair.nif"
+kind = "added"
+
+[[entries]]
+key = "morrowind.esm"
+kind = "added"
+
+[[entries]]
+key = "other.bsa"
+kind = "added"
+
+[[entries]]
+key = "packed.bsa"
+kind = "added"
+
+[[entries]]
+key = "patch.esp"
+kind = "added"
+
+[[entries]]
+key = "sound/hit.wav"
+kind = "added"
+
+[[entries]]
+key = "sound/packed.wav"
+kind = "added"
+
+[[entries]]
+key = "sub/other.bsa"
+kind = "added"
+
+[[entries]]
+key = "textures/new.dds"
+kind = "added"
+
+[[entries]]
+key = "textures/rock.dds"
+kind = "added"
+
+[counts]
+added = 14
+
+### drift from a lock that is not there
+exit 9
