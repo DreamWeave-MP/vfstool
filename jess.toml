@@ -9,7 +9,7 @@ include = ["src", "tests"]
 tests = ["tests/run.jsl", "tests/reports.jsl", "tests/loose.jsl", "tests/style.jsl"]
 
 [dependencies]
-"org.dreamweave.openmw-config" = "0.1"
+"org.dreamweave.openmw-config" = "4"
 "org.dreamweave.vfs" = "0.1"
 
 # The suites and the bench pack their fixture archives with it.
