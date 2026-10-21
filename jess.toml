@@ -14,7 +14,7 @@ tests = ["tests/run.jsl", "tests/reports.jsl", "tests/loose.jsl", "tests/style.j
 
 # The suites and the bench pack their fixture archives with it.
 [dev-dependencies]
-"org.dreamweave.dream-archive" = "0.1"
+"org.dreamweave.dream-archive" = "2"
 
 [modules]
 "@vfstool" = "src/init.jsl"
