@@ -22,15 +22,38 @@ donate = "https://ko-fi.com/magicaldave"
 # `vfstool/`. Each release tag `vfstool-<version>` is one version of the package, packed by the Mod
 # Template from that tag; every push to main packs a development build. Versions 1.0.1 and below are
 # the Rust program, which lives on the `rust` branch with its GitHub releases.
+#
+# `application` releases it as a program too, from 2.0.1: CI packs the workspace into `vfstool.jsw`,
+# which `jess install org.dreamweave.vfstool` installs, and a jess carrying it for each platform
+# below, which runs without jess installed. The site's workflow names it with jess_application.
 [package]
 format = "jpk"
 jess = "org.dreamweave.vfstool"
+application = "vfstool"
+
+[[platforms]]
+os = "windows"
+arch = "x86_64"
+
+[[platforms]]
+os = "macos"
+arch = "x86_64"
+
+[[platforms]]
+os = "macos"
+arch = "aarch64"
+
+[[platforms]]
+os = "linux"
+arch = "x86_64"
 
 [install]
 notes = """
-vfstool runs through jess. In a workspace that names it under `[dev-dependencies]`,
-`jess workspace run --trusted vfstool -- find-file -s textures/tx_wood_01.dds` reads the
-`openmw.cfg` in OpenMW's default location, or the one named with `--config`.
+`jess install org.dreamweave.vfstool` puts `vfstool` on your PATH. Without jess, unzip the
+download for your platform and run the `vfstool` inside. In a workspace that names it under
+`[dev-dependencies]`, `jess workspace run --trusted vfstool -- find-file -s textures/tx_wood_01.dds`
+runs it there. Either way, name the `openmw.cfg` to read, or the folder holding it, with
+`--config` or `OPENMW_CONFIG`: vfstool doesn't look for OpenMW's default location yet.
 """
 
 [[media]]

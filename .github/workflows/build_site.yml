@@ -34,4 +34,6 @@ jobs:
       id-token: write # Sigstore and Pages
       pages: write
     uses: DreamWeave-MP/StroggForge/.github/workflows/modGlobalBuild.yml@v66
+    with:
+      jess_application: vfstool # packed on a tag, for content/home's [package] application
     secrets: inherit
