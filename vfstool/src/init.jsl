@@ -6,6 +6,48 @@ local commands = require '@self/commands'
 
 type Options = { [string]: unknown }
 
+local Usage = [[
+vfstool: reconstruct OpenMW's virtual file system from openmw.cfg, and find, report, extract or
+collapse what it holds.
+
+Usage: vfstool <command> [arguments] [options]
+
+Commands:
+  find-file <path>           where a VFS path comes from: the loose file, or the archive holding it
+                             (-s/--simple bare path; -p/--only_physical exit 2 when archived)
+  find <pattern>             every VFS path matching a regular expression, as a tree
+  explain <path>             every provider of a VFS path, winner first
+  duplicates [pattern]       VFS paths with more than one provider
+  remaining <directory>      what a data directory still provides
+                             (--replacements-only: what replaces it instead)
+  diff <directory> <directory>  what two data directories share and what only one has
+  conflicts                  conflict relationships between the sources in the load order
+  shadowed                   sources whose every file a later source overrides
+                             (-l/--list-files: and those files)
+  archives                   the loaded archives and how many entries each wins
+  archive-list [archive]     the entries one archive supplies (--source-index N to pick by number)
+  contributions              how many winning files each source provides
+  validate                   missing data directories, archives, content and groundcover files
+                             (--full: build the VFS first, so archives count)
+  lock                       a deterministic manifest of the current winners
+  drift <lock>               the VFS against a lock manifest (--fail-on-drift: exit 4 on drift)
+  extract <path> <directory>  copy one VFS file into a directory
+  collapse <directory>       the whole VFS as one folder of hard links
+                             (-a/--allow-copying, -e/--extract-archives, -s/--symbolic,
+                             --dry-run: print the plan instead)
+  run <directory> -- <command...>
+                             merge the VFS into a directory, run a command over it ({} is the
+                             directory), and capture what it writes into data-local or --output
+                             (--keep-merged, --copy, --working-dir <directory>)
+  help                       this text
+
+Options:
+  -c, --config <path>        the openmw.cfg to read, or the directory holding it; OPENMW_CONFIG
+                             names it otherwise, and one of the two is required
+  -r, --use-relative         print paths relative to their data directory
+  -f, --format <format>      reports as yaml (the default), json or toml
+  -o, --output <path>        write the report to a file instead of stdout]]
+
 local function usage(message: string): number
   cli.err(`vfstool: {message}`)
   return cli.Exit.invalidInput
@@ -19,11 +61,11 @@ local function value(argv: { string }, index: number, option: string): (string?,
 end
 
 local function run(argv: { string }): number
-  if #argv == 0 then return usage('a command is required') end
+  if #argv == 0 then return usage('a command is required; `vfstool help` lists them') end
 
   local action = table.remove(argv, 1)
   if action == 'help' or action == '--help' or action == '-h' then
-    cli.out('vfstool: use jess package test . for command and API tests')
+    cli.out(Usage)
     return cli.Exit.ok
   end
 
