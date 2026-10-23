@@ -238,3 +238,18 @@ summary = "vfstool is a Jess package, written in Luau; the Rust program continue
 breaking = [
     "The tool is the Jess package `org.dreamweave.vfstool`, run through jess rather than as a downloaded binary. The Rust program stays at 1.0.1 on its GitHub releases, crates.io and this repository's `rust` branch, and is no longer developed on main.",
 ]
+
+[[releases]]
+version = "2.0.1"
+date = 2026-10-23
+summary = "vfstool ships as a program again: `jess install org.dreamweave.vfstool`, or a download that runs without jess for Windows, macOS and Linux."
+added = [
+    "The release carries vfstool as an application: `vfstool.jsw`, the package and everything it runs packed into one file, which `jess install org.dreamweave.vfstool` installs onto your PATH.",
+    "A standalone `vfstool` for Windows x86_64, macOS x86_64 and ARM64, and Linux x86_64: jess carrying vfstool, zipped, needing nothing installed.",
+]
+fixed = [
+    "`vfstool help`, `--help` and `-h` print the commands and options instead of a note about the test suite, and running vfstool with no command points at them.",
+]
+known_issues = [
+    "vfstool doesn't look for `openmw.cfg` in OpenMW's default location: name it, or the folder holding it, with `--config` or `OPENMW_CONFIG`.",
+]

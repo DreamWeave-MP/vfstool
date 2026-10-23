@@ -2,7 +2,7 @@ manifest_version = 1
 
 [package]
 id = "org.dreamweave.vfstool"
-version = "2.0.0"
+version = "2.0.1"
 jess_api = "1"
 default_target = "vfstool"
 include = ["src", "tests"]
