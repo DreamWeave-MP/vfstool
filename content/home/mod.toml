@@ -52,8 +52,8 @@ notes = """
 `jess install org.dreamweave.vfstool` puts `vfstool` on your PATH. Without jess, unzip the
 download for your platform and run the `vfstool` inside. In a workspace that names it under
 `[dev-dependencies]`, `jess workspace run --trusted vfstool -- find-file -s textures/tx_wood_01.dds`
-runs it there. Either way, name the `openmw.cfg` to read, or the folder holding it, with
-`--config` or `OPENMW_CONFIG`: vfstool doesn't look for OpenMW's default location yet.
+runs it there. Either way it reads the `openmw.cfg` `--config` or `OPENMW_CONFIG` names, a file or
+the folder holding it, else OpenMW's own.
 """
 
 [[media]]
@@ -252,4 +252,12 @@ fixed = [
 ]
 known_issues = [
     "vfstool doesn't look for `openmw.cfg` in OpenMW's default location: name it, or the folder holding it, with `--config` or `OPENMW_CONFIG`.",
+]
+
+[[releases]]
+version = "2.1.0"
+date = 2026-10-23
+summary = "vfstool finds OpenMW's own configuration again, as the Rust program did."
+fixed = [
+    "With neither `--config` nor OPENMW_CONFIG, vfstool reads the openmw.cfg in the folder OpenMW keeps its own in on this platform: Documents\\My Games\\OpenMW on Windows, wherever Documents was moved, Library/Preferences/openmw on macOS, and the XDG config folder elsewhere. Its `?userconfig?` and `?userdata?` are OpenMW's own folders. Needs jess 0.2.1 or later; the standalone downloads carry it.",
 ]
