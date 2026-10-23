@@ -43,7 +43,7 @@ Commands:
 
 Options:
   -c, --config <path>        the openmw.cfg to read, or the directory holding it; OPENMW_CONFIG
-                             names it otherwise, and one of the two is required
+                             names it otherwise, and without either it is OpenMW's own
   -r, --use-relative         print paths relative to their data directory
   -f, --format <format>      reports as yaml (the default), json or toml
   -o, --output <path>        write the report to a file instead of stdout]]

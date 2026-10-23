@@ -257,7 +257,8 @@ local function record(root: string): { Step }
   status('run with its command after --, none given', { 'run', `{out}/merged`, '--' })
 
   group = Groups[2]
-  status('no configuration named', { 'lock' }, '')
+  -- An empty --config names nothing; leaving it out would read the machine's own configuration.
+  status('no configuration named', { 'lock', '--config', '' }, '')
   status('a configuration that is not there', { 'lock' }, `{root}/absent`)
   status('a folder without a configuration', { 'lock' }, `{root}/bare`)
   report('a configuration found without regard to case', { 'archives' }, `{root}/broken`)

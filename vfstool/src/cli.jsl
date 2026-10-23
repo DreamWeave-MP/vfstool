@@ -2,9 +2,7 @@
 -- SPDX-License-Identifier: MIT OR Apache-2.0
 -- What every vfstool command shares: the openmw.cfg it reads, the VFS it builds from it, and the
 -- messages it prints. The reports are in `reports.jsl`.
-local fs = require '@dream/fs'
 local openmwConfig = require '@openmw-config'
-local paths = require '@vfs/paths'
 local process = require '@dream/process'
 
 --- `@vfs`, required the first time a command builds a VFS or an index over one: a command that
@@ -20,8 +18,8 @@ export type ArchiveInfo = { sourceIndex: number, path: string, entryCount: numbe
 
 export type Format = 'json' | 'yaml' | 'toml'
 
---- Commands require a config file or its directory, or OPENMW_CONFIG. The kernel does not
---- currently expose the platform facts needed for trustworthy default discovery.
+--- Commands read the config file or folder `config` names, else OPENMW_CONFIG's, else OpenMW's own;
+--- its `?userconfig?` and `?userdata?` are OpenMW's own folders unless `tokens` says otherwise.
 export type Options = {
   config: string?,
   tokens: openmwConfig.Tokens?,
@@ -73,55 +71,18 @@ local function green(stream: 'stdout' | 'stderr', text: string): string
   return paint(stream, Green, text)
 end
 
---- The openmw.cfg in `dir`, found without regard to case, or nil with the message printed.
-local function configIn(dir: string): string?
-  local info, statError = fs.stat(dir)
-  if statError then
-    err(`{errPrefix()}Failed to inspect OpenMW config directory '{dir}': {statError}`)
-    return nil
-  end
-
-  if not info or not info.isDir then
-    err(`{errPrefix()}The requested openmw.cfg directory '{dir}' does not exist or is not a directory.`)
-    return nil
-  end
-
-  local names, listError = fs.list(dir)
-  if not names then
-    err(`{errPrefix()}Failed to list OpenMW config directory '{dir}': {listError}`)
-    return nil
-  end
-
-  for _, name in names do
-    if string.lower(name) == 'openmw.cfg' then return paths.join(dir, name) end
-  end
-
-  err(`{errPrefix()}No openmw.cfg found in '{dir}'.`)
-  return nil
-end
-
---- Explicit paths only: --config or OPENMW_CONFIG, each a file or a directory holding it.
+--- The openmw.cfg `options` name, else OPENMW_CONFIG's, else OpenMW's own, or nil with why printed.
+--- An empty --config names nothing.
 local function resolveConfig(options: Options): string?
-  local selected = options.config or process.env 'OPENMW_CONFIG'
-  if not selected or selected == '' then
-    err(
-      `{errPrefix()}An explicit OpenMW config is required: pass --config or set OPENMW_CONFIG. Default discovery is unavailable.`
-    )
+  if options.config == '' then
+    err(`{errPrefix()}--config names no configuration.`)
     return nil
   end
 
-  local info, message = fs.stat(selected)
-  if message then
-    err(`{errPrefix()}Failed to inspect OpenMW config '{selected}': {message}`)
-    return nil
-  end
+  local path, problem = openmwConfig.locate(options.config)
+  if not path then err(`{errPrefix()}{problem}; pass --config or set OPENMW_CONFIG.`) end
 
-  if info and info.isFile then return selected end
-
-  if info and info.isDir then return configIn(selected) end
-
-  err(`{errPrefix()}The requested OpenMW config '{selected}' does not exist or is not a file or directory.`)
-  return nil
+  return path
 end
 
 export type Load = {
@@ -136,7 +97,7 @@ local function load(options: Options): (Load?, number)
   local path = resolveConfig(options)
   if not path then return nil, Exit.config end
 
-  local loaded = openmwConfig.new(path, { tokens = options.tokens })
+  local loaded = openmwConfig.new(path, { tokens = options.tokens or openmwConfig.userFolders() })
   return {
     path = path,
     config = loaded,
