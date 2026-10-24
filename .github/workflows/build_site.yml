@@ -33,7 +33,7 @@ jobs:
       contents: write # releases, and the mod.lock commit
       id-token: write # Sigstore and Pages
       pages: write
-    uses: DreamWeave-MP/StroggForge/.github/workflows/modGlobalBuild.yml@v67
+    uses: DreamWeave-MP/StroggForge/.github/workflows/modGlobalBuild.yml@v68
     with:
       jess_application: vfstool # packed on a tag, for content/home's [package] application
     secrets: inherit
