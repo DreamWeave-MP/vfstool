@@ -1067,6 +1067,162 @@
       "groups": [],
       "extensions": {},
       "critical_extensions": []
+    },
+    {
+      "version": "2.1.0",
+      "locked_from": "1eae7ab127b54b2e89e51266e46a907113d242da",
+      "artifacts": [
+        {
+          "id": "jpk",
+          "format": "jpk",
+          "filename": "org.dreamweave.vfstool-2.1.0.jpk",
+          "media_type": "application/vnd.jess.jpk",
+          "size": 62060,
+          "digests": {
+            "sha256": "314590d8841e4fbd3c6f240ca8457d7b4648e8334124399e85629c5f55e2c20b"
+          },
+          "jess": {
+            "package": "org.dreamweave.vfstool",
+            "jess_api": "1",
+            "content_digest": "eb05850223448c7d80c4723490c02a31dc3842e72ce0969019d15fd8c858ca09",
+            "dependencies": {
+              "org.dreamweave.openmw-config": "4.2",
+              "org.dreamweave.vfs": "2"
+            }
+          }
+        },
+        {
+          "id": "jsw",
+          "format": "jsw",
+          "filename": "vfstool-2.1.0.jsw",
+          "media_type": "application/vnd.jess.jsw",
+          "size": 475758,
+          "digests": {
+            "sha256": "4fee62bbe250d338b08cf4f258a015450037b3f5d7e943fd54323e803462e68c"
+          },
+          "jess_workspace": {
+            "package": "org.dreamweave.vfstool",
+            "builtin": "0.1.0",
+            "default": "org.dreamweave.vfstool:vfstool",
+            "targets": [
+              "org.dreamweave.vfstool:vfstool"
+            ],
+            "commands": {
+              "vfstool": "org.dreamweave.vfstool:vfstool"
+            },
+            "packages": {
+              "org.dreamweave.dream-archive": {
+                "content_digest": "2542758bf2af0319bcecca13eb44158c43b87733d207eb02f13d647412ee9dc1",
+                "version": "2.0.0"
+              },
+              "org.dreamweave.openmw-config": {
+                "content_digest": "1a84e63664f790aee1f7f16fcb23a1f511b0458028dc3b8c78737954a197328f",
+                "version": "4.2.0"
+              },
+              "org.dreamweave.vfs": {
+                "content_digest": "b501db857f2b619c32963763173330348ea57602f1e53303a487fa6025994fab",
+                "version": "2.0.0"
+              },
+              "org.dreamweave.vfstool": {
+                "content_digest": "eb05850223448c7d80c4723490c02a31dc3842e72ce0969019d15fd8c858ca09",
+                "version": "2.1.0"
+              }
+            }
+          }
+        },
+        {
+          "id": "windows-x64",
+          "format": "binary",
+          "filename": "vfstool-Windows-X64.zip",
+          "media_type": "application/zip",
+          "size": 21367046,
+          "digests": {
+            "sha256": "9fd98175b93bc7d2ea22bd9606c1ef5ab66d8d1098c8ce895100cf5a381d5730"
+          },
+          "platform": {
+            "os": "windows",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-x64",
+          "format": "binary",
+          "filename": "vfstool-macOS-X64.zip",
+          "media_type": "application/zip",
+          "size": 22381552,
+          "digests": {
+            "sha256": "84ad5ed450ed2a6248d44bbc36b076ec5819e9c1708b5061b73b5685db6c394f"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "x86_64"
+          }
+        },
+        {
+          "id": "macos-arm64",
+          "format": "binary",
+          "filename": "vfstool-macOS-ARM64.zip",
+          "media_type": "application/zip",
+          "size": 20318178,
+          "digests": {
+            "sha256": "671b4364b95066a733a03d6f5ae5f951763cd258a7150ce6a3798dca6a057b33"
+          },
+          "platform": {
+            "os": "macos",
+            "arch": "aarch64"
+          }
+        },
+        {
+          "id": "linux-x64",
+          "format": "binary",
+          "filename": "vfstool-Linux-X64.zip",
+          "media_type": "application/zip",
+          "size": 23029654,
+          "digests": {
+            "sha256": "7ef1c8cb9a1d505f66eeb40da43132b1e266a38cef083820b733102bf3e817e2"
+          },
+          "platform": {
+            "os": "linux",
+            "arch": "x86_64"
+          }
+        }
+      ],
+      "runtimes": {},
+      "platforms": [
+        {
+          "os": "windows",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "x86_64"
+        },
+        {
+          "os": "macos",
+          "arch": "aarch64"
+        },
+        {
+          "os": "linux",
+          "arch": "x86_64"
+        }
+      ],
+      "provides": [],
+      "relationships": [],
+      "components": [
+        {
+          "id": "main",
+          "name": "vfstool",
+          "path": ".",
+          "required": true,
+          "default": true,
+          "requires": [],
+          "conflicts": [],
+          "suggested_with": []
+        }
+      ],
+      "groups": [],
+      "extensions": {},
+      "critical_extensions": []
     }
   ]
 }
